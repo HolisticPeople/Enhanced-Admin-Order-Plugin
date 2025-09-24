@@ -12,3 +12,8 @@ Backups/
 Plans and reports/
 Ref Plugins/
 WPCode snippets/
+
+# allow GitHub Actions workflow
+!.github/
+!.github/workflows/
+!.github/workflows/deploy.yml
