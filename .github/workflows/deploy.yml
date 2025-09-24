@@ -1,4 +1,4 @@
-name: Deploy EAO plugin to Kinsta
+name: Deploy EAO plugin to KINSTA
 
 on:
   push:
@@ -24,39 +24,39 @@ jobs:
       - name: Load SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.KINSTa_SSH_KEY }}
+          ssh-private-key: ${{ secrets.KINSTA_SSH_KEY }}
 
       - name: Trust host key
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -p ${{ secrets.KINSTa_PORT }} ${{ secrets.KINSTa_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -p ${{ secrets.KINSTA_PORT }} ${{ secrets.KINSTA_HOST }} >> ~/.ssh/known_hosts
 
       - name: Ensure plugin dir exists
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.KINSTa_HOST }}
-          port: ${{ secrets.KINSTa_PORT }}
-          username: ${{ secrets.KINSTa_USER }}
-          key: ${{ secrets.KINSTa_SSH_KEY }}
+          host: ${{ secrets.KINSTA_HOST }}
+          port: ${{ secrets.KINSTA_PORT }}
+          username: ${{ secrets.KINSTA_USER }}
+          key: ${{ secrets.KINSTA_SSH_KEY }}
           script: |
-            mkdir -p "${{ secrets.KINSTa_PLUGIN_PATH }}"
+            mkdir -p "${{ secrets.KINSTA_PLUGIN_PATH }}"
 
       - name: Rsync plugin files
         run: |
           rsync -az --delete \
             --exclude-from=".github/deploy-exclude.txt" \
-            -e "ssh -p ${{ secrets.KINSTa_PORT }}" \
-            ./ "${{ secrets.KINSTa_USER }}@${{ secrets.KINSTa_HOST }}:${{ secrets.KINSTa_PLUGIN_PATH }}/"
+            -e "ssh -p ${{ secrets.KINSTA_PORT }}" \
+            ./ "${{ secrets.KINSTA_USER }}@${{ secrets.KINSTA_HOST }}:${{ secrets.KINSTA_PLUGIN_PATH }}/"
 
       - name: Flush cache & (re)activate plugin
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.KINSTa_HOST }}
-          port: ${{ secrets.KINSTa_PORT }}
-          username: ${{ secrets.KINSTa_USER }}
-          key: ${{ secrets.KINSTa_SSH_KEY }}
+          host: ${{ secrets.KINSTA_HOST }}
+          port: ${{ secrets.KINSTA_PORT }}
+          username: ${{ secrets.KINSTA_USER }}
+          key: ${{ secrets.KINSTA_SSH_KEY }}
           script: |
-            WP_PATH="$(dirname "$(dirname "${{ secrets.KINSTa_PLUGIN_PATH }}")")"
+            WP_PATH="$(dirname "$(dirname "${{ secrets.KINSTA_PLUGIN_PATH }}")")"
             wp --path="$WP_PATH" plugin deactivate enhanced-admin-order-plugin || true
             wp --path="$WP_PATH" plugin activate   enhanced-admin-order-plugin || true
             wp --path="$WP_PATH" cache flush || true
@@ -73,39 +73,39 @@ jobs:
       - name: Load SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.KINSTa_SSH_KEY }}
+          ssh-private-key: ${{ secrets.KINSTA_SSH_KEY }}
 
       - name: Trust host key
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -p ${{ secrets.KINSTa_PORT }} ${{ secrets.KINSTa_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -p ${{ secrets.KINSTA_PORT }} ${{ secrets.KINSTA_HOST }} >> ~/.ssh/known_hosts
 
       - name: Ensure plugin dir exists
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.KINSTa_HOST }}
-          port: ${{ secrets.KINSTa_PORT }}
-          username: ${{ secrets.KINSTa_USER }}
-          key: ${{ secrets.KINSTa_SSH_KEY }}
+          host: ${{ secrets.KINSTA_HOST }}
+          port: ${{ secrets.KINSTA_PORT }}
+          username: ${{ secrets.KINSTA_USER }}
+          key: ${{ secrets.KINSTA_SSH_KEY }}
           script: |
-            mkdir -p "${{ secrets.KINSTa_PLUGIN_PATH }}"
+            mkdir -p "${{ secrets.KINSTA_PLUGIN_PATH }}"
 
       - name: Rsync plugin files
         run: |
           rsync -az --delete \
             --exclude-from=".github/deploy-exclude.txt" \
-            -e "ssh -p ${{ secrets.KINSTa_PORT }}" \
-            ./ "${{ secrets.KINSTa_USER }}@${{ secrets.KINSTa_HOST }}:${{ secrets.KINSTa_PLUGIN_PATH }}/"
+            -e "ssh -p ${{ secrets.KINSTA_PORT }}" \
+            ./ "${{ secrets.KINSTA_USER }}@${{ secrets.KINSTA_HOST }}:${{ secrets.KINSTA_PLUGIN_PATH }}/"
 
       - name: Flush cache & (re)activate plugin
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.KINSTa_HOST }}
-          port: ${{ secrets.KINSTa_PORT }}
-          username: ${{ secrets.KINSTa_USER }}
-          key: ${{ secrets.KINSTa_SSH_KEY }}
+          host: ${{ secrets.KINSTA_HOST }}
+          port: ${{ secrets.KINSTA_PORT }}
+          username: ${{ secrets.KINSTA_USER }}
+          key: ${{ secrets.KINSTA_SSH_KEY }}
           script: |
-            WP_PATH="$(dirname "$(dirname "${{ secrets.KINSTa_PLUGIN_PATH }}")")"
+            WP_PATH="$(dirname "$(dirname "${{ secrets.KINSTA_PLUGIN_PATH }}")")"
             wp --path="$WP_PATH" plugin deactivate enhanced-admin-order-plugin || true
             wp --path="$WP_PATH" plugin activate   enhanced-admin-order-plugin || true
             wp --path="$WP_PATH" cache flush || true
