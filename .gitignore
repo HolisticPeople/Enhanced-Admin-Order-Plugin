@@ -10,6 +10,9 @@ vendor/
 
 Backups/
 
-Backups/
+# allow GitHub Actions workflow
+!.github/
+!.github/workflows/
+!.github/workflows/deploy.yml
 
-*/
+
