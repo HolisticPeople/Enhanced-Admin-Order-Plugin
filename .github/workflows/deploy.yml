@@ -16,7 +16,7 @@ jobs:
     if: github.ref_name == 'dev'
     name: Deploy to STAGING
     runs-on: ubuntu-latest
-    environment: staging
+    environment: Staging
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -65,7 +65,7 @@ jobs:
     if: github.ref_name == 'main'
     name: Deploy to PRODUCTION
     runs-on: ubuntu-latest
-    environment: production
+    environment: Production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
