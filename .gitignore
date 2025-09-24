@@ -13,6 +13,11 @@ Plans and reports/
 Ref Plugins/
 WPCode snippets/
 
+Points/
+eh-authorize-net/
+pymntpl-paypal-woocommerce/
+woo-stripe-payment/
+
 # allow GitHub Actions workflow
 !.github/
 !.github/workflows/
