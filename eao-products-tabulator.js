@@ -895,6 +895,10 @@
                     }
                 }
             } catch(_) {}
+            const i18n = (window.eaoEditorParams && window.eaoEditorParams.i18n) || {};
+            const excludeTooltip = i18n.exclude_gd_tooltip || 'Exclude from Global Discount';
+            const discountTooltip = i18n.discount_tooltip || 'Discount Percentage';
+            const discPriceTooltip = i18n.discounted_price_tooltip || 'Discounted Price';
             const pricingGroup = {
                 title: "Pricing",
                 resizable: false,
@@ -902,9 +906,9 @@
                     { title: "Points", field: "points", visible: true, width: 50, widthGrow: 0, hozAlign: "center", formatter: (cell) => cell.getValue() },
                     { title: "Cost", field: "cost", visible: true, width: 90, widthGrow: 0, hozAlign: "center", formatter: (cell) => cell.getValue() },
                     { title: "Price", field: "price", visible: true, width: 62, widthGrow: 0, hozAlign: "center", formatter: (cell) => cell.getValue() },
-                    { title: "Excl. GD", field: "exclude", width: 36, widthGrow: 0, hozAlign: "center", formatter: (cell) => cell.getValue() },
-                    { title: "Discount %", field: "discount", width: 62, widthGrow: 0, hozAlign: "center", formatter: (cell) => cell.getValue() },
-                    { title: "Disc. Price", field: "disc_price", width: 62, widthGrow: 0, hozAlign: "center", formatter: (cell) => cell.getValue() },
+                    { title: "Excl. GD", field: "exclude", width: 36, widthGrow: 0, hozAlign: "center", headerTooltip: excludeTooltip, formatter: (cell) => cell.getValue() },
+                    { title: "Discount %", field: "discount", width: 62, widthGrow: 0, hozAlign: "center", headerTooltip: discountTooltip, formatter: (cell) => cell.getValue() },
+                    { title: "Disc. Price", field: "disc_price", width: 62, widthGrow: 0, hozAlign: "center", headerTooltip: discPriceTooltip, formatter: (cell) => cell.getValue() },
                 ]
             };
 
@@ -1333,5 +1337,3 @@
 
     window.EAO.ProductsTable = ProductsTable;
 })(window, jQuery);
-
-

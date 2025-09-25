@@ -64,7 +64,7 @@ add_action('wp_ajax_eao_adjust_points_for_order', function() {
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 4.8.24
+ * Version: 4.8.25
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -75,7 +75,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin version constant (v5.0.9: gate ShipStation console logs by eaoDebugSS)
-define('EAO_PLUGIN_VERSION', '5.0.49');
+define('EAO_PLUGIN_VERSION', '5.0.50');
 
 // -----------------------------------------------------------------------------
 // AST status fetch API (safe; no external calls, just WordPress AJAX endpoint)
@@ -443,7 +443,9 @@ function eao_enqueue_admin_assets($hook_suffix) {
                 'price_header' => esc_html__( 'Price', 'enhanced-admin-order' ),
                 'exclude_gd_tooltip' => esc_html__( 'Exclude from Global Discount', 'enhanced-admin-order' ),
                 'exclude_gd_header' => esc_html__( 'Excl. GD', 'enhanced-admin-order' ),
+                'discount_tooltip' => esc_html__( 'Discount Percentage', 'enhanced-admin-order' ),
                 'discount_header' => esc_html__( 'Discount %', 'enhanced-admin-order' ),
+                'discounted_price_tooltip' => esc_html__( 'Discounted Price', 'enhanced-admin-order' ),
                 'discounted_price_header' => esc_html__( 'Disc. Price', 'enhanced-admin-order' ),
                 'quantity_header' => esc_html__( 'Qty', 'enhanced-admin-order' ),
                 'total_header' => esc_html__( 'Total', 'enhanced-admin-order' ),
@@ -2395,3 +2397,4 @@ function eao_ajax_revoke_points_for_order() {
         wp_send_json_error(array('message' => $e->getMessage()));
     }
 }
+
