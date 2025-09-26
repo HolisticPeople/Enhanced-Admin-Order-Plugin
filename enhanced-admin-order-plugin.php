@@ -64,7 +64,7 @@ add_action('wp_ajax_eao_adjust_points_for_order', function() {
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 4.8.25
+ * Version: 4.8.26
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -75,7 +75,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin version constant (v5.0.9: gate ShipStation console logs by eaoDebugSS)
-define('EAO_PLUGIN_VERSION', '5.0.50');
+define('EAO_PLUGIN_VERSION', '5.0.51');
 
 // -----------------------------------------------------------------------------
 // AST status fetch API (safe; no external calls, just WordPress AJAX endpoint)
@@ -2397,4 +2397,5 @@ function eao_ajax_revoke_points_for_order() {
         wp_send_json_error(array('message' => $e->getMessage()));
     }
 }
+
 
