@@ -28,7 +28,8 @@
 
 .eao-shipcol-title{font-weight:600;text-align:center;background:transparent}
 #eao-current-order-items-list .tabulator { min-height: 120px; height: auto; }
-#eao-current-order-items-list .tabulator-tableholder { min-height: 0; height: auto; overflow: visible; }
+#eao-current-order-items-list .tabulator .tabulator-table { min-width: 780px; min-width: calc(780px + (var(--eao-ship-col-count, 0) * 140px)); }
+#eao-current-order-items-list .tabulator-tableholder { min-height: 0; height: auto; max-width: 100%; overflow-x: auto; overflow-y: visible; }
 
 /* Tabulator cell/row background cleanup */
 #eao-current-order-items-list .tabulator .tabulator-cell,
