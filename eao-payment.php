@@ -59,6 +59,20 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
     $opts = get_option('eao_stripe_settings', array(
         'test_secret' => '', 'test_publishable' => '', 'live_secret' => '', 'live_publishable' => ''
     ));
+    $gateway_summary = eao_payment_describe_order_gateway($order);
+    $gateway_label_text = '';
+    if (is_array($gateway_summary)) {
+        if (!empty($gateway_summary['label'])) {
+            $gateway_label_text = (string) $gateway_summary['label'];
+        } elseif (!empty($gateway_summary['message'])) {
+            $gateway_label_text = trim((string) $gateway_summary['message']);
+        }
+        if ($gateway_label_text === '' && !empty($gateway_summary['id'])) {
+            $gateway_label_text = ucfirst(str_replace('_', ' ', (string) $gateway_summary['id']));
+        }
+    }
+    $gateway_notice_style = ($gateway_label_text === '') ? 'display:none;' : '';
+
     ?>
     <div id="eao-payment-processing-container">
         <div style="display:flex; gap:16px; align-items:flex-start;">
@@ -169,6 +183,9 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
         </div>
         <div style="flex:1 1 50%; min-width:420px;">
             <h4>Refunds</h4>
+            <div id="eao-refunds-gateway-summary" class="eao-refunds-gateway-banner" style="margin:4px 0 12px;padding:10px 12px;border-left:4px solid #72aee6;background:#f0f6fc;border-radius:4px;color:#1d2327;<?php echo esc_attr($gateway_notice_style); ?>">
+                <p class="eao-refunds-gateway-label" style="margin:0;font-weight:600;">Charge done by - <span id="eao-refunds-gateway-label-text" style="font-weight:600;"><?php echo esc_html($gateway_label_text); ?></span></p>
+            </div>
             <div id="eao-refunds-existing-top" style="margin-bottom:8px;"></div>
             <div id="eao-refunds-initial">
                 <button type="button" id="eao-pp-refunds-open" class="button">Process refunds</button>
@@ -397,6 +414,7 @@ function eao_payment_record_result() {
     }
     // Build the note text after parsing details
     if ($success) {
+        $order->update_meta_data('_eao_payment_gateway', $gateway);
         if (!empty($amount_cents)) {
             $note = 'Payment of $' . number_format(((float)$amount_cents)/100.0, 2) . ' was processed successfully through ' . $label . '.';
         } elseif ($amount_hint !== null && $amount_hint > 0) {
@@ -425,7 +443,7 @@ function eao_payment_record_result() {
         // Record native WooCommerce payment method so it shows in admin lists
         $pm_id = ($gateway === 'stripe_live') ? 'eao_stripe_live' : 'eao_stripe_test';
         $pm_title = $label;
-        if (!empty($last4)) { $pm_title .= ' •••• ' . $last4; }
+        if (!empty($last4)) { $pm_title .= ' **** ' . $last4; }
         if (method_exists($order, 'set_payment_method')) { $order->set_payment_method($pm_id); }
         if (method_exists($order, 'set_payment_method_title')) { $order->set_payment_method_title($pm_title); }
         // Also update legacy metas for safety
@@ -599,12 +617,185 @@ function eao_payment_get_refund_data() {
         );
     }
 
-    wp_send_json_success(array('items' => $items, 'refunds' => $existing));
+    $gateway_info = eao_payment_describe_order_gateway($order);
+    wp_send_json_success(array('items' => $items, 'refunds' => $existing, 'gateway' => $gateway_info));
+}
+
+/**
+ * Determine if this order was charged via the Enhanced Admin Order Stripe integration.
+ *
+ * @param WC_Order $order
+ * @return bool
+ */
+function eao_payment_order_has_eao_stripe_charge($order) {
+    if (!($order instanceof WC_Order)) {
+        return false;
+    }
+    $charge_id = (string) $order->get_meta('_eao_stripe_charge_id', true);
+    $pi_id = (string) $order->get_meta('_eao_stripe_payment_intent_id', true);
+    return ($charge_id !== '' || $pi_id !== '');
+}
+
+/**
+ * Attempt to locate the WooCommerce payment gateway instance associated with an order.
+ *
+ * @param WC_Order $order
+ * @return array{ id: string, gateway: ?WC_Payment_Gateway }
+ */
+function eao_payment_locate_wc_gateway_for_order($order) {
+    if (!($order instanceof WC_Order) || !class_exists('WC_Payment_Gateways')) {
+        return array('id' => '', 'gateway' => null);
+    }
+
+    $candidates = array();
+    $meta_gateway = $order->get_meta('_eao_payment_gateway', true);
+    if (!empty($meta_gateway)) {
+        $candidates[] = strtolower(trim((string) $meta_gateway));
+    }
+    $payment_method = $order->get_payment_method();
+    if (!empty($payment_method)) {
+        $candidates[] = strtolower(trim((string) $payment_method));
+    }
+    $legacy_method = $order->get_meta('_payment_method', true);
+    if (!empty($legacy_method)) {
+        $candidates[] = strtolower(trim((string) $legacy_method));
+    }
+
+    $candidates = array_values(array_unique(array_filter($candidates)));
+
+    if (empty($candidates)) {
+        return array('id' => '', 'gateway' => null);
+    }
+
+    $alias_map = array(
+        'stripe_live' => array('stripe', 'woocommerce_stripe', 'stripe_cc', 'woo_stripe_payment', 'wc_stripe'),
+        'stripe_test' => array('stripe', 'woocommerce_stripe', 'stripe_cc', 'woo_stripe_payment', 'wc_stripe'),
+        'stripe' => array('stripe', 'woocommerce_stripe', 'stripe_cc', 'woo_stripe_payment', 'wc_stripe'),
+        'paypal' => array('ppcp', 'ppec_paypal', 'paypal'),
+        'ppcp' => array('ppcp', 'ppec_paypal'),
+        'authorize' => array('eh_authorize_net_aim_card', 'wc_authorize_net_cim_credit_card', 'wc_authorize_net_cim_echeck', 'authorize_net', 'authorizenet'),
+        'authorize_net' => array('eh_authorize_net_aim_card', 'wc_authorize_net_cim_credit_card', 'authorize_net', 'authorizenet'),
+    );
+
+    $extended = $candidates;
+    foreach ($candidates as $candidate) {
+        if (isset($alias_map[$candidate])) {
+            $extended = array_merge($extended, $alias_map[$candidate]);
+        }
+    }
+    $candidates = array_values(array_unique(array_filter($extended)));
+
+    $gateways = WC_Payment_Gateways::instance()->payment_gateways();
+    foreach ($candidates as $candidate) {
+        if (isset($gateways[$candidate])) {
+            return array('id' => $candidate, 'gateway' => $gateways[$candidate]);
+        }
+    }
+
+    foreach ($candidates as $candidate) {
+        foreach ($gateways as $id => $gateway_obj) {
+            if (false !== strpos($id, $candidate)) {
+                return array('id' => $id, 'gateway' => $gateway_obj);
+            }
+        }
+    }
+
+    return array('id' => '', 'gateway' => null);
+}
+/**
+ * Describe the detected payment gateway for an order.
+ *
+ * @param WC_Order $order
+ * @return array{ id: string, label: string, source: string, mode: string, reference: string, message: string }
+ */
+function eao_payment_describe_order_gateway($order) {
+    $result = array(
+        'id' => '',
+        'label' => '',
+        'source' => 'unknown',
+        'mode' => '',
+        'reference' => '',
+        'message' => ''
+    );
+    if (!($order instanceof WC_Order)) {
+        return $result;
+    }
+
+    if (eao_payment_order_has_eao_stripe_charge($order)) {
+        $mode_meta = strtolower((string) $order->get_meta('_eao_stripe_payment_mode'));
+        $mode = ($mode_meta === 'test') ? 'test' : 'live';
+        $charge_id = (string) $order->get_meta('_eao_stripe_charge_id', true);
+        if (!$charge_id) {
+            $charge_id = (string) $order->get_meta('_eao_stripe_payment_intent_id', true);
+        }
+        $result['id'] = 'eao_stripe_' . $mode;
+        $result['source'] = 'eao_stripe';
+        $result['label'] = 'Stripe (EAO ' . (($mode === 'test') ? 'Test' : 'Live') . ')';
+        $result['mode'] = $mode;
+        if (!empty($charge_id)) {
+            $result['reference'] = $charge_id;
+        }
+        $reference_text = $result['reference'] ? ' Reference: ' . $result['reference'] . '.' : '';
+        $result['message'] = 'Gateway for this order: ' . $result['label'] . '. Refunds will be sent through the Enhanced Admin Order Stripe API.' . $reference_text;
+        return $result;
+    }
+
+    $resolution = eao_payment_locate_wc_gateway_for_order($order);
+    if (!empty($resolution['id'])) {
+        $result['id'] = (string) $resolution['id'];
+    }
+    if (!empty($resolution['gateway']) && $resolution['gateway'] instanceof WC_Payment_Gateway) {
+        $result['source'] = 'woocommerce_gateway';
+        $gw = $resolution['gateway'];
+        $label = '';
+        if (method_exists($gw, 'get_method_title')) {
+            $label = trim((string) $gw->get_method_title());
+        }
+        if (!$label && method_exists($gw, 'get_title')) {
+            $label = trim((string) $gw->get_title());
+        }
+        if ($label) {
+            $result['label'] = $label;
+        }
+    }
+
+    if (empty($result['label'])) {
+        $fallback = (string) $order->get_payment_method_title();
+        if (!$fallback) {
+            $fallback = (string) $order->get_meta('_payment_method_title', true);
+        }
+        if ($fallback) {
+            $result['label'] = $fallback;
+        }
+    }
+
+    if (empty($result['label']) && !empty($result['id'])) {
+        $result['label'] = ucfirst(str_replace('_', ' ', $result['id']));
+    }
+    if (empty($result['label'])) {
+        $result['label'] = 'Unknown / manual payment';
+    }
+
+    $reference = (string) $order->get_transaction_id();
+    if ($reference) {
+        $result['reference'] = $reference;
+    }
+
+    if ($result['source'] === 'woocommerce_gateway') {
+        $detail = $result['reference'] ? ' Reference: ' . $result['reference'] . '.' : '';
+        $result['message'] = 'Gateway for this order: ' . $result['label'] . '. Refund requests will be sent to this WooCommerce gateway automatically.' . $detail;
+    } else {
+        $detail = $result['reference'] ? ' Reference: ' . $result['reference'] . '.' : '';
+        $result['message'] = 'Gateway for this order: ' . $result['label'] . '. Refunds will be recorded in WooCommerce only.' . $detail;
+    }
+
+    return $result;
 }
 
 /**
  * Process refund using WooCommerce APIs (records official wc_refund)
  */
+
 function eao_payment_process_refund() {
     if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_payment_mockup')) {
         wp_send_json_error(array('message' => 'Nonce verification failed.'));
@@ -639,65 +830,32 @@ function eao_payment_process_refund() {
         wp_send_json_error(array('message' => 'Nothing to refund'));
     }
 
+    // Snapshot current internal notes so we can remove gateway-generated duplicates later.
+    $existing_note_ids = array();
+    foreach (wc_get_order_notes(array('order_id' => $order_id, 'type' => 'internal', 'orderby' => 'date_created', 'order' => 'ASC')) as $note_obj) {
+        if (is_object($note_obj) && method_exists($note_obj, 'get_id')) {
+            $existing_note_ids[] = $note_obj->get_id();
+        }
+    }
+
     $reason = 'Refund via Enhanced Admin Order - HolisticPeople.com - Order# ' . $order_id;
     if ($points_total > 0) { $reason .= ' | Points to refund: ' . $points_total; }
     if (!empty($user_reason)) { $reason .= ' | Reason: ' . $user_reason; }
 
-    // If there is a Stripe charge recorded and a money amount to refund, send refund to Stripe
-    $stripe_refund_id = '';
-    if ($amount_total > 0) {
-        $mode = (string) $order->get_meta('_eao_stripe_payment_mode');
-        $charge_id = (string) $order->get_meta('_eao_stripe_charge_id');
-        $opts = get_option('eao_stripe_settings', array());
-        $secret = ($mode === 'live') ? ($opts['live_secret'] ?? '') : ($opts['test_secret'] ?? '');
-        // If missing, try to retrieve from PaymentIntent
-        if (empty($charge_id)) {
-            $pi_id = (string) $order->get_meta('_eao_stripe_payment_intent_id');
-            if (!empty($secret) && !empty($pi_id)) {
-                $headers = array('Authorization' => 'Bearer ' . $secret);
-                $pi_resp = wp_remote_get('https://api.stripe.com/v1/payment_intents/' . rawurlencode($pi_id), array('headers' => $headers));
-                if (!is_wp_error($pi_resp)) {
-                    $pi_body = json_decode(wp_remote_retrieve_body($pi_resp), true);
-                    if (!empty($pi_body['latest_charge'])) {
-                        $charge_id = $pi_body['latest_charge'];
-                        $order->update_meta_data('_eao_stripe_charge_id', $charge_id);
-                        $order->save();
-                    } elseif (!empty($pi_body['charges']['data'][0]['id'])) {
-                        $charge_id = $pi_body['charges']['data'][0]['id'];
-                        $order->update_meta_data('_eao_stripe_charge_id', $charge_id);
-                        $order->save();
-                    }
-                }
-            }
-        }
-        if (!empty($secret) && !empty($charge_id)) {
-            $headers = array('Authorization' => 'Bearer ' . $secret, 'Content-Type' => 'application/x-www-form-urlencoded');
-            $rf = wp_remote_post('https://api.stripe.com/v1/refunds', array(
-                'headers' => $headers,
-                'body' => array(
-                    'charge' => $charge_id,
-                    'amount' => (int) round($amount_total * 100),
-                    'reason' => 'requested_by_customer',
-                    'metadata[order_id]' => $order_id
-                )
-            ));
-            if (is_wp_error($rf)) {
-                wp_send_json_error(array('message' => 'Stripe refund error: ' . $rf->get_error_message()));
-            }
-            $rf_body = json_decode(wp_remote_retrieve_body($rf), true);
-            if (empty($rf_body['id'])) {
-                wp_send_json_error(array('message' => 'Stripe refund failed', 'stripe' => $rf_body));
-            }
-            $stripe_refund_id = $rf_body['id'];
-            $reason .= ' | Stripe refund ' . $stripe_refund_id . (($mode==='live')?' (Live)':' (Test)');
-        } else if ($amount_total > 0) {
-            // Explain why Stripe refund could not be sent
-            if (empty($charge_id)) {
-                return wp_send_json_error(array('message' => 'Stripe charge reference not found on this order. Payment may have been processed outside Stripe integration.'));
-            }
-            if (empty($secret)) {
-                return wp_send_json_error(array('message' => 'Stripe API key missing for ' . (($mode==='live')?'Live':'Test') . ' mode.')); 
-            }
+    $manual_stripe = ($amount_total > 0) && eao_payment_order_has_eao_stripe_charge($order);
+    $stripe_mode = (string) $order->get_meta('_eao_stripe_payment_mode');
+    if ($stripe_mode !== 'test') {
+        $stripe_mode = 'live';
+    }
+
+    $located_gateway_id = '';
+    $located_gateway = null;
+    if ($amount_total > 0 && !$manual_stripe) {
+        $gateway_resolution = eao_payment_locate_wc_gateway_for_order($order);
+        $located_gateway_id = isset($gateway_resolution['id']) ? (string) $gateway_resolution['id'] : '';
+        $located_gateway = isset($gateway_resolution['gateway']) ? $gateway_resolution['gateway'] : null;
+        if (!$located_gateway || !is_object($located_gateway) || !method_exists($located_gateway, 'supports') || !$located_gateway->supports('refunds')) {
+            wp_send_json_error(array('message' => 'Unable to locate a refund-capable payment gateway for this order. Please process the refund on the native WooCommerce order screen or review the payment gateway configuration.'));
         }
     }
 
@@ -713,9 +871,111 @@ function eao_payment_process_refund() {
         wp_send_json_error(array('message' => $refund->get_error_message()));
     }
 
-    // Process YITH points refund if requested
+    $gateway_label = '';
+    $gateway_reference_value = '';
+    $gateway_reference_note = '';
+    $remote_processed = false;
+
+    if ($amount_total > 0) {
+        if ($manual_stripe) {
+            $charge_id = (string) $order->get_meta('_eao_stripe_charge_id');
+            $opts = get_option('eao_stripe_settings', array());
+            $secret = ($stripe_mode === 'live') ? ($opts['live_secret'] ?? '') : ($opts['test_secret'] ?? '');
+            $gateway_label = 'Stripe (EAO ' . (($stripe_mode === 'live') ? 'Live' : 'Test') . ')';
+            if (empty($charge_id)) {
+                $pi_id = (string) $order->get_meta('_eao_stripe_payment_intent_id');
+                if (!empty($secret) && !empty($pi_id)) {
+                    $headers = array('Authorization' => 'Bearer ' . $secret);
+                    $pi_resp = wp_remote_get('https://api.stripe.com/v1/payment_intents/' . rawurlencode($pi_id), array('headers' => $headers));
+                    if (!is_wp_error($pi_resp)) {
+                        $pi_body = json_decode(wp_remote_retrieve_body($pi_resp), true);
+                        if (!empty($pi_body['latest_charge'])) {
+                            $charge_id = $pi_body['latest_charge'];
+                            $order->update_meta_data('_eao_stripe_charge_id', $charge_id);
+                            $order->save();
+                        } elseif (!empty($pi_body['charges']['data'][0]['id'])) {
+                            $charge_id = $pi_body['charges']['data'][0]['id'];
+                            $order->update_meta_data('_eao_stripe_charge_id', $charge_id);
+                            $order->save();
+                        }
+                    }
+                }
+            }
+            if (empty($charge_id)) {
+                $refund->delete(true);
+                wp_send_json_error(array('message' => 'Stripe charge reference not found on this order. Payment may have been processed outside Stripe integration.'));
+            }
+            if (empty($secret)) {
+                $refund->delete(true);
+                wp_send_json_error(array('message' => 'Stripe API key missing for ' . (($stripe_mode === 'live') ? 'Live' : 'Test') . ' mode.'));
+            }
+            $headers = array('Authorization' => 'Bearer ' . $secret, 'Content-Type' => 'application/x-www-form-urlencoded');
+            $rf = wp_remote_post('https://api.stripe.com/v1/refunds', array(
+                'headers' => $headers,
+                'body' => array(
+                    'charge' => $charge_id,
+                    'amount' => (int) round($amount_total * 100),
+                    'reason' => 'requested_by_customer',
+                    'metadata[order_id]' => $order_id
+                )
+            ));
+            if (is_wp_error($rf)) {
+                $refund->delete(true);
+                wp_send_json_error(array('message' => 'Stripe refund error: ' . $rf->get_error_message()));
+            }
+            $rf_body = json_decode(wp_remote_retrieve_body($rf), true);
+            if (empty($rf_body['id'])) {
+                $refund->delete(true);
+                wp_send_json_error(array('message' => 'Stripe refund failed', 'stripe' => $rf_body));
+            }
+            $gateway_reference_value = (string) $rf_body['id'];
+            $gateway_label = 'Stripe ' . (($stripe_mode === 'live') ? 'Live' : 'Test');
+            $gateway_reference_note = 'Stripe refund ' . $gateway_reference_value . (($stripe_mode === 'live') ? ' (Live)' : ' (Test)');
+            update_post_meta($refund->get_id(), '_eao_stripe_refund_id', $gateway_reference_value);
+            update_post_meta($refund->get_id(), '_eao_refund_reference', $gateway_reference_value);
+            $remote_processed = true;
+        } else {
+            $gateway_amount = (float) wc_format_decimal($amount_total, 2);
+            $gateway_result = $located_gateway->process_refund($order_id, $gateway_amount, $user_reason);
+            if (is_wp_error($gateway_result)) {
+                $refund->delete(true);
+                wp_send_json_error(array('message' => $gateway_result->get_error_message()));
+            }
+            if ($gateway_result === false) {
+                $refund->delete(true);
+                wp_send_json_error(array('message' => 'The payment gateway declined the refund request.'));
+            }
+            $remote_processed = true;
+            if (method_exists($located_gateway, 'get_method_title')) {
+                $gateway_label = trim((string) $located_gateway->get_method_title());
+            }
+            if (!$gateway_label && method_exists($located_gateway, 'get_title')) {
+                $gateway_label = trim((string) $located_gateway->get_title());
+            }
+            if (!$gateway_label) {
+                $gateway_label = $located_gateway_id ? ucfirst(str_replace('_', ' ', $located_gateway_id)) : 'Payment Gateway';
+            }
+            if (is_object($gateway_result)) {
+                if (isset($gateway_result->id) && is_string($gateway_result->id) && $gateway_result->id !== '') {
+                    $gateway_reference_value = $gateway_result->id;
+                } elseif (isset($gateway_result->transaction_id) && is_string($gateway_result->transaction_id) && $gateway_result->transaction_id !== '') {
+                    $gateway_reference_value = $gateway_result->transaction_id;
+                }
+            } elseif (is_string($gateway_result) && $gateway_result !== '') {
+                $gateway_reference_value = $gateway_result;
+            }
+            if ($gateway_reference_value !== '') {
+                $gateway_reference_note = 'Gateway reference ' . $gateway_reference_value;
+                update_post_meta($refund->get_id(), '_eao_refund_reference', $gateway_reference_value);
+            }
+        }
+    }
+
+    if ($remote_processed && $gateway_label !== '') {
+        update_post_meta($refund->get_id(), '_eao_refunded_via_gateway', $gateway_label);
+    }
+
     if ($points_total > 0) {
-        // Credit back redeemed points to the customer (add points)
         if (function_exists('ywpar_increase_points')) {
             ywpar_increase_points($order->get_customer_id(), $points_total, sprintf(__('Redeemed points returned for Order #%d', 'enhanced-admin-order'), $order_id), $order_id);
         } elseif (function_exists('ywpar_get_customer')) {
@@ -724,15 +984,58 @@ function eao_payment_process_refund() {
                 $cust->update_points($points_total, 'order_points_return', array('order_id' => $order_id, 'description' => 'Redeemed points returned'));
             }
         }
-        // Store how many points were refunded with this refund record
         update_post_meta($refund->get_id(), '_eao_points_refunded', (int) $points_total);
         if (!empty($points_map)) { update_post_meta($refund->get_id(), '_eao_points_refunded_map', wp_json_encode($points_map)); }
     }
 
-    $human = 'Refund of $' . wc_format_decimal($amount_total, 2) . ' was processed successfully through ' . (($mode==='live')?'Stripe Live':'Stripe Test') . '.';
-    if ($points_total > 0) { $human .= ' Points refunded: ' . (int) $points_total . '.'; }
-    $order->add_order_note($human);
+    if ($remote_processed && $gateway_reference_note !== '' && method_exists($refund, 'get_reason') && method_exists($refund, 'set_reason')) {
+        $refund->set_reason(trim($refund->get_reason() . ' | ' . $gateway_reference_note));
+        $refund->save();
+    }
+
+    // Remove duplicate gateway refund notes that may have been added automatically.
+    if (!empty($existing_note_ids)) {
+        $recent_notes = wc_get_order_notes(array('order_id' => $order_id, 'type' => 'internal', 'orderby' => 'date_created', 'order' => 'DESC', 'limit' => 5));
+        foreach ($recent_notes as $note_obj) {
+            if (!is_object($note_obj) || !method_exists($note_obj, 'get_id')) { continue; }
+            $note_id = $note_obj->get_id();
+            if (in_array($note_id, $existing_note_ids, true)) { continue; }
+            $content_plain = trim(wp_strip_all_tags($note_obj->get_content()));
+            if ($content_plain === '') { continue; }
+            if (stripos($content_plain, 'order refunded') === 0 || stripos($content_plain, 'refunded') === 0) {
+                wc_delete_order_note($note_id);
+            }
+        }
+    }
+
+    $human_parts = array();
+    if ($amount_total > 0) {
+        if ($remote_processed) {
+            $message = 'Refund of $' . wc_format_decimal($amount_total, 2) . ' was processed successfully';
+            if ($gateway_label !== '') {
+                $message .= ' through ' . $gateway_label;
+            } else {
+                $message .= ' through the payment gateway';
+            }
+            if ($gateway_reference_note !== '') { $message .= ' (' . $gateway_reference_note . ')'; }
+            $human_parts[] = $message . '.';
+        } else {
+            $human_parts[] = 'Refund of $' . wc_format_decimal($amount_total, 2) . ' was recorded without contacting a payment gateway.';
+        }
+    } else {
+        $human_parts[] = 'Points-only refund recorded.';
+    }
+    if ($points_total > 0) { $human_parts[] = 'Points refunded: ' . (int) $points_total . '.'; }
+    $human = trim(implode(' ', $human_parts));
+    if ($human === '') {
+        $human = 'EAO refund recorded.';
+    } else {
+        $human = 'EAO Refund: ' . $human;
+    }
+    $order->add_order_note($human, false, false);
 
     wp_send_json_success(array('refund_id' => $refund->get_id(), 'amount' => wc_format_decimal($amount_total, 2), 'points' => (int) $points_total));
 }
+
+
 

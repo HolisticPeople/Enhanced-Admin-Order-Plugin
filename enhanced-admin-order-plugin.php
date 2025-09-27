@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // AJAX: Adjust customer points for this order by a delta (+/-)
 add_action('wp_ajax_eao_adjust_points_for_order', function() {
     if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_editor_nonce')) {
@@ -64,7 +64,7 @@ add_action('wp_ajax_eao_adjust_points_for_order', function() {
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 4.8.26
+ * Version: 4.8.29
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -75,7 +75,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin version constant (v5.0.9: gate ShipStation console logs by eaoDebugSS)
-define('EAO_PLUGIN_VERSION', '5.0.51');
+define('EAO_PLUGIN_VERSION', '5.0.63');
 
 // -----------------------------------------------------------------------------
 // AST status fetch API (safe; no external calls, just WordPress AJAX endpoint)
@@ -135,16 +135,16 @@ define( 'EAO_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
  * CURRENT STATE: Modular refactoring in progress - STEP 8: SAVE FUNCTION MODULARIZATION PHASE 2
  * 
  * COMPLETED:
- * ✅ Step 1: Preparation (v1.5.1)
- * ✅ Step 2: Order Calculation Utilities (v1.5.2) → eao-utility-functions.php
- * ✅ Step 3: ShipStation Utilities (v1.5.3) → eao-shipstation-utils.php
- * ✅ Step 3.5: Complete AJAX Audit (v1.5.4) - All wp_send_json converted to manual JSON
- * ✅ Step 4: Customer Management Functions (v1.5.5) → eao-customer-functions.php
- * ✅ Step 5: Product Management Functions (v1.5.6) → eao-product-management.php
- * ✅ Step 6: Custom Notes System (v1.9.1) → eao-custom-notes.php
- * ✅ Step 7: ShipStation Core Functions (v1.8.13) → eao-shipstation-core.php
- * ✅ Step 8 Phase 1: Notes Processor Extraction (v1.9.9) → eao-ajax-save-core.php
- * ✅ Step 8 Phase 2: Items Processor Extraction (v1.9.10) → eao-ajax-save-core.php
+ * âœ… Step 1: Preparation (v1.5.1)
+ * âœ… Step 2: Order Calculation Utilities (v1.5.2) â†’ eao-utility-functions.php
+ * âœ… Step 3: ShipStation Utilities (v1.5.3) â†’ eao-shipstation-utils.php
+ * âœ… Step 3.5: Complete AJAX Audit (v1.5.4) - All wp_send_json converted to manual JSON
+ * âœ… Step 4: Customer Management Functions (v1.5.5) â†’ eao-customer-functions.php
+ * âœ… Step 5: Product Management Functions (v1.5.6) â†’ eao-product-management.php
+ * âœ… Step 6: Custom Notes System (v1.9.1) â†’ eao-custom-notes.php
+ * âœ… Step 7: ShipStation Core Functions (v1.8.13) â†’ eao-shipstation-core.php
+ * âœ… Step 8 Phase 1: Notes Processor Extraction (v1.9.9) â†’ eao-ajax-save-core.php
+ * âœ… Step 8 Phase 2: Items Processor Extraction (v1.9.10) â†’ eao-ajax-save-core.php
  * 
  * ACHIEVEMENT: MAJOR SAVE FUNCTION MODULE EXTRACTED! (~180 lines reduced)
  * 
@@ -789,7 +789,7 @@ function eao_points_grant_if_needed( $order_id ) {
             $points_to_grant = $expected_award_meta;
             eao_points_debug_log('Grant using expected_award meta: ' . $points_to_grant, $order_id);
         } else {
-        // 1) Resolve earning rate (points per $) – prefer YITH preview's points_per_dollar, else derive from full price
+        // 1) Resolve earning rate (points per $) â€“ prefer YITH preview's points_per_dollar, else derive from full price
         $earn_rate = 0.0;
         if (function_exists('eao_yith_calculate_order_points_preview')) {
             $calc = eao_yith_calculate_order_points_preview($order_id);
@@ -827,7 +827,7 @@ function eao_points_grant_if_needed( $order_id ) {
         $posted_points = isset($_POST['eao_points_to_redeem']) ? intval($_POST['eao_points_to_redeem']) : null;
         if ($posted_points !== null && $posted_points >= 0) {
             $points_discount_amount = $posted_points / max(1.0, (float) get_option('ywpar_points_conversion_rate', 10));
-            eao_points_debug_log('Grant calc using POSTed points: posted=' . $posted_points . ' ⇒ $' . number_format($points_discount_amount,2), $order_id);
+            eao_points_debug_log('Grant calc using POSTed points: posted=' . $posted_points . ' â‡’ $' . number_format($points_discount_amount,2), $order_id);
         }
 
         $oop = max(0.0, $products_net - $points_discount_amount);
@@ -1357,7 +1357,7 @@ function eao_display_admin_page() {
 
             function eaoFormatRateForDisplay(serviceName) {
                 if (typeof serviceName !== 'string') return 'N/A';
-                serviceName = serviceName.replace('®', '').replace('™', '');
+                serviceName = serviceName.replace('Â®', '').replace('â„¢', '');
                 if (serviceName.toLowerCase().endsWith(' - package')) {
                     serviceName = serviceName.substring(0, serviceName.length - ' - package'.length);
                 }
@@ -2225,7 +2225,7 @@ function eao_ajax_refresh_points_earning() {
         echo '<div class="eao-earning-summary">';
         if ($expected_points > 0) {
             echo '<span class="eao-earning-points"><strong>' . esc_html(number_format($expected_points)) . '</strong> ' . esc_html__('points', 'enhanced-admin-order') . '</span>';
-            echo '<span class="eao-earning-text"> ' . esc_html__('will be awarded to the customer based on YITH earning rules — not considering admin discounts; when points/coupons are used, YITH options may reduce earning accordingly', 'enhanced-admin-order') . '</span>';
+            echo '<span class="eao-earning-text"> ' . esc_html__('will be awarded to the customer based on YITH earning rules â€” not considering admin discounts; when points/coupons are used, YITH options may reduce earning accordingly', 'enhanced-admin-order') . '</span>';
         } else {
             echo '<span class="eao-earning-text" style="color:#666;">' . esc_html__('No points will be earned (0 points)', 'enhanced-admin-order') . '</span>';
         }
@@ -2243,12 +2243,12 @@ function eao_ajax_refresh_points_earning() {
                     $r = $item['applied_rule'];
                     $rn = isset($r['name']) && $r['name'] !== '' ? $r['name'] : 'Unnamed rule';
                     if (isset($r['points'])) {
-                        echo '<div style="margin-top:4px;color:#444;">' . sprintf(__('Applied rule: %s → %s pts', 'enhanced-admin-order'), '<strong>' . esc_html($rn) . '</strong>', esc_html(number_format($r['points']))) . '</div>';
+                        echo '<div style="margin-top:4px;color:#444;">' . sprintf(__('Applied rule: %s â†’ %s pts', 'enhanced-admin-order'), '<strong>' . esc_html($rn) . '</strong>', esc_html(number_format($r['points']))) . '</div>';
                     } else {
                         echo '<div style="margin-top:4px;color:#444;">' . sprintf(__('Applied rule: %s', 'enhanced-admin-order'), '<strong>' . esc_html($rn) . '</strong>') . '</div>';
                     }
                 }
-                echo '<div style="font-weight:500;">' . esc_html__('Final:', 'enhanced-admin-order') . ' ' . esc_html(number_format($item['points_per_item'])) . ' pts × ' . esc_html($item['quantity']) . ' = <strong>' . esc_html(number_format($item['total_points'])) . ' pts</strong></div>';
+                echo '<div style="font-weight:500;">' . esc_html__('Final:', 'enhanced-admin-order') . ' ' . esc_html(number_format($item['points_per_item'])) . ' pts Ã— ' . esc_html($item['quantity']) . ' = <strong>' . esc_html(number_format($item['total_points'])) . ' pts</strong></div>';
                 echo '</div></div>';
             }
             echo '</div></details>';
