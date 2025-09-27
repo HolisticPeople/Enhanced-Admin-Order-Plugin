@@ -59,6 +59,17 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
     $opts = get_option('eao_stripe_settings', array(
         'test_secret' => '', 'test_publishable' => '', 'live_secret' => '', 'live_publishable' => ''
     ));
+    $gateway_summary = eao_payment_describe_order_gateway($order);
+    $gateway_message = '';
+    if (is_array($gateway_summary)) {
+        if (!empty($gateway_summary['message'])) {
+            $gateway_message = (string) $gateway_summary['message'];
+        } elseif (!empty($gateway_summary['label'])) {
+            $gateway_message = 'Gateway for this order: ' . $gateway_summary['label'] . '.';
+        }
+    }
+    $gateway_notice_style = ($gateway_message === '') ? 'display:none;' : '';
+
     ?>
     <div id="eao-payment-processing-container">
         <div style="display:flex; gap:16px; align-items:flex-start;">
@@ -169,7 +180,11 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
         </div>
         <div style="flex:1 1 50%; min-width:420px;">
             <h4>Refunds</h4>
-            <div id="eao-refunds-gateway-summary" class="notice notice-info" style="margin:4px 0 12px;display:none;"></div>
+            <div id="eao-refunds-gateway-summary" class="notice notice-info" style="margin:4px 0 12px;<?php echo esc_attr($gateway_notice_style); ?>">
+                <?php if ($gateway_message !== '') : ?>
+                    <p><?php echo esc_html($gateway_message); ?></p>
+                <?php endif; ?>
+            </div>
             <div id="eao-refunds-existing-top" style="margin-bottom:8px;"></div>
             <div id="eao-refunds-initial">
                 <button type="button" id="eao-pp-refunds-open" class="button">Process refunds</button>
@@ -1020,4 +1035,5 @@ function eao_payment_process_refund() {
 
     wp_send_json_success(array('refund_id' => $refund->get_id(), 'amount' => wc_format_decimal($amount_total, 2), 'points' => (int) $points_total));
 }
+
 
