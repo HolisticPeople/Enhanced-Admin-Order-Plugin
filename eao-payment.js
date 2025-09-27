@@ -10,6 +10,7 @@
     $(document).ready(function(){
         var $container = $('#eao-payment-processing-container');
         if (!$container.length) return;
+        var $gatewaySummary = $("#eao-refunds-gateway-summary");
 
         $('#eao-pp-gateway-settings').on('click', function(){
             $('#eao-pp-settings-panel').slideToggle(150);
@@ -19,6 +20,7 @@
             var $btn = $(this);
             var $msg = $('#eao-pp-messages');
             $btn.prop('disabled', true).text('Saving...');
+            if ($gatewaySummary.length) { $gatewaySummary.hide().html(''); }
             $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
                 action: 'eao_payment_stripe_save_settings',
                 nonce: $('#eao_payment_mockup_nonce').val(),
@@ -324,6 +326,7 @@
             var orderId = $('#eao-pp-order-id').val();
             $('#eao-refunds-panel').show();
             $('#eao-refunds-initial').hide(); // hide the top button once panel is open
+            if ($gatewaySummary.length) { $gatewaySummary.hide().html(''); }
             // console.debug('[EAO Payment] Loading refund data...', {orderId: orderId});
             $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
                 action: 'eao_payment_get_refund_data',
@@ -354,6 +357,16 @@
                 });
                 $('#eao-refunds-table tbody').html(rows);
                 renderExistingRefunds(resp.data.refunds||[]);
+                if ($gatewaySummary.length) {
+                    var gw = (resp.data && resp.data.gateway) ? resp.data.gateway : null;
+                    if (gw && gw.message) {
+                        $gatewaySummary.html('<p>' + gw.message + '</p>').show();
+                    } else if (gw && gw.label) {
+                        $gatewaySummary.html('<p>Gateway for this order: ' + gw.label + '.</p>').show();
+                    } else {
+                        $gatewaySummary.hide().html('');
+                    }
+                }
                 sumRefundTotals();
             }, 'json');
         }
