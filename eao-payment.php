@@ -193,9 +193,9 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
         </div>
         <div style="flex:1 1 50%; min-width:420px;">
             <h4>Refunds</h4>
-            <div id="eao-refunds-gateway-summary" class="notice notice-info" style="margin:4px 0 12px;<?php echo esc_attr($gateway_notice_style); ?>">
-                <p class="eao-refunds-gateway-label"><strong>Gateway detected:</strong> <span id="eao-refunds-gateway-label-text"><?php echo esc_html($gateway_label_text); ?></span></p>
-                <p class="description" id="eao-refunds-gateway-detail" style="<?php echo esc_attr($gateway_detail_style); ?>"><?php echo esc_html($gateway_detail_text); ?></p>
+            <div id="eao-refunds-gateway-summary" class="eao-refunds-gateway-banner" style="margin:4px 0 12px;padding:10px 12px;border-left:4px solid #72aee6;background:#f0f6fc;border-radius:4px;color:#1d2327;<?php echo esc_attr($gateway_notice_style); ?>">
+                <p class="eao-refunds-gateway-label" style="margin:0;font-weight:600;">Gateway detected: <span id="eao-refunds-gateway-label-text" style="font-weight:600;"><?php echo esc_html($gateway_label_text); ?></span></p>
+                <p class="eao-refunds-gateway-detail" id="eao-refunds-gateway-detail" style="<?php echo esc_attr($gateway_detail_style); ?>margin:4px 0 0;"><?php echo esc_html($gateway_detail_text); ?></p>
             </div>
             <div id="eao-refunds-existing-top" style="margin-bottom:8px;"></div>
             <div id="eao-refunds-initial">
