@@ -58,7 +58,6 @@
             var $btn = $(this);
             var $msg = $('#eao-pp-messages');
             $btn.prop('disabled', true).text('Saving...');
-            clearGatewaySummary();
             $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
                 action: 'eao_payment_stripe_save_settings',
                 nonce: $('#eao_payment_mockup_nonce').val(),
@@ -364,7 +363,6 @@
             var orderId = $('#eao-pp-order-id').val();
             $('#eao-refunds-panel').show();
             $('#eao-refunds-initial').hide(); // hide the top button once panel is open
-            clearGatewaySummary();
             // console.debug('[EAO Payment] Loading refund data...', {orderId: orderId});
             $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
                 action: 'eao_payment_get_refund_data',
