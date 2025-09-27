@@ -60,15 +60,28 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
         'test_secret' => '', 'test_publishable' => '', 'live_secret' => '', 'live_publishable' => ''
     ));
     $gateway_summary = eao_payment_describe_order_gateway($order);
-    $gateway_message = '';
+    $gateway_label_text = '';
+    $gateway_detail_text = '';
     if (is_array($gateway_summary)) {
+        if (!empty($gateway_summary['label'])) {
+            $gateway_label_text = (string) $gateway_summary['label'];
+        }
         if (!empty($gateway_summary['message'])) {
-            $gateway_message = (string) $gateway_summary['message'];
-        } elseif (!empty($gateway_summary['label'])) {
-            $gateway_message = 'Gateway for this order: ' . $gateway_summary['label'] . '.';
+            $gateway_detail_text = (string) $gateway_summary['message'];
+        }
+        if ($gateway_label_text === '' && !empty($gateway_summary['id'])) {
+            $gateway_label_text = ucfirst(str_replace('_', ' ', (string) $gateway_summary['id']));
         }
     }
-    $gateway_notice_style = ($gateway_message === '') ? 'display:none;' : '';
+    if ($gateway_label_text !== '' && $gateway_detail_text !== '') {
+        $prefix = 'Gateway for this order: ' . $gateway_label_text . '.';
+        if (stripos($gateway_detail_text, $prefix) === 0) {
+            $gateway_detail_text = trim(substr($gateway_detail_text, strlen($prefix)));
+        }
+    }
+    $gateway_has_info = ($gateway_label_text !== '' || $gateway_detail_text !== '');
+    $gateway_notice_style = $gateway_has_info ? '' : 'display:none;';
+    $gateway_detail_style = ($gateway_detail_text === '') ? 'display:none;' : '';
 
     ?>
     <div id="eao-payment-processing-container">
@@ -181,9 +194,8 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
         <div style="flex:1 1 50%; min-width:420px;">
             <h4>Refunds</h4>
             <div id="eao-refunds-gateway-summary" class="notice notice-info" style="margin:4px 0 12px;<?php echo esc_attr($gateway_notice_style); ?>">
-                <?php if ($gateway_message !== '') : ?>
-                    <p><?php echo esc_html($gateway_message); ?></p>
-                <?php endif; ?>
+                <p class="eao-refunds-gateway-label"><strong>Gateway detected:</strong> <span id="eao-refunds-gateway-label-text"><?php echo esc_html($gateway_label_text); ?></span></p>
+                <p class="description" id="eao-refunds-gateway-detail" style="<?php echo esc_attr($gateway_detail_style); ?>"><?php echo esc_html($gateway_detail_text); ?></p>
             </div>
             <div id="eao-refunds-existing-top" style="margin-bottom:8px;"></div>
             <div id="eao-refunds-initial">

@@ -11,6 +11,44 @@
         var $container = $('#eao-payment-processing-container');
         if (!$container.length) return;
         var $gatewaySummary = $("#eao-refunds-gateway-summary");
+        var $gatewayLabel = $("#eao-refunds-gateway-label-text");
+        var $gatewayDetail = $("#eao-refunds-gateway-detail");
+
+        function clearGatewaySummary(){
+            if (!$gatewaySummary.length) { return; }
+            if ($gatewayLabel.length) { $gatewayLabel.text(''); }
+            if ($gatewayDetail.length) { $gatewayDetail.text('').hide(); }
+            $gatewaySummary.hide();
+        }
+
+        function applyGatewaySummary(gw){
+            if (!$gatewaySummary.length) { return; }
+            if (!gw || (!gw.label && !gw.message)) {
+                clearGatewaySummary();
+                return;
+            }
+            var label = (gw.label || '').trim();
+            if (!label && gw.id) {
+                label = String(gw.id).replace(/_/g, ' ').replace(/\b\w/g, function(ch){ return ch.toUpperCase(); });
+            }
+            if (!label) { label = 'Unknown / manual payment'; }
+            if ($gatewayLabel.length) { $gatewayLabel.text(label); }
+            var detail = (gw.message || '').trim();
+            if (detail && label) {
+                var prefix = 'Gateway for this order: ' + label + '.';
+                if (detail.toLowerCase().indexOf(prefix.toLowerCase()) === 0) {
+                    detail = detail.substring(prefix.length).trim();
+                }
+            }
+            if ($gatewayDetail.length) {
+                if (detail) {
+                    $gatewayDetail.text(detail).show();
+                } else {
+                    $gatewayDetail.text('').hide();
+                }
+            }
+            $gatewaySummary.show();
+        }
 
         $('#eao-pp-gateway-settings').on('click', function(){
             $('#eao-pp-settings-panel').slideToggle(150);
@@ -20,7 +58,7 @@
             var $btn = $(this);
             var $msg = $('#eao-pp-messages');
             $btn.prop('disabled', true).text('Saving...');
-            if ($gatewaySummary.length) { $gatewaySummary.hide().html(''); }
+            clearGatewaySummary();
             $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
                 action: 'eao_payment_stripe_save_settings',
                 nonce: $('#eao_payment_mockup_nonce').val(),
@@ -326,7 +364,7 @@
             var orderId = $('#eao-pp-order-id').val();
             $('#eao-refunds-panel').show();
             $('#eao-refunds-initial').hide(); // hide the top button once panel is open
-            if ($gatewaySummary.length) { $gatewaySummary.hide().html(''); }
+            clearGatewaySummary();
             // console.debug('[EAO Payment] Loading refund data...', {orderId: orderId});
             $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
                 action: 'eao_payment_get_refund_data',
@@ -357,16 +395,7 @@
                 });
                 $('#eao-refunds-table tbody').html(rows);
                 renderExistingRefunds(resp.data.refunds||[]);
-                if ($gatewaySummary.length) {
-                    var gw = (resp.data && resp.data.gateway) ? resp.data.gateway : null;
-                    if (gw && gw.message) {
-                        $gatewaySummary.html('<p>' + gw.message + '</p>').show();
-                    } else if (gw && gw.label) {
-                        $gatewaySummary.html('<p>Gateway for this order: ' + gw.label + '.</p>').show();
-                    } else {
-                        $gatewaySummary.hide().html('');
-                    }
-                }
+                applyGatewaySummary((resp.data && resp.data.gateway) ? resp.data.gateway : null);
                 sumRefundTotals();
             }, 'json');
         }
@@ -382,16 +411,7 @@
             }, function(resp){
                 if (resp && resp.success) {
                     renderExistingRefunds(resp.data.refunds||[]);
-                    if ($gatewaySummary.length) {
-                        var gwInit = (resp.data && resp.data.gateway) ? resp.data.gateway : null;
-                        if (gwInit && gwInit.message) {
-                            $gatewaySummary.html('<p>' + gwInit.message + '</p>').show();
-                        } else if (gwInit && gwInit.label) {
-                            $gatewaySummary.html('<p>Gateway for this order: ' + gwInit.label + '</p>').show();
-                        } else {
-                            $gatewaySummary.hide().html('');
-                        }
-                    }
+                    applyGatewaySummary((resp.data && resp.data.gateway) ? resp.data.gateway : null);
                 }
             }, 'json');
             $('#eao-refunds-panel').hide();
@@ -477,16 +497,7 @@
                             });
                             $('#eao-refunds-table tbody').html(rows);
                             renderExistingRefunds(r2.data.refunds||[]);
-                            if ($gatewaySummary.length) {
-                                var gwUpdate = (r2.data && r2.data.gateway) ? r2.data.gateway : null;
-                                if (gwUpdate && gwUpdate.message) {
-                                    $gatewaySummary.html('<p>' + gwUpdate.message + '</p>').show();
-                                } else if (gwUpdate && gwUpdate.label) {
-                                    $gatewaySummary.html('<p>Gateway for this order: ' + gwUpdate.label + '.</p>').show();
-                                } else {
-                                    $gatewaySummary.hide().html('');
-                                }
-                            }
+                            applyGatewaySummary((r2.data && r2.data.gateway) ? r2.data.gateway : null);
                             $('#eao-refunds-initial').hide();
                             sumRefundTotals();
                             $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
