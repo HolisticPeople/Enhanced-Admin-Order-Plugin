@@ -241,12 +241,17 @@
                 try {
                     var first = arguments && arguments[0];
                     if (first && typeof first === 'string' && first.indexOf('[EAO') === 0) {
-                        // Fine-grained filters
-                        if (first.indexOf('[EAO Shipments]') === 0 && !window.eaoDebugShipments) { return; }
-                        if ((first.indexOf('[EAO ShipStation') === 0 || first.indexOf('[EAO SS') === 0) && !window.eaoDebugSS) { return; }
-                        if ((first.indexOf('[EAO Fluent') === 0 || first.indexOf('[EAO FluentCRM') === 0 || first.indexOf('[EAO Fluent Support') === 0) && !window.eaoDebugFluent) { return; }
-                        if ((first.indexOf('[EAO Progress') === 0) && !window.eaoDebugProgress) { return; }
-                        if (!window.eaoDebug && !window.eaoDebugProgress) { return; }
+                        var isGatewayLog = first.indexOf('[EAO Gateway]') === 0;
+                        if (isGatewayLog) {
+                            if (!window.eaoDebugGateway) { return; }
+                        } else {
+                            // Fine-grained filters
+                            if (first.indexOf('[EAO Shipments]') === 0 && !window.eaoDebugShipments) { return; }
+                            if ((first.indexOf('[EAO ShipStation') === 0 || first.indexOf('[EAO SS') === 0) && !window.eaoDebugSS) { return; }
+                            if ((first.indexOf('[EAO Fluent') === 0 || first.indexOf('[EAO FluentCRM') === 0 || first.indexOf('[EAO Fluent Support') === 0) && !window.eaoDebugFluent) { return; }
+                            if ((first.indexOf('[EAO Progress') === 0) && !window.eaoDebugProgress) { return; }
+                            if (!window.eaoDebug && !window.eaoDebugProgress) { return; }
+                        }
                         // Auto-prefix timestamp for all EAO logs when any debug is enabled
                         try {
                             var nowTs = Date.now();
@@ -272,10 +277,13 @@
                 try {
                     var first = arguments && arguments[0];
                     if (first && typeof first === 'string') {
-                        // Suppress jQuery Migrate noise globally
-                        if (first.indexOf('JQMIGRATE:') === 0) { return; }
-                        if (first.indexOf('[EAO') === 0 && !window.eaoDebug) { return; }
-                        if (first.indexOf('EAO DEBUG:') === 0 && !window.eaoDebug) { return; }
+                        if (first.indexOf('[EAO Gateway]') === 0) {
+                            if (!window.eaoDebugGateway) { return; }
+                        } else {
+                            if (first.indexOf('JQMIGRATE:') === 0) { return; }
+                            if (first.indexOf('[EAO') === 0 && !window.eaoDebug) { return; }
+                            if (first.indexOf('EAO DEBUG:') === 0 && !window.eaoDebug) { return; }
+                        }
                     }
                 } catch(_) {}
                 return __eao_orig_warn.apply(console, arguments);
@@ -284,14 +292,18 @@
                 try {
                     var first = arguments && arguments[0];
                     if (first && typeof first === 'string') {
-                        if (first.indexOf('[EAO') === 0 && !window.eaoDebug) { return; }
+                        if (first.indexOf('[EAO Gateway]') === 0) {
+                            if (!window.eaoDebugGateway) { return; }
+                        } else {
+                            if (first.indexOf('[EAO') === 0 && !window.eaoDebug) { return; }
+                        }
                         var low = first.toLowerCase();
                         if (low.indexOf('jquery.deferred exception') === 0) {
                             // Swallow common third-party Deferred exceptions entirely
                             return;
                         }
                         if (low.indexOf("reading 'length'") >= 0 || low.indexOf('reading "length"') >= 0) { return; }
-                        if (first.toLowerCase().indexOf('invalid regular expression') >= 0) { return; }
+                        if (low.indexOf('invalid regular expression') >= 0) { return; }
                     }
                     // Also inspect other args for Error-like objects or migrate traces
                     for (var i=0;i<arguments.length;i++) {
