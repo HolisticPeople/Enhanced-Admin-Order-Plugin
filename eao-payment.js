@@ -17,18 +17,32 @@
 
         function debugGateway(step, payload){
             if (!window.eaoDebugGateway) { return; }
-            if (window.console && window.console.debug) {
+            if (window.console && window.console.log) {
                 try {
-                    window.console.debug('[EAO Gateway]', step, payload);
-                } catch (err) {
-                    if (window.console && window.console.log) {
-                        window.console.log('[EAO Gateway]', step, payload);
-                    }
-                }
-            } else if (window.console && window.console.log) {
-                window.console.log('[EAO Gateway]', step, payload);
+                    window.console.log('[EAO Gateway]', step, payload);
+                } catch (err) {}
             }
         }
+
+        if (typeof window.eaoDebugGateway === 'undefined') {
+            try {
+                window.eaoDebugGateway = !!(window.localStorage && localStorage.getItem('eaoDebugGateway') === '1');
+            } catch (err) {
+                window.eaoDebugGateway = false;
+            }
+        }
+        window.enableEAODebugGateway = function(enabled){
+            var flag = !!enabled;
+            try {
+                if (window.localStorage) {
+                    if (flag) { localStorage.setItem('eaoDebugGateway', '1'); }
+                    else { localStorage.removeItem('eaoDebugGateway'); }
+                }
+            } catch (err) {}
+            window.eaoDebugGateway = flag;
+            debugGateway('manual-toggle', flag);
+        };
+        debugGateway('init-flag', window.eaoDebugGateway);
 
         function clearGatewaySummary(){
             debugGateway('clearGatewaySummary:start', gatewayState);

@@ -75,7 +75,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin version constant (v5.0.9: gate ShipStation console logs by eaoDebugSS)
-define('EAO_PLUGIN_VERSION', '5.0.59');
+define('EAO_PLUGIN_VERSION', '5.0.60');
 
 // -----------------------------------------------------------------------------
 // AST status fetch API (safe; no external calls, just WordPress AJAX endpoint)
