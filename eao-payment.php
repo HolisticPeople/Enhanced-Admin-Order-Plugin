@@ -713,8 +713,8 @@ function eao_payment_describe_order_gateway($order) {
             $charge_id = (string) $order->get_meta('_eao_stripe_payment_intent_id', true);
         }
         $result['id'] = 'eao_stripe_' . $mode;
-        $result['label'] = 'Stripe (EAO ' . (($mode === 'test') ? 'Test' : 'Live') . ')';
         $result['source'] = 'eao_stripe';
+        $result['label'] = 'Stripe (EAO ' . (($mode === 'test') ? 'Test' : 'Live') . ')';
         $result['mode'] = $mode;
         if (!empty($charge_id)) {
             $result['reference'] = $charge_id;
@@ -812,6 +812,14 @@ function eao_payment_process_refund() {
     }
     if ($amount_total <= 0 && $points_total <= 0) {
         wp_send_json_error(array('message' => 'Nothing to refund'));
+    }
+
+    // Snapshot current internal notes so we can remove gateway-generated duplicates later.
+    $existing_note_ids = array();
+    foreach (wc_get_order_notes(array('order_id' => $order_id, 'type' => 'internal', 'orderby' => 'date_created', 'order' => 'ASC')) as $note_obj) {
+        if (is_object($note_obj) && method_exists($note_obj, 'get_id')) {
+            $existing_note_ids[] = $note_obj->get_id();
+        }
     }
 
     $reason = 'Refund via Enhanced Admin Order - HolisticPeople.com - Order# ' . $order_id;
@@ -969,6 +977,21 @@ function eao_payment_process_refund() {
         $refund->save();
     }
 
+    // Remove duplicate gateway refund notes that may have been added automatically.
+    if (!empty($existing_note_ids)) {
+        $recent_notes = wc_get_order_notes(array('order_id' => $order_id, 'type' => 'internal', 'orderby' => 'date_created', 'order' => 'DESC', 'limit' => 5));
+        foreach ($recent_notes as $note_obj) {
+            if (!is_object($note_obj) || !method_exists($note_obj, 'get_id')) { continue; }
+            $note_id = $note_obj->get_id();
+            if (in_array($note_id, $existing_note_ids, true)) { continue; }
+            $content_plain = trim(wp_strip_all_tags($note_obj->get_content()));
+            if ($content_plain === '') { continue; }
+            if (stripos($content_plain, 'order refunded') === 0 || stripos($content_plain, 'refunded') === 0) {
+                wc_delete_order_note($note_id);
+            }
+        }
+    }
+
     $human_parts = array();
     if ($amount_total > 0) {
         if ($remote_processed) {
@@ -978,9 +1001,7 @@ function eao_payment_process_refund() {
             } else {
                 $message .= ' through the payment gateway';
             }
-            if ($gateway_reference_note !== '') {
-                $message .= ' (' . $gateway_reference_note . ')';
-            }
+            if ($gateway_reference_note !== '') { $message .= ' (' . $gateway_reference_note . ')'; }
             $human_parts[] = $message . '.';
         } else {
             $human_parts[] = 'Refund of $' . wc_format_decimal($amount_total, 2) . ' was recorded without contacting a payment gateway.';
@@ -988,9 +1009,7 @@ function eao_payment_process_refund() {
     } else {
         $human_parts[] = 'Points-only refund recorded.';
     }
-    if ($points_total > 0) {
-        $human_parts[] = 'Points refunded: ' . (int) $points_total . '.';
-    }
+    if ($points_total > 0) { $human_parts[] = 'Points refunded: ' . (int) $points_total . '.'; }
     $human = trim(implode(' ', $human_parts));
     if ($human === '') {
         $human = 'EAO refund recorded.';

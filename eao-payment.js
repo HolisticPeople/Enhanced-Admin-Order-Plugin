@@ -382,6 +382,16 @@
             }, function(resp){
                 if (resp && resp.success) {
                     renderExistingRefunds(resp.data.refunds||[]);
+                    if ($gatewaySummary.length) {
+                        var gwInit = (resp.data && resp.data.gateway) ? resp.data.gateway : null;
+                        if (gwInit && gwInit.message) {
+                            $gatewaySummary.html('<p>' + gwInit.message + '</p>').show();
+                        } else if (gwInit && gwInit.label) {
+                            $gatewaySummary.html('<p>Gateway for this order: ' + gwInit.label + '</p>').show();
+                        } else {
+                            $gatewaySummary.hide().html('');
+                        }
+                    }
                 }
             }, 'json');
             $('#eao-refunds-panel').hide();
@@ -467,8 +477,28 @@
                             });
                             $('#eao-refunds-table tbody').html(rows);
                             renderExistingRefunds(r2.data.refunds||[]);
+                            if ($gatewaySummary.length) {
+                                var gwUpdate = (r2.data && r2.data.gateway) ? r2.data.gateway : null;
+                                if (gwUpdate && gwUpdate.message) {
+                                    $gatewaySummary.html('<p>' + gwUpdate.message + '</p>').show();
+                                } else if (gwUpdate && gwUpdate.label) {
+                                    $gatewaySummary.html('<p>Gateway for this order: ' + gwUpdate.label + '.</p>').show();
+                                } else {
+                                    $gatewaySummary.hide().html('');
+                                }
+                            }
                             $('#eao-refunds-initial').hide();
                             sumRefundTotals();
+                            $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
+                                action: 'eao_refresh_order_notes',
+                                nonce: (window.eaoEditorParams && eaoEditorParams.nonce) || $('#eao_payment_mockup_nonce').val(),
+                                order_id: orderId
+                            }, function(nr){
+                                if (nr && nr.success && nr.data && nr.data.notes_html) {
+                                    var $wrap = $('#eao-existing-notes-list-wrapper');
+                                    if ($wrap.length) { $wrap.html(nr.data.notes_html); }
+                                }
+                            }, 'json');
                         } else {
                             $msg.html('<div class="notice notice-error"><p>Refund processed but failed to refresh data.</p></div>');
                         }
