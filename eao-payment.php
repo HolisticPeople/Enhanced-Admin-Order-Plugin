@@ -61,27 +61,17 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
     ));
     $gateway_summary = eao_payment_describe_order_gateway($order);
     $gateway_label_text = '';
-    $gateway_detail_text = '';
     if (is_array($gateway_summary)) {
         if (!empty($gateway_summary['label'])) {
             $gateway_label_text = (string) $gateway_summary['label'];
-        }
-        if (!empty($gateway_summary['message'])) {
-            $gateway_detail_text = (string) $gateway_summary['message'];
+        } elseif (!empty($gateway_summary['message'])) {
+            $gateway_label_text = trim((string) $gateway_summary['message']);
         }
         if ($gateway_label_text === '' && !empty($gateway_summary['id'])) {
             $gateway_label_text = ucfirst(str_replace('_', ' ', (string) $gateway_summary['id']));
         }
     }
-    if ($gateway_label_text !== '' && $gateway_detail_text !== '') {
-        $prefix = 'Gateway for this order: ' . $gateway_label_text . '.';
-        if (stripos($gateway_detail_text, $prefix) === 0) {
-            $gateway_detail_text = trim(substr($gateway_detail_text, strlen($prefix)));
-        }
-    }
-    $gateway_has_info = ($gateway_label_text !== '' || $gateway_detail_text !== '');
-    $gateway_notice_style = $gateway_has_info ? '' : 'display:none;';
-    $gateway_detail_style = ($gateway_detail_text === '') ? 'display:none;' : '';
+    $gateway_notice_style = ($gateway_label_text === '') ? 'display:none;' : '';
 
     ?>
     <div id="eao-payment-processing-container">
@@ -194,8 +184,7 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
         <div style="flex:1 1 50%; min-width:420px;">
             <h4>Refunds</h4>
             <div id="eao-refunds-gateway-summary" class="eao-refunds-gateway-banner" style="margin:4px 0 12px;padding:10px 12px;border-left:4px solid #72aee6;background:#f0f6fc;border-radius:4px;color:#1d2327;<?php echo esc_attr($gateway_notice_style); ?>">
-                <p class="eao-refunds-gateway-label" style="margin:0;font-weight:600;">Gateway detected: <span id="eao-refunds-gateway-label-text" style="font-weight:600;"><?php echo esc_html($gateway_label_text); ?></span></p>
-                <p class="eao-refunds-gateway-detail" id="eao-refunds-gateway-detail" style="<?php echo esc_attr($gateway_detail_style); ?>margin:4px 0 0;"><?php echo esc_html($gateway_detail_text); ?></p>
+                <p class="eao-refunds-gateway-label" style="margin:0;font-weight:600;">Charge done by - <span id="eao-refunds-gateway-label-text" style="font-weight:600;"><?php echo esc_html($gateway_label_text); ?></span></p>
             </div>
             <div id="eao-refunds-existing-top" style="margin-bottom:8px;"></div>
             <div id="eao-refunds-initial">
@@ -1047,5 +1036,6 @@ function eao_payment_process_refund() {
 
     wp_send_json_success(array('refund_id' => $refund->get_id(), 'amount' => wc_format_decimal($amount_total, 2), 'points' => (int) $points_total));
 }
+
 
 

@@ -12,71 +12,28 @@
         if (!$container.length) return;
         var $gatewaySummary = $("#eao-refunds-gateway-summary");
         var $gatewayLabel = $("#eao-refunds-gateway-label-text");
-        var $gatewayDetail = $("#eao-refunds-gateway-detail");
         var gatewayState = null;
 
-        function debugGateway(step, payload){
-            if (!window.eaoDebugGateway) { return; }
-            if (window.console && window.console.log) {
-                try {
-                    window.console.log('[EAO Gateway]', step, payload);
-                } catch (err) {}
-            }
-        }
-
-        if (typeof window.eaoDebugGateway === 'undefined') {
-            try {
-                window.eaoDebugGateway = !!(window.localStorage && localStorage.getItem('eaoDebugGateway') === '1');
-            } catch (err) {
-                window.eaoDebugGateway = false;
-            }
-        }
-        window.enableEAODebugGateway = function(enabled){
-            var flag = !!enabled;
-            try {
-                if (window.localStorage) {
-                    if (flag) { localStorage.setItem('eaoDebugGateway', '1'); }
-                    else { localStorage.removeItem('eaoDebugGateway'); }
-                }
-            } catch (err) {}
-            window.eaoDebugGateway = flag;
-            debugGateway('manual-toggle', flag);
-        };
-        debugGateway('init-flag', window.eaoDebugGateway);
-
         function clearGatewaySummary(){
-            debugGateway('clearGatewaySummary:start', gatewayState);
             if (!$gatewaySummary.length) { return; }
             if ($gatewayLabel.length) { $gatewayLabel.text(''); }
-            if ($gatewayDetail.length) { $gatewayDetail.text('').hide(); }
             $gatewaySummary.hide();
             gatewayState = null;
-            debugGateway('clearGatewaySummary:completed', null);
         }
 
         function renderGatewayState(){
-            debugGateway('renderGatewayState', gatewayState);
             if (!$gatewaySummary.length) { return; }
-            if (!gatewayState || (!gatewayState.label && !gatewayState.detail)) {
-                debugGateway('renderGatewayState:no-data', gatewayState);
+            if (!gatewayState || !gatewayState.label) {
                 clearGatewaySummary();
                 return;
             }
-            if ($gatewayLabel.length) { $gatewayLabel.text(gatewayState.label || ''); }
-            if ($gatewayDetail.length) {
-                if (gatewayState.detail) {
-                    $gatewayDetail.text(gatewayState.detail).show();
-                } else {
-                    $gatewayDetail.text('').hide();
-                }
-            }
+            if ($gatewayLabel.length) { $gatewayLabel.text(gatewayState.label); }
             $gatewaySummary.show();
         }
 
         function applyGatewaySummary(gw){
-            debugGateway('applyGatewaySummary:input', gw);
             if (!$gatewaySummary.length) { return; }
-            if (!gw || (!gw.label && !gw.message)) {
+            if (!gw || (!gw.label && !gw.message && !gw.id)) {
                 renderGatewayState();
                 return;
             }
@@ -84,33 +41,34 @@
             if (!label && gw.id) {
                 label = String(gw.id).replace(/_/g, ' ').replace(/\b\w/g, function(ch){ return ch.toUpperCase(); });
             }
-            if (!label) {
-                debugGateway('applyGatewaySummary:label-fallback', gw && gw.id ? gw.id : null);
-                label = 'Unknown / manual payment';
+            if (!label && gw.message) {
+                label = String(gw.message).trim();
             }
-            if ($gatewayLabel.length) { $gatewayLabel.text(label); }
-            var detail = (gw.message || '').trim();
-            if (detail && label) {
-                var prefix = 'Gateway for this order: ' + label + '.';
-                if (detail.toLowerCase().indexOf(prefix.toLowerCase()) === 0) {
-                    detail = detail.substring(prefix.length).trim();
+            if (label) {
+                var prefix = 'gateway for this order:';
+                var lower = label.toLowerCase();
+                if (lower.indexOf(prefix) === 0) {
+                    label = label.substring(prefix.length).trim();
+                    var dot = label.indexOf('.');
+                    if (dot > -1) {
+                        label = label.substring(0, dot).trim();
+                    }
                 }
             }
-            gatewayState = { label: label, detail: detail };
-            debugGateway('applyGatewaySummary:state-updated', gatewayState);
+            if (!label) {
+                clearGatewaySummary();
+                return;
+            }
+            gatewayState = { label: label };
             renderGatewayState();
         }
 
         var initialGatewayState = {
-            label: $gatewayLabel.length ? $.trim($gatewayLabel.text()) : '',
-            detail: $gatewayDetail.length ? $.trim($gatewayDetail.text()) : ''
+            label: $gatewayLabel.length ? $.trim($gatewayLabel.text()) : ''
         };
-        if (initialGatewayState.label || initialGatewayState.detail) {
+        if (initialGatewayState.label) {
             gatewayState = initialGatewayState;
-            debugGateway('initialGatewayState', gatewayState);
             renderGatewayState();
-        } else {
-            debugGateway('initialGatewayState:none', initialGatewayState);
         }
 
         $('#eao-pp-gateway-settings').on('click', function(){
@@ -200,7 +158,7 @@
         toggleCardForm();
         $('#eao-pp-gateway').on('change', toggleCardForm);
 
-        // Manual copy action – always correct
+        // Manual copy action â€“ always correct
         $('#eao-pp-copy-gt').on('click', function(){
             try {
                 var s = window.currentOrderSummaryData || {};
@@ -411,7 +369,7 @@
             $box.html('').hide();
             $top.html(html);
             renderGatewayState();
-            debugGateway('renderExistingRefunds:list', list ? list.length : 0);
+
         }
 
         function sumRefundTotals(){
@@ -458,7 +416,7 @@
                 });
                 $('#eao-refunds-table tbody').html(rows);
                 renderExistingRefunds(resp.data.refunds||[]);
-                debugGateway('ajax:gateway', (resp && resp.data) ? resp.data.gateway : null);
+
                 applyGatewaySummary((resp.data && resp.data.gateway) ? resp.data.gateway : null);
                 sumRefundTotals();
             }, 'json');
@@ -475,14 +433,14 @@
             }, function(resp){
                 if (resp && resp.success) {
                     renderExistingRefunds(resp.data.refunds||[]);
-                    debugGateway('initialAjax:gateway', (resp && resp.data) ? resp.data.gateway : null);
+
                     applyGatewaySummary((resp.data && resp.data.gateway) ? resp.data.gateway : null);
                 }
             }, 'json');
             $('#eao-refunds-panel').hide();
         })();
         $('#eao-pp-refunds-open').on('click', function(){
-            debugGateway('refunds-open:click', gatewayState);
+
             renderGatewayState();
             loadRefundData();
         });
