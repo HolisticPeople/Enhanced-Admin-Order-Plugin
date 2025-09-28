@@ -47,7 +47,7 @@ function eao_ajax_search_customers() {
             'user_email',
             'display_name'
         ),
-        'fields' => array('ID', 'display_name', 'user_email'),
+        'fields'        => array('ID', 'display_name', 'user_email', 'user_login'),
         'orderby' => 'display_name',
         'order' => 'ASC',
         'number' => 20, // Limit results
@@ -59,15 +59,48 @@ function eao_ajax_search_customers() {
 
     if (!empty($user_query->get_results())) {
         foreach ($user_query->get_results() as $user) {
+            $first_name = sanitize_text_field((string) get_user_meta($user->ID, 'first_name', true));
+            $last_name  = sanitize_text_field((string) get_user_meta($user->ID, 'last_name', true));
+
+            if ($first_name === '') {
+                $first_name = sanitize_text_field((string) get_user_meta($user->ID, 'billing_first_name', true));
+            }
+            if ($last_name === '') {
+                $last_name = sanitize_text_field((string) get_user_meta($user->ID, 'billing_last_name', true));
+            }
+
+            $display_name_source = sanitize_text_field(trim((string) $user->display_name));
+            if ($first_name === '' || $last_name === '') {
+                $display_name_parts = preg_split('/\s+/', $display_name_source);
+                if (is_array($display_name_parts) && !empty($display_name_parts)) {
+                    if ($first_name === '' && !empty($display_name_parts[0])) {
+                        $first_name = sanitize_text_field((string) $display_name_parts[0]);
+                    }
+                    if ($last_name === '' && count($display_name_parts) > 1) {
+                        $last_name = sanitize_text_field((string) $display_name_parts[count($display_name_parts) - 1]);
+                    }
+                }
+            }
+
+            $name_parts   = array_filter(array($first_name, $last_name), 'strlen');
+            $display_name = !empty($name_parts) ? implode(' ', $name_parts) : $display_name_source;
+
+            if ($display_name === '') {
+                $display_name = sanitize_text_field((string) $user->user_login);
+            }
+
+            $display_name = trim(preg_replace('/\s+/', ' ', $display_name));
+            $email        = sanitize_email($user->user_email);
+
             $users_found[] = array(
                 'id' => $user->ID,
                 'text' => sprintf(
                     '%s (%s) - ID: %d',
-                    $user->display_name,
-                    $user->user_email,
+                    $display_name,
+                    $email,
                     $user->ID
                 ),
-                 'display_name' => $user->display_name // For easier JS update if needed
+                'display_name' => $display_name // For easier JS update if needed
             );
         }
         // Use manual JSON response to avoid wp_send_json_success issues
@@ -324,3 +357,4 @@ function eao_ajax_get_customer_addresses_handler() {
     error_log('[EAO Customer Addresses] Success response sent manually for customer ID: ' . $customer_id);
     wp_die(); // Ensure no further output
 } 
+
