@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.0.67
+ * Version: 5.0.68
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.0.67: CRITICAL FIX - Move version constant outside conditionals)
-define('EAO_PLUGIN_VERSION', '5.0.67');
+// Plugin version constant (v5.0.68: FIX - AJAX handlers must register before AJAX happens)
+define('EAO_PLUGIN_VERSION', '5.0.68');
 
 /**
  * Check if we should load EAO functionality
@@ -53,8 +53,8 @@ function eao_should_load() {
     return in_array( $action, $eao_ajax_actions, true );
 }
 
-// Admin-only AJAX handlers - only load for EAO AJAX requests
-if ( is_admin() && wp_doing_ajax() && eao_should_load() ) {
+// Admin-only AJAX handlers - register in admin context (handlers have their own permission checks)
+if ( is_admin() ) {
     // AJAX: Adjust customer points for this order by a delta (+/-)
     add_action('wp_ajax_eao_adjust_points_for_order', function() {
     if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_editor_nonce')) {
