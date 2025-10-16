@@ -4,8 +4,46 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Admin-only AJAX handlers - only load in admin context for performance
-if ( is_admin() ) {
+/**
+ * Check if we should load EAO functionality
+ * Only load in actual admin pages, not during frontend AJAX or frontend pages
+ */
+function eao_should_load() {
+    // Never load on frontend pages
+    if ( ! is_admin() ) {
+        return false;
+    }
+    
+    // Always load on admin pages (non-AJAX)
+    if ( ! wp_doing_ajax() ) {
+        return true;
+    }
+    
+    // For AJAX: Only load if it's an EAO-specific AJAX action
+    $eao_ajax_actions = array(
+        'eao_save_order_details',
+        'eao_add_order_note',
+        'eao_refresh_order_notes',
+        'eao_get_shipment_statuses',
+        'eao_adjust_points_for_order',
+        'eao_test_shipstation_api_credentials',
+        'eao_get_shipstation_rates',
+        'eao_search_products',
+        'eao_search_customers',
+        'eao_get_customer_addresses',
+        'eao_get_yith_points_globals',
+        'eao_refresh_points_earning',
+        'eao_get_points_details_for_item',
+        'eao_revoke_points_for_order',
+        'eao_get_customer_roles',
+    );
+    
+    $action = isset( $_REQUEST['action'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['action'] ) ) : '';
+    return in_array( $action, $eao_ajax_actions, true );
+}
+
+// Admin-only AJAX handlers - only load for EAO AJAX requests
+if ( is_admin() && wp_doing_ajax() && eao_should_load() ) {
     // AJAX: Adjust customer points for this order by a delta (+/-)
     add_action('wp_ajax_eao_adjust_points_for_order', function() {
     if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_editor_nonce')) {
@@ -71,13 +109,13 @@ if ( is_admin() ) {
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.0.65
+ * Version: 5.0.66
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
 
-// Plugin version constant (v5.0.65: Admin-only execution for frontend performance)
-define('EAO_PLUGIN_VERSION', '5.0.65');
+// Plugin version constant (v5.0.66: CRITICAL FIX - Exclude frontend AJAX from loading)
+define('EAO_PLUGIN_VERSION', '5.0.66');
 
     // AST status fetch API (safe; no external calls, just WordPress AJAX endpoint)
     add_action('wp_ajax_eao_get_shipment_statuses', function(){
@@ -159,7 +197,7 @@ define( 'EAO_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
  */
 
 // Admin-only module loading - prevent frontend overhead
-if ( is_admin() ) {
+if ( eao_should_load() ) {
     // Include order calculation utilities (Step 2: v1.5.2)
     require_once EAO_PLUGIN_DIR . 'eao-utility-functions.php';
 
@@ -760,8 +798,8 @@ function eao_points_handle_status_change( $order_id, $from_status, $to_status, $
         eao_points_grant_if_needed($order_id);
     }
 }
-// Admin-only: Only process order status changes from admin area
-if ( is_admin() ) {
+// Admin-only: Only process order status changes from admin area (not frontend AJAX)
+if ( eao_should_load() ) {
     add_action('woocommerce_order_status_changed', 'eao_points_handle_status_change', 10, 4);
 }
 
@@ -913,8 +951,8 @@ function eao_points_handle_refund( $order_id, $refund_id ) {
     $order->add_order_note(sprintf(__('EAO: Revoked %d points due to refund.', 'enhanced-admin-order'), $revoke_pts));
     $order->save();
 }
-// Admin-only: Only process refunds from admin area
-if ( is_admin() ) {
+// Admin-only: Only process refunds from admin area (not frontend AJAX)
+if ( eao_should_load() ) {
     add_action('woocommerce_order_refunded', 'eao_points_handle_refund', 10, 2);
 }
 
@@ -1859,8 +1897,8 @@ function eao_woocommerce_required_notice() {
     <?php
 }
 
-// Admin-only: Initialize the plugin only in admin context
-if ( is_admin() ) {
+// Admin-only: Initialize the plugin only in admin context (not frontend AJAX)
+if ( eao_should_load() ) {
     add_action('init', 'run_enhanced_admin_order_plugin');
 }
 
