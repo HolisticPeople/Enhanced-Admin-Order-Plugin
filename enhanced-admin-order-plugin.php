@@ -1,8 +1,19 @@
 ﻿<?php
+/**
+ * Plugin Name: Enhanced Admin Order
+ * Description: Enhanced functionality for WooCommerce admin order editing
+ * Version: 5.0.67
+ * Author: Amnon Manneberg
+ * Text Domain: enhanced-admin-order
+ */
+
 // Prevent direct access
 if (!defined('ABSPATH')) {
     exit; 
 }
+
+// Plugin version constant (v5.0.67: CRITICAL FIX - Move version constant outside conditionals)
+define('EAO_PLUGIN_VERSION', '5.0.67');
 
 /**
  * Check if we should load EAO functionality
@@ -106,16 +117,6 @@ if ( is_admin() && wp_doing_ajax() && eao_should_load() ) {
         wp_send_json_error(array('message' => 'Unable to adjust points'));
     }
 });
-/**
- * Plugin Name: Enhanced Admin Order
- * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.0.66
- * Author: Amnon Manneberg
- * Text Domain: enhanced-admin-order
- */
-
-// Plugin version constant (v5.0.66: CRITICAL FIX - Exclude frontend AJAX from loading)
-define('EAO_PLUGIN_VERSION', '5.0.66');
 
     // AST status fetch API (safe; no external calls, just WordPress AJAX endpoint)
     add_action('wp_ajax_eao_get_shipment_statuses', function(){
