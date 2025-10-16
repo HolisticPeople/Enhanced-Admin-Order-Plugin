@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.0.68
+ * Version: 5.0.69
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.0.68: FIX - AJAX handlers must register before AJAX happens)
-define('EAO_PLUGIN_VERSION', '5.0.68');
+// Plugin version constant (v5.0.69: FIX - Complete AJAX whitelist with all missing actions)
+define('EAO_PLUGIN_VERSION', '5.0.69');
 
 /**
  * Check if we should load EAO functionality
@@ -32,21 +32,45 @@ function eao_should_load() {
     
     // For AJAX: Only load if it's an EAO-specific AJAX action
     $eao_ajax_actions = array(
+        // Core order operations
         'eao_save_order_details',
+        'eao_get_order_products_data',
         'eao_add_order_note',
+        'eao_edit_order_note',
         'eao_refresh_order_notes',
-        'eao_get_shipment_statuses',
-        'eao_adjust_points_for_order',
-        'eao_test_shipstation_api_credentials',
-        'eao_get_shipstation_rates',
+        // Products
         'eao_search_products',
+        'eao_search_products_for_admin_order',
+        // Customers
         'eao_search_customers',
         'eao_get_customer_addresses',
+        'eao_get_customer_roles',
+        'eao_get_customer_email_by_id',
+        // Shipping
+        'eao_get_shipment_statuses',
+        'eao_shipstation_v2_get_rates',
+        'eao_shipstation_v2_test_connection',
+        'eao_shipstation_v2_save_credentials',
+        'eao_test_shipstation_api_credentials',
+        'eao_get_shipstation_rates',
+        // YITH Points
+        'eao_adjust_points_for_order',
         'eao_get_yith_points_globals',
         'eao_refresh_points_earning',
         'eao_get_points_details_for_item',
         'eao_revoke_points_for_order',
-        'eao_get_customer_roles',
+        // Payment processing
+        'eao_payment_stripe_save_settings',
+        'eao_payment_stripe_create_intent',
+        'eao_payment_record_result',
+        'eao_payment_get_refund_data',
+        'eao_payment_process_refund',
+        // FluentCRM
+        'eao_get_fluentcrm_profile',
+        // FluentSupport
+        'eao_create_fluent_support_ticket',
+        'eao_get_customer_tickets',
+        'eao_get_fluent_support_status',
     );
     
     $action = isset( $_REQUEST['action'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['action'] ) ) : '';
