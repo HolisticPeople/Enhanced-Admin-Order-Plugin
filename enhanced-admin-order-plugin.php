@@ -1,6 +1,64 @@
 ﻿<?php
-// AJAX: Adjust customer points for this order by a delta (+/-)
-add_action('wp_ajax_eao_adjust_points_for_order', function() {
+/**
+ * Plugin Name: Enhanced Admin Order
+ * Description: Enhanced functionality for WooCommerce admin order editing
+ * Version: 5.0.70
+ * Author: Amnon Manneberg
+ * Text Domain: enhanced-admin-order
+ */
+
+// Prevent direct access
+if (!defined('ABSPATH')) {
+    exit; 
+}
+
+// Plugin version constant (v5.0.70: BETTER SOLUTION - Replace whitelist with page-specific loading)
+define('EAO_PLUGIN_VERSION', '5.0.70');
+
+/**
+ * Check if we should load EAO functionality
+ * Only load on specific admin pages and EAO AJAX requests
+ */
+function eao_should_load() {
+    global $pagenow;
+    
+    // Never load on frontend pages
+    if ( ! is_admin() ) {
+        return false;
+    }
+    
+    // If this is AJAX, only load for EAO AJAX actions
+    if ( wp_doing_ajax() ) {
+        $action = isset( $_REQUEST['action'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['action'] ) ) : '';
+        // Load for any AJAX action that starts with "eao_" (simple and maintainable!)
+        return strpos( $action, 'eao_' ) === 0;
+    }
+    
+    // For non-AJAX admin pages, only load on:
+    
+    // 1. EAO custom order editor page
+    if ( $pagenow === 'admin.php' && isset( $_GET['page'] ) && $_GET['page'] === 'eao_custom_order_editor_page' ) {
+        return true;
+    }
+    
+    // 2. WooCommerce orders list page (HPOS)
+    if ( $pagenow === 'admin.php' && isset( $_GET['page'] ) && $_GET['page'] === 'wc-orders' ) {
+        return true;
+    }
+    
+    // 3. WooCommerce orders list page (Legacy)
+    if ( $pagenow === 'edit.php' && isset( $_GET['post_type'] ) && $_GET['post_type'] === 'shop_order' ) {
+        return true;
+    }
+    
+    // Don't load on any other admin pages (dashboard, posts, plugins, etc.)
+    return false;
+}
+
+// Admin-only AJAX handlers - register in admin context (handlers have their own permission checks)
+if ( is_admin() ) {
+    // AJAX: Adjust customer points for this order by a delta (+/-)
+    add_action('wp_ajax_eao_adjust_points_for_order', function() {
     if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_editor_nonce')) {
         wp_send_json_error(array('message' => 'Invalid nonce'));
         return;
@@ -61,27 +119,9 @@ add_action('wp_ajax_eao_adjust_points_for_order', function() {
         wp_send_json_error(array('message' => 'Unable to adjust points'));
     }
 });
-/**
- * Plugin Name: Enhanced Admin Order
- * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.0.64
- * Author: Amnon Manneberg
- * Text Domain: enhanced-admin-order
- */
 
-// Prevent direct access
-if (!defined('ABSPATH')) {
-    exit; 
-}
-
-// Plugin version constant (v5.0.9: gate ShipStation console logs by eaoDebugSS)
-define('EAO_PLUGIN_VERSION', '5.0.64');
-
-
-// -----------------------------------------------------------------------------
-// AST status fetch API (safe; no external calls, just WordPress AJAX endpoint)
-// -----------------------------------------------------------------------------
-add_action('wp_ajax_eao_get_shipment_statuses', function(){
+    // AST status fetch API (safe; no external calls, just WordPress AJAX endpoint)
+    add_action('wp_ajax_eao_get_shipment_statuses', function(){
     if (!current_user_can('manage_woocommerce')) {
         wp_send_json_error(array('message' => 'Unauthorized'), 403);
     }
@@ -106,7 +146,8 @@ add_action('wp_ajax_eao_get_shipment_statuses', function(){
         }
     } catch (Exception $e) {}
     wp_send_json_success(array('statuses' => $statuses));
-});
+    });
+} // End admin-only AJAX handlers
 
 // Payment Mockup toggle: set to true in development only
 if (!defined('EAO_PAYMENT_MOCKUP_ENABLED')) {
@@ -158,57 +199,60 @@ define( 'EAO_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
  * =============================================================================
  */
 
-// Include order calculation utilities (Step 2: v1.5.2)
-require_once EAO_PLUGIN_DIR . 'eao-utility-functions.php';
+// Admin-only module loading - prevent frontend overhead
+if ( eao_should_load() ) {
+    // Include order calculation utilities (Step 2: v1.5.2)
+    require_once EAO_PLUGIN_DIR . 'eao-utility-functions.php';
 
-// Include ShipStation utility functions (Step 3: v1.5.3)
-require_once EAO_PLUGIN_DIR . 'eao-shipstation-utils.php';
+    // Include ShipStation utility functions (Step 3: v1.5.3)
+    require_once EAO_PLUGIN_DIR . 'eao-shipstation-utils.php';
 
-// Include customer management functions (Step 4: v1.5.5)
-require_once EAO_PLUGIN_DIR . 'eao-customer-functions.php';
+    // Include customer management functions (Step 4: v1.5.5)
+    require_once EAO_PLUGIN_DIR . 'eao-customer-functions.php';
 
-// Include product management functions (Step 5: v1.5.6)
-require_once EAO_PLUGIN_DIR . 'eao-product-management.php';
+    // Include product management functions (Step 5: v1.5.6)
+    require_once EAO_PLUGIN_DIR . 'eao-product-management.php';
 
-// Include custom notes system (Step 6: v1.9.1)
-require_once EAO_PLUGIN_DIR . 'eao-custom-notes.php';
+    // Include custom notes system (Step 6: v1.9.1)
+    require_once EAO_PLUGIN_DIR . 'eao-custom-notes.php';
 
-// Include AJAX save core functions (Step 8: v1.9.9)
-require_once EAO_PLUGIN_DIR . 'eao-ajax-save-core.php';
+    // Include AJAX save core functions (Step 8: v1.9.9)
+    require_once EAO_PLUGIN_DIR . 'eao-ajax-save-core.php';
 
-// Include ShipStation core functionality
-require_once EAO_PLUGIN_DIR . 'eao-shipstation-core.php';
+    // Include ShipStation core functionality
+    require_once EAO_PLUGIN_DIR . 'eao-shipstation-core.php';
 
-// Include Reorder utilities (v3.1.3)
-if ( file_exists( EAO_PLUGIN_DIR . 'eao-reorder.php' ) ) {
-    require_once EAO_PLUGIN_DIR . 'eao-reorder.php';
-}
+    // Include Reorder utilities (v3.1.3)
+    if ( file_exists( EAO_PLUGIN_DIR . 'eao-reorder.php' ) ) {
+        require_once EAO_PLUGIN_DIR . 'eao-reorder.php';
+    }
 
-// Include YITH Points integration core (Step 9: v2.2.0)
-if ( file_exists( EAO_PLUGIN_DIR . 'eao-yith-points-core.php' ) ) {
-    require_once EAO_PLUGIN_DIR . 'eao-yith-points-core.php';
-}
+    // Include YITH Points integration core (Step 9: v2.2.0)
+    if ( file_exists( EAO_PLUGIN_DIR . 'eao-yith-points-core.php' ) ) {
+        require_once EAO_PLUGIN_DIR . 'eao-yith-points-core.php';
+    }
 
-// Include YITH Points save module (Step 10: v2.2.1)
-if ( file_exists( EAO_PLUGIN_DIR . 'eao-yith-points-save.php' ) ) {
-    require_once EAO_PLUGIN_DIR . 'eao-yith-points-save.php';
-}
+    // Include YITH Points save module (Step 10: v2.2.1)
+    if ( file_exists( EAO_PLUGIN_DIR . 'eao-yith-points-save.php' ) ) {
+        require_once EAO_PLUGIN_DIR . 'eao-yith-points-save.php';
+    }
 
-// Include Admin Columns integration (v2.5.27)
-if ( file_exists( EAO_PLUGIN_DIR . 'eao-admin-columns-integration.php' ) ) {
-    require_once EAO_PLUGIN_DIR . 'eao-admin-columns-integration.php';
-}
+    // Include Admin Columns integration (v2.5.27)
+    if ( file_exists( EAO_PLUGIN_DIR . 'eao-admin-columns-integration.php' ) ) {
+        require_once EAO_PLUGIN_DIR . 'eao-admin-columns-integration.php';
+    }
 
-// Include Fluent Support integration (v2.6.0)
-if ( file_exists( EAO_PLUGIN_DIR . 'eao-fluent-support-integration.php' ) ) {
-    require_once EAO_PLUGIN_DIR . 'eao-fluent-support-integration.php';
-}
+    // Include Fluent Support integration (v2.6.0)
+    if ( file_exists( EAO_PLUGIN_DIR . 'eao-fluent-support-integration.php' ) ) {
+        require_once EAO_PLUGIN_DIR . 'eao-fluent-support-integration.php';
+    }
 
-// Include new Payment Processing (real)
-if ( file_exists( EAO_PLUGIN_DIR . 'eao-payment.php' ) ) {
-    require_once EAO_PLUGIN_DIR . 'eao-payment.php';
-    add_action('add_meta_boxes', 'eao_add_payment_processing_metabox', 40);
-}
+    // Include new Payment Processing (real)
+    if ( file_exists( EAO_PLUGIN_DIR . 'eao-payment.php' ) ) {
+        require_once EAO_PLUGIN_DIR . 'eao-payment.php';
+        add_action('add_meta_boxes', 'eao_add_payment_processing_metabox', 40);
+    }
+} // End admin-only module loading
 
 /**
  * Enable enhanced order editing by hijacking the default order screen.
@@ -757,7 +801,10 @@ function eao_points_handle_status_change( $order_id, $from_status, $to_status, $
         eao_points_grant_if_needed($order_id);
     }
 }
-add_action('woocommerce_order_status_changed', 'eao_points_handle_status_change', 10, 4);
+// Admin-only: Only process order status changes from admin area (not frontend AJAX)
+if ( eao_should_load() ) {
+    add_action('woocommerce_order_status_changed', 'eao_points_handle_status_change', 10, 4);
+}
 
 // Lightweight debug helper for points operations
 if (!function_exists('eao_points_debug_log')) {
@@ -907,7 +954,10 @@ function eao_points_handle_refund( $order_id, $refund_id ) {
     $order->add_order_note(sprintf(__('EAO: Revoked %d points due to refund.', 'enhanced-admin-order'), $revoke_pts));
     $order->save();
 }
-add_action('woocommerce_order_refunded', 'eao_points_handle_refund', 10, 2);
+// Admin-only: Only process refunds from admin area (not frontend AJAX)
+if ( eao_should_load() ) {
+    add_action('woocommerce_order_refunded', 'eao_points_handle_refund', 10, 2);
+}
 
 
 /**
@@ -1850,8 +1900,10 @@ function eao_woocommerce_required_notice() {
     <?php
 }
 
-// Initialize the plugin
-add_action('init', 'run_enhanced_admin_order_plugin');
+// Admin-only: Initialize the plugin only in admin context (not frontend AJAX)
+if ( eao_should_load() ) {
+    add_action('init', 'run_enhanced_admin_order_plugin');
+}
 
 /**
  * Add FluentCRM Profile meta box directly.
