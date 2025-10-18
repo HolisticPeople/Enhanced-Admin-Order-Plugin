@@ -246,9 +246,11 @@ function eao_yith_get_customer_points( $user_id ) {
  * This function mimics YITH's complete points calculation logic
  *
  * @param int $order_id Order ID
+ * @param float|null $items_subtotal_override Optional: Items subtotal from summary (Line 1 - Gross)
+ * @param float|null $products_total_override Optional: Products total from summary (Line 2 - Net)
  * @return array Result with points calculation details
  */
-function eao_yith_calculate_order_points_preview( $order_id ) {
+function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_override = null, $products_total_override = null ) {
     $result = array(
         'success' => true,
         'total_points' => 0,
@@ -314,12 +316,68 @@ function eao_yith_calculate_order_points_preview( $order_id ) {
             $did_switch_user = true;
         }
 
-        // Calculate points using YITH's logic
+        $currency = $order->get_currency();
+
+        // SIMPLIFIED PATH: If summary values are provided, use them directly (v5.0.71+)
+        if ( $items_subtotal_override !== null && $products_total_override !== null ) {
+            // Use provided summary values - these are already corrected and match UI display
+            $items_subtotal = $items_subtotal_override;
+            $products_total = $products_total_override;
+            
+            // Line 1 (Full price): Convert gross amount to points
+            $total_points_full = (int) round( eao_yith_get_points_from_price( $items_subtotal, $currency ) );
+            
+            // Line 2 (Discounted): Convert net amount to points  
+            $total_points_discounted = (int) round( eao_yith_get_points_from_price( $products_total, $currency ) );
+            $total_points = $total_points_discounted;
+            $earning_base_amount = $products_total;
+            
+            // Coupon discount subtraction (Line 3 calculation)
+            if ( ywpar_get_option( 'remove_points_coupon', 'yes' ) === 'yes' && $earning_base_amount > 0 ) {
+                foreach ( $order->get_coupon_codes() as $coupon_code ) {
+                    $coupon = new WC_Coupon( $coupon_code );
+                    if ( $coupon && $coupon->get_meta( '_ywpar_coupon', true ) ) {
+                        $coupon_amount = (float) $order->get_total_discount();
+                        if ( $coupon_amount > 0 ) {
+                            $points_from_coupon = (int) round( eao_yith_get_points_from_price( $coupon_amount, $currency ) );
+                            $total_points = max( 0, $total_points - $points_from_coupon );
+                            $earning_base_amount = max( 0, $earning_base_amount - $coupon_amount );
+                            break; // Only process first YITH coupon
+                        }
+                    }
+                }
+            }
+            
+            // Get conversion rate for reference
+            $conversion = yith_points()->earning->get_conversion_option( $currency );
+            $points_per_dollar = 0;
+            if ( is_array( $conversion ) && isset( $conversion['money'], $conversion['points'] ) && (float) $conversion['money'] > 0 ) {
+                $points_per_dollar = (float) $conversion['points'] / (float) $conversion['money'];
+            }
+            
+            // Return simplified result (no per-item breakdown)
+            $result['success'] = true;
+            $result['total_points'] = $total_points;
+            $result['total_points_full'] = $total_points_full;
+            $result['total_points_discounted'] = $total_points_discounted;
+            $result['earning_base_amount'] = $earning_base_amount;
+            $result['points_per_dollar'] = $points_per_dollar;
+            $result['calculation_method'] = 'summary_values';
+            $result['breakdown'] = array(); // No item breakdown in simplified mode
+            
+            // Restore previous user
+            if ( $did_switch_user ) {
+                wp_set_current_user( $prev_user_id );
+            }
+            
+            return $result;
+        }
+
+        // LEGACY PATH: Calculate per-item (when summary values not provided)
         $total_points = 0; // discounted awarding points total (based on per-line discounted price)
         $total_points_full = 0; // full-price awarding points total (based on per-line subtotal)
         $total_points_discounted = 0; // equals $total_points, but kept separately for clarity
         $order_items = $order->get_items();
-        $currency = $order->get_currency();
         $earning_base_amount = 0; // Sum of amounts considered for earning (before coupons)
 
         if ( ! empty( $order_items ) ) {

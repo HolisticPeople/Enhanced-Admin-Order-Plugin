@@ -542,35 +542,7 @@ function eao_ajax_get_order_products_data_handler() { // NEW NAME
             // error_log('[EAO DEBUG] No shipping methods found, using default title. Shipping cost: ' . $order_shipping_total);
         }
 
-        // Integrate points earning preview for line mapping (restore live behavior)
-        $points_award_summary_tmp = null;
-        if ( function_exists('eao_yith_calculate_order_points_preview') ) {
-            $calc = eao_yith_calculate_order_points_preview( $order->get_id() );
-            if ( ! empty( $calc['breakdown'] ) && is_array($calc['breakdown']) ) {
-                $points_map = array();
-                foreach ( $calc['breakdown'] as $bd_item ) {
-                    if ( isset( $bd_item['order_item_id'] ) ) {
-                        $points_map[ (string) $bd_item['order_item_id'] ] = isset($bd_item['total_points']) ? intval($bd_item['total_points']) : 0;
-                    }
-                }
-                foreach ( $items_data as &$it ) {
-                    $key = isset($it['item_id']) ? (string)$it['item_id'] : '';
-                    if ( $key !== '' && isset($points_map[$key]) ) {
-                        $it['points_earning'] = $points_map[$key];
-                    }
-                }
-                unset($it);
-            }
-            // Always propagate summary rates when available (even if breakdown empty)
-            if ( isset($calc['total_points_full']) || isset($calc['total_points_discounted']) || isset($calc['points_per_dollar']) ) {
-                $points_award_summary_tmp = array(
-                    'points_full'       => isset($calc['total_points_full']) ? intval($calc['total_points_full']) : 0,
-                    'points_discounted' => isset($calc['total_points_discounted']) ? intval($calc['total_points_discounted']) : 0,
-                    'points_per_dollar' => isset($calc['points_per_dollar']) ? floatval($calc['points_per_dollar']) : 0,
-                );
-            }
-        }
-
+        // Build summary data FIRST (before points calculation)
         $summary_data = array(
             'items_subtotal_raw'      => wc_format_decimal($order->get_subtotal(), wc_get_price_decimals()),
             'items_subtotal_formatted'=> $order->get_subtotal_to_display(),
@@ -592,11 +564,6 @@ function eao_ajax_get_order_products_data_handler() { // NEW NAME
         );
         $summary_data['total_item_level_discount_formatted'] = wc_price($summary_data['total_item_level_discount_raw'], array('currency' => $order->get_currency()));
         $summary_data['products_total_formatted'] = wc_price($summary_data['products_total_raw'], array('currency' => $order->get_currency()));
-
-        // Attach points award summary, if available
-        if ( ! empty( $points_award_summary_tmp ) ) {
-            $summary_data['points_award_summary'] = $points_award_summary_tmp;
-        }
 
         // Attach points grant state for UI (granted/revoked markers)
         try {
@@ -650,6 +617,45 @@ function eao_ajax_get_order_products_data_handler() { // NEW NAME
             $summary_data['products_total_formatted'] = wc_price($summary_data['items_subtotal_raw'] - $expected_discount, array('currency' => $order->get_currency()));
             
             // error_log('[EAO DEBUG] Applied global discount fix: Discountable subtotal=' . $discountable_subtotal . ', Expected discount=' . $expected_discount);
+        }
+
+        // NOW calculate points using the corrected summary values
+        $points_award_summary_tmp = null;
+        if ( function_exists('eao_yith_calculate_order_points_preview') ) {
+            // Pass the corrected summary values to ensure consistency
+            $calc = eao_yith_calculate_order_points_preview( 
+                $order->get_id(), 
+                (float) $summary_data['items_subtotal_raw'], 
+                (float) $summary_data['products_total_raw'] 
+            );
+            if ( ! empty( $calc['breakdown'] ) && is_array($calc['breakdown']) ) {
+                $points_map = array();
+                foreach ( $calc['breakdown'] as $bd_item ) {
+                    if ( isset( $bd_item['order_item_id'] ) ) {
+                        $points_map[ (string) $bd_item['order_item_id'] ] = isset($bd_item['total_points']) ? intval($bd_item['total_points']) : 0;
+                    }
+                }
+                foreach ( $items_data as &$it ) {
+                    $key = isset($it['item_id']) ? (string)$it['item_id'] : '';
+                    if ( $key !== '' && isset($points_map[$key]) ) {
+                        $it['points_earning'] = $points_map[$key];
+                    }
+                }
+                unset($it);
+            }
+            // Always propagate summary rates when available (even if breakdown empty)
+            if ( isset($calc['total_points_full']) || isset($calc['total_points_discounted']) || isset($calc['points_per_dollar']) ) {
+                $points_award_summary_tmp = array(
+                    'points_full'       => isset($calc['total_points_full']) ? intval($calc['total_points_full']) : 0,
+                    'points_discounted' => isset($calc['total_points_discounted']) ? intval($calc['total_points_discounted']) : 0,
+                    'points_per_dollar' => isset($calc['points_per_dollar']) ? floatval($calc['points_per_dollar']) : 0,
+                );
+            }
+        }
+
+        // Attach points award summary, if available
+        if ( ! empty( $points_award_summary_tmp ) ) {
+            $summary_data['points_award_summary'] = $points_award_summary_tmp;
         }
 
         // DEBUG: Log individual item discount calculations

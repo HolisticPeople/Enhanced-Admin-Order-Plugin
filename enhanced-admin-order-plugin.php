@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.0.70: BETTER SOLUTION - Replace whitelist with page-specific loading)
-define('EAO_PLUGIN_VERSION', '5.0.70');
+// Plugin version constant (v5.0.71: YITH points calculation now uses corrected summary values)
+define('EAO_PLUGIN_VERSION', '5.0.71');
 
 /**
  * Check if we should load EAO functionality
