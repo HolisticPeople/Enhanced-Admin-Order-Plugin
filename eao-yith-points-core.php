@@ -246,9 +246,11 @@ function eao_yith_get_customer_points( $user_id ) {
  * This function mimics YITH's complete points calculation logic
  *
  * @param int $order_id Order ID
+ * @param float|null $items_subtotal_override Optional: Items subtotal from summary (Line 1 - Gross)
+ * @param float|null $products_total_override Optional: Products total from summary (Line 2 - Net)
  * @return array Result with points calculation details
  */
-function eao_yith_calculate_order_points_preview( $order_id ) {
+function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_override = null, $products_total_override = null ) {
     $result = array(
         'success' => true,
         'total_points' => 0,
@@ -314,12 +316,94 @@ function eao_yith_calculate_order_points_preview( $order_id ) {
             $did_switch_user = true;
         }
 
-        // Calculate points using YITH's logic
+        $currency = $order->get_currency();
+
+        // SIMPLIFIED PATH: If summary values are provided, use them directly
+        if ( $items_subtotal_override !== null && $products_total_override !== null ) {
+            // Use provided summary values - these are already corrected and match UI display
+            $items_subtotal = $items_subtotal_override;
+            $products_total = $products_total_override;
+            
+            // Get customer earning rate (e.g., 10% for Community Plus)
+            $customer_level = $customer->get_level();
+            $earning_rate = 0;
+            try {
+                if ( function_exists('ywpar_get_option') ) {
+                    $earning_rate = (float) ywpar_get_option( 'earning_conversion_rate_method_' . $customer_level, 0 );
+                    if ( $earning_rate <= 0 ) {
+                        $earning_rate = (float) ywpar_get_option( 'earning_conversion_rate_extrapoints_' . $customer_level, 0 );
+                    }
+                    if ( $earning_rate <= 0 ) {
+                        $earning_rate = 0.10; // Default 10%
+                    }
+                }
+            } catch ( Exception $e ) {
+                $earning_rate = 0.10;
+            }
+            
+            // Get base conversion rate (e.g., 10 points per $1)
+            // YITH stores it as "X money for Y points", we need "points per $1"
+            // Example: "1000 money = 1 point" → 1000 / 1 / 100 = 10 points per $1
+            $conversion = yith_points()->earning->get_conversion_option( $currency );
+            $base_conversion_rate = 10.0; // Default
+            if ( is_array( $conversion ) && isset( $conversion['money'], $conversion['points'] ) && (float) $conversion['points'] > 0 ) {
+                $base_conversion_rate = (float) $conversion['money'] / (float) $conversion['points'] / 100;
+            }
+            
+            // Calculate: amount × earning_rate × base_conversion_rate
+            // Example: $453.47 × 10% × 10 points/$ = 453 points
+            $total_points_full = (int) round( $items_subtotal * $earning_rate * $base_conversion_rate );
+            $total_points_discounted = (int) round( $products_total * $earning_rate * $base_conversion_rate );
+            $total_points = $total_points_discounted;
+            $earning_base_amount = $products_total;
+            
+            // Coupon discount subtraction (Line 3 calculation)
+            if ( ywpar_get_option( 'remove_points_coupon', 'yes' ) === 'yes' && $earning_base_amount > 0 ) {
+                foreach ( $order->get_coupon_codes() as $coupon_code ) {
+                    $coupon = new WC_Coupon( $coupon_code );
+                    if ( $coupon && $coupon->get_meta( '_ywpar_coupon', true ) ) {
+                        $coupon_amount = (float) $order->get_total_discount();
+                        if ( $coupon_amount > 0 ) {
+                            // Calculate points to subtract using same formula
+                            $points_from_coupon = (int) round( $coupon_amount * $earning_rate * $base_conversion_rate );
+                            $total_points = max( 0, $total_points - $points_from_coupon );
+                            $earning_base_amount = max( 0, $earning_base_amount - $coupon_amount );
+                            break; // Only process first YITH coupon
+                        }
+                    }
+                }
+            }
+            
+            // Get conversion rate for reference
+            $conversion = yith_points()->earning->get_conversion_option( $currency );
+            $points_per_dollar = 0;
+            if ( is_array( $conversion ) && isset( $conversion['money'], $conversion['points'] ) && (float) $conversion['money'] > 0 ) {
+                $points_per_dollar = (float) $conversion['points'] / (float) $conversion['money'];
+            }
+            
+            // Return simplified result (no per-item breakdown)
+            $result['success'] = true;
+            $result['total_points'] = $total_points;
+            $result['total_points_full'] = $total_points_full;
+            $result['total_points_discounted'] = $total_points_discounted;
+            $result['earning_base_amount'] = $earning_base_amount;
+            $result['points_per_dollar'] = $points_per_dollar;
+            $result['calculation_method'] = 'summary_values';
+            $result['breakdown'] = array(); // No item breakdown in simplified mode
+            
+            // Restore previous user
+            if ( $did_switch_user ) {
+                wp_set_current_user( $prev_user_id );
+            }
+            
+            return $result;
+        }
+
+        // LEGACY PATH: Calculate per-item (when summary values not provided)
         $total_points = 0; // discounted awarding points total (based on per-line discounted price)
         $total_points_full = 0; // full-price awarding points total (based on per-line subtotal)
         $total_points_discounted = 0; // equals $total_points, but kept separately for clarity
         $order_items = $order->get_items();
-        $currency = $order->get_currency();
         $earning_base_amount = 0; // Sum of amounts considered for earning (before coupons)
 
         if ( ! empty( $order_items ) ) {

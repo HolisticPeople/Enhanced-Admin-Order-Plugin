@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.0.70: BETTER SOLUTION - Replace whitelist with page-specific loading)
-define('EAO_PLUGIN_VERSION', '5.0.70');
+// Plugin version constant (v5.1.1: Points now update in real-time during quantity changes)
+define('EAO_PLUGIN_VERSION', '5.1.1');
 
 /**
  * Check if we should load EAO functionality

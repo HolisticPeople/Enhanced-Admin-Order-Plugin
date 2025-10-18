@@ -1570,15 +1570,22 @@ window.EAO.MainCoordinator = {
                 // Snap very small discount dollars to 0 to avoid 39.999 → 39 flooring
                 if (Math.abs(pointsDiscountDollars) < 0.005) { pointsDiscountDollars = 0; }
 
-                // Single source of truth: use backend-calculated award summary only
-                const pas = (summaryData && summaryData.points_award_summary) ? summaryData.points_award_summary : {};
-                const ptsPerDollarFromServer = (typeof pas.points_per_dollar !== 'undefined') ? parseFloat(pas.points_per_dollar) : 0;
-                const effRate = (ptsPerDollarFromServer > 0)
-                    ? ptsPerDollarFromServer
-                    : ((parseFloat(pas.points_full || 0) > 0 && gross > 0) ? (parseFloat(pas.points_full) / gross) : 0);
-                const fullPts = Math.max(0, Math.round(((gross * effRate) + 1e-6)));
-                const discPts = Math.max(0, Math.round(((net * effRate) + 1e-6)));
-                const ptsPerDollar = effRate;
+                // Single source of truth: use backend-calculated award summary as baseline
+                // Persist points_award_summary globally for client-side recalculations
+                if (summaryData && summaryData.points_award_summary) {
+                    window.eaoPointsAwardSummary = summaryData.points_award_summary;
+                    // Also persist the initial gross total to calculate rate
+                    window.eaoInitialGross = gross;
+                }
+                const pas = window.eaoPointsAwardSummary || {};
+                const initialFullPts = (typeof pas.points_full !== 'undefined') ? parseInt(pas.points_full) : 0;
+                const initialGross = window.eaoInitialGross || gross;
+                // Calculate points per dollar from initial server values
+                const ptsPerDollar = (initialFullPts > 0 && initialGross > 0) ? (initialFullPts / initialGross) : 0;
+                // Line 1: Recalculate from current Gross total (responds to quantity changes)
+                const fullPts = Math.max(0, Math.round(gross * ptsPerDollar));
+                // Line 2: Recalculate from current Net total (responds to discount changes in UI)
+                const discPts = Math.max(0, Math.round(net * ptsPerDollar));
                 // Use redemption rate to convert staged points to dollars precisely
                 const redeemRateLive = (window.pointsRedeemRate && window.pointsRedeemRate > 0) ? window.pointsRedeemRate : 10;
                 const pointsDollarsForGrant = (function(){
