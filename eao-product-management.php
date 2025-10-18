@@ -623,11 +623,13 @@ function eao_ajax_get_order_products_data_handler() { // NEW NAME
         $points_award_summary_tmp = null;
         if ( function_exists('eao_yith_calculate_order_points_preview') ) {
             // Pass the corrected summary values to ensure consistency
+            error_log('[EAO Product Management] Calling points preview with Items Subtotal: $' . $summary_data['items_subtotal_raw'] . ', Products Total: $' . $summary_data['products_total_raw']);
             $calc = eao_yith_calculate_order_points_preview( 
                 $order->get_id(), 
                 (float) $summary_data['items_subtotal_raw'], 
                 (float) $summary_data['products_total_raw'] 
             );
+            error_log('[EAO Product Management] Points calculation result: ' . print_r($calc, true));
             if ( ! empty( $calc['breakdown'] ) && is_array($calc['breakdown']) ) {
                 $points_map = array();
                 foreach ( $calc['breakdown'] as $bd_item ) {

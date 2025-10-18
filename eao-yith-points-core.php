@@ -251,6 +251,8 @@ function eao_yith_get_customer_points( $user_id ) {
  * @return array Result with points calculation details
  */
 function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_override = null, $products_total_override = null ) {
+    error_log('[EAO YITH] Function called - Order ID: ' . $order_id . ', Items Subtotal Override: ' . ($items_subtotal_override !== null ? '$' . $items_subtotal_override : 'NULL') . ', Products Total Override: ' . ($products_total_override !== null ? '$' . $products_total_override : 'NULL'));
+    
     $result = array(
         'success' => true,
         'total_points' => 0,
@@ -264,6 +266,8 @@ function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_ove
     try {
         // Check if YITH is available
         if ( ! eao_yith_is_available() ) {
+            error_log('[EAO YITH] YITH not available');
+
             $result['success'] = false;
             $result['can_earn'] = false;
             $result['errors'][] = 'YITH Points plugin not available';
@@ -318,29 +322,42 @@ function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_ove
 
         $currency = $order->get_currency();
 
-        // SIMPLIFIED PATH: If summary values are provided, use them directly (v5.0.71+)
+        // SIMPLIFIED PATH: If summary values are provided, use them directly (v5.0.82+)
         if ( $items_subtotal_override !== null && $products_total_override !== null ) {
+            error_log('[EAO YITH SIMPLIFIED] Using summary values - Items Subtotal: $' . $items_subtotal_override . ', Products Total: $' . $products_total_override);
+            
             // Use provided summary values - these are already corrected and match UI display
             $items_subtotal = $items_subtotal_override;
             $products_total = $products_total_override;
             
             // Line 1 (Full price): Convert gross amount to points
-            $total_points_full = (int) round( eao_yith_get_points_from_price( $items_subtotal, $currency ) );
+            $raw_points_full = eao_yith_get_points_from_price( $items_subtotal, $currency );
+            error_log('[EAO YITH SIMPLIFIED] Line 1 - Raw points from eao_yith_get_points_from_price($' . $items_subtotal . '): ' . $raw_points_full);
+            $total_points_full = (int) round( $raw_points_full );
+            error_log('[EAO YITH SIMPLIFIED] Line 1 - Final points (rounded): ' . $total_points_full);
             
             // Line 2 (Discounted): Convert net amount to points  
-            $total_points_discounted = (int) round( eao_yith_get_points_from_price( $products_total, $currency ) );
+            $raw_points_discounted = eao_yith_get_points_from_price( $products_total, $currency );
+            error_log('[EAO YITH SIMPLIFIED] Line 2 - Raw points from eao_yith_get_points_from_price($' . $products_total . '): ' . $raw_points_discounted);
+            $total_points_discounted = (int) round( $raw_points_discounted );
+            error_log('[EAO YITH SIMPLIFIED] Line 2 - Final points (rounded): ' . $total_points_discounted);
             $total_points = $total_points_discounted;
             $earning_base_amount = $products_total;
             
             // Coupon discount subtraction (Line 3 calculation)
+            error_log('[EAO YITH SIMPLIFIED] Checking for YITH coupons...');
             if ( ywpar_get_option( 'remove_points_coupon', 'yes' ) === 'yes' && $earning_base_amount > 0 ) {
                 foreach ( $order->get_coupon_codes() as $coupon_code ) {
+                    error_log('[EAO YITH SIMPLIFIED] Found coupon: ' . $coupon_code);
                     $coupon = new WC_Coupon( $coupon_code );
                     if ( $coupon && $coupon->get_meta( '_ywpar_coupon', true ) ) {
                         $coupon_amount = (float) $order->get_total_discount();
+                        error_log('[EAO YITH SIMPLIFIED] YITH coupon detected! Discount amount: $' . $coupon_amount);
                         if ( $coupon_amount > 0 ) {
                             $points_from_coupon = (int) round( eao_yith_get_points_from_price( $coupon_amount, $currency ) );
+                            error_log('[EAO YITH SIMPLIFIED] Points to subtract: ' . $points_from_coupon);
                             $total_points = max( 0, $total_points - $points_from_coupon );
+                            error_log('[EAO YITH SIMPLIFIED] Line 3 - Final points after coupon: ' . $total_points);
                             $earning_base_amount = max( 0, $earning_base_amount - $coupon_amount );
                             break; // Only process first YITH coupon
                         }
@@ -354,6 +371,7 @@ function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_ove
             if ( is_array( $conversion ) && isset( $conversion['money'], $conversion['points'] ) && (float) $conversion['money'] > 0 ) {
                 $points_per_dollar = (float) $conversion['points'] / (float) $conversion['money'];
             }
+            error_log('[EAO YITH SIMPLIFIED] Points per dollar: ' . $points_per_dollar);
             
             // Return simplified result (no per-item breakdown)
             $result['success'] = true;
@@ -364,6 +382,8 @@ function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_ove
             $result['points_per_dollar'] = $points_per_dollar;
             $result['calculation_method'] = 'summary_values';
             $result['breakdown'] = array(); // No item breakdown in simplified mode
+            
+            error_log('[EAO YITH SIMPLIFIED] Returning result - Line 1: ' . $total_points_full . ', Line 2: ' . $total_points_discounted . ', Line 3: ' . $total_points);
             
             // Restore previous user
             if ( $did_switch_user ) {

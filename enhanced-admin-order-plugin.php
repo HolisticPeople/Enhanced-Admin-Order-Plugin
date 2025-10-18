@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.0.82: YITH points calculation now uses corrected summary values)
-define('EAO_PLUGIN_VERSION', '5.0.82');
+// Plugin version constant (v5.0.83: Added debug logging for YITH points calculation)
+define('EAO_PLUGIN_VERSION', '5.0.83');
 
 /**
  * Check if we should load EAO functionality
