@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.0: PRODUCTION - Fixed YITH points calculation with real-time updates)
-define('EAO_PLUGIN_VERSION', '5.1.0');
+// Plugin version constant (v5.1.1: Points now update in real-time during quantity changes)
+define('EAO_PLUGIN_VERSION', '5.1.1');
 
 /**
  * Check if we should load EAO functionality
