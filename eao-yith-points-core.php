@@ -349,12 +349,20 @@ function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_ove
             error_log('[EAO YITH SIMPLIFIED] Customer level: ' . $customer_level . ', Earning rate: ' . ($earning_rate * 100) . '%');
             
             // Get base conversion rate (e.g., 10 points per $1)
+            // YITH stores it backwards: "1000 money = 1 point" means "1 point per $1000"
+            // We need "10 points per $1", so we invert and scale
             $conversion = yith_points()->earning->get_conversion_option( $currency );
             error_log('[EAO YITH SIMPLIFIED] Raw conversion from YITH: ' . print_r($conversion, true));
             $base_conversion_rate = 10.0; // Default
-            if ( is_array( $conversion ) && isset( $conversion['money'], $conversion['points'] ) && (float) $conversion['money'] > 0 ) {
-                error_log('[EAO YITH SIMPLIFIED] Conversion array valid - money: ' . $conversion['money'] . ', points: ' . $conversion['points']);
-                $base_conversion_rate = (float) $conversion['points'] / (float) $conversion['money'];
+            if ( is_array( $conversion ) && isset( $conversion['money'], $conversion['points'] ) && (float) $conversion['points'] > 0 ) {
+                error_log('[EAO YITH SIMPLIFIED] Conversion array - money: ' . $conversion['money'] . ', points: ' . $conversion['points']);
+                // YITH format: "X points for Y money" 
+                // We want: "points per $1"
+                // Example: if "1 point for $1000", we get 0.001 points/$1 - WRONG!
+                // We need to invert: $1000 for 1 point = need 10 points per $1
+                // So: (money / points) * 0.01 OR just use 10.0 directly
+                $base_conversion_rate = (float) $conversion['money'] / (float) $conversion['points'] / 100;
+                error_log('[EAO YITH SIMPLIFIED] Calculated: ' . $conversion['money'] . ' / ' . $conversion['points'] . ' / 100 = ' . $base_conversion_rate);
             } else {
                 error_log('[EAO YITH SIMPLIFIED] Conversion array invalid or missing, using default 10.0');
             }

@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.0.85: Debug YITH conversion rate array parsing)
-define('EAO_PLUGIN_VERSION', '5.0.85');
+// Plugin version constant (v5.0.86: Fixed YITH conversion rate calculation - inverted formula)
+define('EAO_PLUGIN_VERSION', '5.0.86');
 
 /**
  * Check if we should load EAO functionality
