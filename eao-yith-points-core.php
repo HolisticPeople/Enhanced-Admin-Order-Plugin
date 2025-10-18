@@ -251,8 +251,6 @@ function eao_yith_get_customer_points( $user_id ) {
  * @return array Result with points calculation details
  */
 function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_override = null, $products_total_override = null ) {
-    error_log('[EAO YITH] Function called - Order ID: ' . $order_id . ', Items Subtotal Override: ' . ($items_subtotal_override !== null ? '$' . $items_subtotal_override : 'NULL') . ', Products Total Override: ' . ($products_total_override !== null ? '$' . $products_total_override : 'NULL'));
-    
     $result = array(
         'success' => true,
         'total_points' => 0,
@@ -266,8 +264,6 @@ function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_ove
     try {
         // Check if YITH is available
         if ( ! eao_yith_is_available() ) {
-            error_log('[EAO YITH] YITH not available');
-
             $result['success'] = false;
             $result['can_earn'] = false;
             $result['errors'][] = 'YITH Points plugin not available';
@@ -322,10 +318,8 @@ function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_ove
 
         $currency = $order->get_currency();
 
-        // SIMPLIFIED PATH: If summary values are provided, use them directly (v5.0.84+)
+        // SIMPLIFIED PATH: If summary values are provided, use them directly
         if ( $items_subtotal_override !== null && $products_total_override !== null ) {
-            error_log('[EAO YITH SIMPLIFIED] Using summary values - Items Subtotal: $' . $items_subtotal_override . ', Products Total: $' . $products_total_override);
-            
             // Use provided summary values - these are already corrected and match UI display
             $items_subtotal = $items_subtotal_override;
             $products_total = $products_total_override;
@@ -346,58 +340,33 @@ function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_ove
             } catch ( Exception $e ) {
                 $earning_rate = 0.10;
             }
-            error_log('[EAO YITH SIMPLIFIED] Customer level: ' . $customer_level . ', Earning rate: ' . ($earning_rate * 100) . '%');
             
             // Get base conversion rate (e.g., 10 points per $1)
-            // YITH stores it backwards: "1000 money = 1 point" means "1 point per $1000"
-            // We need "10 points per $1", so we invert and scale
+            // YITH stores it as "X money for Y points", we need "points per $1"
+            // Example: "1000 money = 1 point" → 1000 / 1 / 100 = 10 points per $1
             $conversion = yith_points()->earning->get_conversion_option( $currency );
-            error_log('[EAO YITH SIMPLIFIED] Raw conversion from YITH: ' . print_r($conversion, true));
             $base_conversion_rate = 10.0; // Default
             if ( is_array( $conversion ) && isset( $conversion['money'], $conversion['points'] ) && (float) $conversion['points'] > 0 ) {
-                error_log('[EAO YITH SIMPLIFIED] Conversion array - money: ' . $conversion['money'] . ', points: ' . $conversion['points']);
-                // YITH format: "X points for Y money" 
-                // We want: "points per $1"
-                // Example: if "1 point for $1000", we get 0.001 points/$1 - WRONG!
-                // We need to invert: $1000 for 1 point = need 10 points per $1
-                // So: (money / points) * 0.01 OR just use 10.0 directly
                 $base_conversion_rate = (float) $conversion['money'] / (float) $conversion['points'] / 100;
-                error_log('[EAO YITH SIMPLIFIED] Calculated: ' . $conversion['money'] . ' / ' . $conversion['points'] . ' / 100 = ' . $base_conversion_rate);
-            } else {
-                error_log('[EAO YITH SIMPLIFIED] Conversion array invalid or missing, using default 10.0');
             }
-            error_log('[EAO YITH SIMPLIFIED] Base conversion rate: ' . $base_conversion_rate . ' points per $1');
             
             // Calculate: amount × earning_rate × base_conversion_rate
             // Example: $453.47 × 10% × 10 points/$ = 453 points
             $total_points_full = (int) round( $items_subtotal * $earning_rate * $base_conversion_rate );
-            error_log('[EAO YITH SIMPLIFIED] Line 1 - $' . $items_subtotal . ' × ' . $earning_rate . ' × ' . $base_conversion_rate . ' = ' . $total_points_full . ' points');
-            
             $total_points_discounted = (int) round( $products_total * $earning_rate * $base_conversion_rate );
-            error_log('[EAO YITH SIMPLIFIED] Line 2 - $' . $products_total . ' × ' . $earning_rate . ' × ' . $base_conversion_rate . ' = ' . $total_points_discounted . ' points');
-            
             $total_points = $total_points_discounted;
             $earning_base_amount = $products_total;
             
             // Coupon discount subtraction (Line 3 calculation)
-            error_log('[EAO YITH SIMPLIFIED] Checking for YITH coupons...');
-            $remove_points_setting = ywpar_get_option( 'remove_points_coupon', 'yes' );
-            error_log('[EAO YITH SIMPLIFIED] remove_points_coupon setting: ' . $remove_points_setting . ', earning_base_amount: ' . $earning_base_amount);
-            if ( $remove_points_setting === 'yes' && $earning_base_amount > 0 ) {
+            if ( ywpar_get_option( 'remove_points_coupon', 'yes' ) === 'yes' && $earning_base_amount > 0 ) {
                 foreach ( $order->get_coupon_codes() as $coupon_code ) {
-                    error_log('[EAO YITH SIMPLIFIED] Found coupon: ' . $coupon_code);
                     $coupon = new WC_Coupon( $coupon_code );
-                    $ywpar_meta = $coupon->get_meta( '_ywpar_coupon', true );
-                    error_log('[EAO YITH SIMPLIFIED] Coupon _ywpar_coupon meta: ' . print_r($ywpar_meta, true));
-                    if ( $coupon && $ywpar_meta ) {
+                    if ( $coupon && $coupon->get_meta( '_ywpar_coupon', true ) ) {
                         $coupon_amount = (float) $order->get_total_discount();
-                        error_log('[EAO YITH SIMPLIFIED] YITH coupon detected! Discount amount: $' . $coupon_amount);
                         if ( $coupon_amount > 0 ) {
                             // Calculate points to subtract using same formula
                             $points_from_coupon = (int) round( $coupon_amount * $earning_rate * $base_conversion_rate );
-                            error_log('[EAO YITH SIMPLIFIED] Points to subtract: $' . $coupon_amount . ' × ' . $earning_rate . ' × ' . $base_conversion_rate . ' = ' . $points_from_coupon . ' points');
                             $total_points = max( 0, $total_points - $points_from_coupon );
-                            error_log('[EAO YITH SIMPLIFIED] Line 3 - Final points after coupon: ' . $total_points . ' points');
                             $earning_base_amount = max( 0, $earning_base_amount - $coupon_amount );
                             break; // Only process first YITH coupon
                         }
@@ -411,7 +380,6 @@ function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_ove
             if ( is_array( $conversion ) && isset( $conversion['money'], $conversion['points'] ) && (float) $conversion['money'] > 0 ) {
                 $points_per_dollar = (float) $conversion['points'] / (float) $conversion['money'];
             }
-            error_log('[EAO YITH SIMPLIFIED] Points per dollar: ' . $points_per_dollar);
             
             // Return simplified result (no per-item breakdown)
             $result['success'] = true;
@@ -422,8 +390,6 @@ function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_ove
             $result['points_per_dollar'] = $points_per_dollar;
             $result['calculation_method'] = 'summary_values';
             $result['breakdown'] = array(); // No item breakdown in simplified mode
-            
-            error_log('[EAO YITH SIMPLIFIED] Returning result - Line 1: ' . $total_points_full . ', Line 2: ' . $total_points_discounted . ', Line 3: ' . $total_points);
             
             // Restore previous user
             if ( $did_switch_user ) {

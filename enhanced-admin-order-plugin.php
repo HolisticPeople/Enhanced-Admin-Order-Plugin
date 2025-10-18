@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.0.89: Line 2 recalculates from current Net total for real-time discount updates)
-define('EAO_PLUGIN_VERSION', '5.0.89');
+// Plugin version constant (v5.1.0: PRODUCTION - Fixed YITH points calculation with real-time updates)
+define('EAO_PLUGIN_VERSION', '5.1.0');
 
 /**
  * Check if we should load EAO functionality

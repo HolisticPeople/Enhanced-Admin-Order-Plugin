@@ -623,13 +623,11 @@ function eao_ajax_get_order_products_data_handler() { // NEW NAME
         $points_award_summary_tmp = null;
         if ( function_exists('eao_yith_calculate_order_points_preview') ) {
             // Pass the corrected summary values to ensure consistency
-            error_log('[EAO Product Management] Calling points preview with Items Subtotal: $' . $summary_data['items_subtotal_raw'] . ', Products Total: $' . $summary_data['products_total_raw']);
             $calc = eao_yith_calculate_order_points_preview( 
                 $order->get_id(), 
                 (float) $summary_data['items_subtotal_raw'], 
                 (float) $summary_data['products_total_raw'] 
             );
-            error_log('[EAO Product Management] Points calculation result: ' . print_r($calc, true));
             if ( ! empty( $calc['breakdown'] ) && is_array($calc['breakdown']) ) {
                 $points_map = array();
                 foreach ( $calc['breakdown'] as $bd_item ) {
@@ -646,25 +644,18 @@ function eao_ajax_get_order_products_data_handler() { // NEW NAME
                 unset($it);
             }
             // Always propagate summary rates when available (even if breakdown empty)
-            error_log('[EAO Product Management] Checking calc keys - total_points_full: ' . (isset($calc['total_points_full']) ? $calc['total_points_full'] : 'NOT SET') . ', total_points_discounted: ' . (isset($calc['total_points_discounted']) ? $calc['total_points_discounted'] : 'NOT SET') . ', points_per_dollar: ' . (isset($calc['points_per_dollar']) ? $calc['points_per_dollar'] : 'NOT SET'));
             if ( isset($calc['total_points_full']) || isset($calc['total_points_discounted']) || isset($calc['points_per_dollar']) ) {
                 $points_award_summary_tmp = array(
                     'points_full'       => isset($calc['total_points_full']) ? intval($calc['total_points_full']) : 0,
                     'points_discounted' => isset($calc['total_points_discounted']) ? intval($calc['total_points_discounted']) : 0,
                     'points_per_dollar' => isset($calc['points_per_dollar']) ? floatval($calc['points_per_dollar']) : 0,
                 );
-                error_log('[EAO Product Management] Created points_award_summary_tmp: ' . print_r($points_award_summary_tmp, true));
-            } else {
-                error_log('[EAO Product Management] WARNING: No calc keys found for points summary!');
             }
         }
 
         // Attach points award summary, if available
         if ( ! empty( $points_award_summary_tmp ) ) {
             $summary_data['points_award_summary'] = $points_award_summary_tmp;
-            error_log('[EAO Product Management] Attached points_award_summary: ' . print_r($points_award_summary_tmp, true));
-        } else {
-            error_log('[EAO Product Management] WARNING: points_award_summary_tmp is empty!');
         }
 
         // DEBUG: Log individual item discount calculations
