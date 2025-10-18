@@ -1570,15 +1570,13 @@ window.EAO.MainCoordinator = {
                 // Snap very small discount dollars to 0 to avoid 39.999 → 39 flooring
                 if (Math.abs(pointsDiscountDollars) < 0.005) { pointsDiscountDollars = 0; }
 
-                // Single source of truth: use backend-calculated award summary only
+                // Single source of truth: use backend-calculated award summary DIRECTLY (no recalculation)
                 const pas = (summaryData && summaryData.points_award_summary) ? summaryData.points_award_summary : {};
-                const ptsPerDollarFromServer = (typeof pas.points_per_dollar !== 'undefined') ? parseFloat(pas.points_per_dollar) : 0;
-                const effRate = (ptsPerDollarFromServer > 0)
-                    ? ptsPerDollarFromServer
-                    : ((parseFloat(pas.points_full || 0) > 0 && gross > 0) ? (parseFloat(pas.points_full) / gross) : 0);
-                const fullPts = Math.max(0, Math.round(((gross * effRate) + 1e-6)));
-                const discPts = Math.max(0, Math.round(((net * effRate) + 1e-6)));
-                const ptsPerDollar = effRate;
+                // Use server-calculated points directly - DO NOT recalculate!
+                const fullPts = (typeof pas.points_full !== 'undefined') ? parseInt(pas.points_full) : 0;
+                const discPts = (typeof pas.points_discounted !== 'undefined') ? parseInt(pas.points_discounted) : 0;
+                // Calculate rate for display purposes only (not used for calculation anymore)
+                const ptsPerDollar = (fullPts > 0 && gross > 0) ? (fullPts / gross) : 0;
                 // Use redemption rate to convert staged points to dollars precisely
                 const redeemRateLive = (window.pointsRedeemRate && window.pointsRedeemRate > 0) ? window.pointsRedeemRate : 10;
                 const pointsDollarsForGrant = (function(){

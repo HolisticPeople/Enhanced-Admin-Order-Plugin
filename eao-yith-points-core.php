@@ -381,11 +381,15 @@ function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_ove
             
             // Coupon discount subtraction (Line 3 calculation)
             error_log('[EAO YITH SIMPLIFIED] Checking for YITH coupons...');
-            if ( ywpar_get_option( 'remove_points_coupon', 'yes' ) === 'yes' && $earning_base_amount > 0 ) {
+            $remove_points_setting = ywpar_get_option( 'remove_points_coupon', 'yes' );
+            error_log('[EAO YITH SIMPLIFIED] remove_points_coupon setting: ' . $remove_points_setting . ', earning_base_amount: ' . $earning_base_amount);
+            if ( $remove_points_setting === 'yes' && $earning_base_amount > 0 ) {
                 foreach ( $order->get_coupon_codes() as $coupon_code ) {
                     error_log('[EAO YITH SIMPLIFIED] Found coupon: ' . $coupon_code);
                     $coupon = new WC_Coupon( $coupon_code );
-                    if ( $coupon && $coupon->get_meta( '_ywpar_coupon', true ) ) {
+                    $ywpar_meta = $coupon->get_meta( '_ywpar_coupon', true );
+                    error_log('[EAO YITH SIMPLIFIED] Coupon _ywpar_coupon meta: ' . print_r($ywpar_meta, true));
+                    if ( $coupon && $ywpar_meta ) {
                         $coupon_amount = (float) $order->get_total_discount();
                         error_log('[EAO YITH SIMPLIFIED] YITH coupon detected! Discount amount: $' . $coupon_amount);
                         if ( $coupon_amount > 0 ) {

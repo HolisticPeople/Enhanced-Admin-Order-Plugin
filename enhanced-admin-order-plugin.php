@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.0.87: Debug points summary attachment to response)
-define('EAO_PLUGIN_VERSION', '5.0.87');
+// Plugin version constant (v5.0.88: JS uses server values directly + debug coupon detection)
+define('EAO_PLUGIN_VERSION', '5.0.88');
 
 /**
  * Check if we should load EAO functionality
