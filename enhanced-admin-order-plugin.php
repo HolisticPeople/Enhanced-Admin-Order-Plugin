@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.0.88: JS uses server values directly + debug coupon detection)
-define('EAO_PLUGIN_VERSION', '5.0.88');
+// Plugin version constant (v5.0.89: Line 2 recalculates from current Net total for real-time discount updates)
+define('EAO_PLUGIN_VERSION', '5.0.89');
 
 /**
  * Check if we should load EAO functionality
