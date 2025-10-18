@@ -350,9 +350,13 @@ function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_ove
             
             // Get base conversion rate (e.g., 10 points per $1)
             $conversion = yith_points()->earning->get_conversion_option( $currency );
+            error_log('[EAO YITH SIMPLIFIED] Raw conversion from YITH: ' . print_r($conversion, true));
             $base_conversion_rate = 10.0; // Default
             if ( is_array( $conversion ) && isset( $conversion['money'], $conversion['points'] ) && (float) $conversion['money'] > 0 ) {
+                error_log('[EAO YITH SIMPLIFIED] Conversion array valid - money: ' . $conversion['money'] . ', points: ' . $conversion['points']);
                 $base_conversion_rate = (float) $conversion['points'] / (float) $conversion['money'];
+            } else {
+                error_log('[EAO YITH SIMPLIFIED] Conversion array invalid or missing, using default 10.0');
             }
             error_log('[EAO YITH SIMPLIFIED] Base conversion rate: ' . $base_conversion_rate . ' points per $1');
             

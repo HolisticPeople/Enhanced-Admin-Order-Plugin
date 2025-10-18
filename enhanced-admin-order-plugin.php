@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.0.84: Fixed eao_calculate_total_item_level_discounts to exclude coupons + manual points calculation)
-define('EAO_PLUGIN_VERSION', '5.0.84');
+// Plugin version constant (v5.0.85: Debug YITH conversion rate array parsing)
+define('EAO_PLUGIN_VERSION', '5.0.85');
 
 /**
  * Check if we should load EAO functionality
