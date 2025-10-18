@@ -322,7 +322,7 @@ function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_ove
 
         $currency = $order->get_currency();
 
-        // SIMPLIFIED PATH: If summary values are provided, use them directly (v5.0.82+)
+        // SIMPLIFIED PATH: If summary values are provided, use them directly (v5.0.84+)
         if ( $items_subtotal_override !== null && $products_total_override !== null ) {
             error_log('[EAO YITH SIMPLIFIED] Using summary values - Items Subtotal: $' . $items_subtotal_override . ', Products Total: $' . $products_total_override);
             
@@ -330,17 +330,40 @@ function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_ove
             $items_subtotal = $items_subtotal_override;
             $products_total = $products_total_override;
             
-            // Line 1 (Full price): Convert gross amount to points
-            $raw_points_full = eao_yith_get_points_from_price( $items_subtotal, $currency );
-            error_log('[EAO YITH SIMPLIFIED] Line 1 - Raw points from eao_yith_get_points_from_price($' . $items_subtotal . '): ' . $raw_points_full);
-            $total_points_full = (int) round( $raw_points_full );
-            error_log('[EAO YITH SIMPLIFIED] Line 1 - Final points (rounded): ' . $total_points_full);
+            // Get customer earning rate (e.g., 10% for Community Plus)
+            $customer_level = $customer->get_level();
+            $earning_rate = 0;
+            try {
+                if ( function_exists('ywpar_get_option') ) {
+                    $earning_rate = (float) ywpar_get_option( 'earning_conversion_rate_method_' . $customer_level, 0 );
+                    if ( $earning_rate <= 0 ) {
+                        $earning_rate = (float) ywpar_get_option( 'earning_conversion_rate_extrapoints_' . $customer_level, 0 );
+                    }
+                    if ( $earning_rate <= 0 ) {
+                        $earning_rate = 0.10; // Default 10%
+                    }
+                }
+            } catch ( Exception $e ) {
+                $earning_rate = 0.10;
+            }
+            error_log('[EAO YITH SIMPLIFIED] Customer level: ' . $customer_level . ', Earning rate: ' . ($earning_rate * 100) . '%');
             
-            // Line 2 (Discounted): Convert net amount to points  
-            $raw_points_discounted = eao_yith_get_points_from_price( $products_total, $currency );
-            error_log('[EAO YITH SIMPLIFIED] Line 2 - Raw points from eao_yith_get_points_from_price($' . $products_total . '): ' . $raw_points_discounted);
-            $total_points_discounted = (int) round( $raw_points_discounted );
-            error_log('[EAO YITH SIMPLIFIED] Line 2 - Final points (rounded): ' . $total_points_discounted);
+            // Get base conversion rate (e.g., 10 points per $1)
+            $conversion = yith_points()->earning->get_conversion_option( $currency );
+            $base_conversion_rate = 10.0; // Default
+            if ( is_array( $conversion ) && isset( $conversion['money'], $conversion['points'] ) && (float) $conversion['money'] > 0 ) {
+                $base_conversion_rate = (float) $conversion['points'] / (float) $conversion['money'];
+            }
+            error_log('[EAO YITH SIMPLIFIED] Base conversion rate: ' . $base_conversion_rate . ' points per $1');
+            
+            // Calculate: amount × earning_rate × base_conversion_rate
+            // Example: $453.47 × 10% × 10 points/$ = 453 points
+            $total_points_full = (int) round( $items_subtotal * $earning_rate * $base_conversion_rate );
+            error_log('[EAO YITH SIMPLIFIED] Line 1 - $' . $items_subtotal . ' × ' . $earning_rate . ' × ' . $base_conversion_rate . ' = ' . $total_points_full . ' points');
+            
+            $total_points_discounted = (int) round( $products_total * $earning_rate * $base_conversion_rate );
+            error_log('[EAO YITH SIMPLIFIED] Line 2 - $' . $products_total . ' × ' . $earning_rate . ' × ' . $base_conversion_rate . ' = ' . $total_points_discounted . ' points');
+            
             $total_points = $total_points_discounted;
             $earning_base_amount = $products_total;
             
@@ -354,10 +377,11 @@ function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_ove
                         $coupon_amount = (float) $order->get_total_discount();
                         error_log('[EAO YITH SIMPLIFIED] YITH coupon detected! Discount amount: $' . $coupon_amount);
                         if ( $coupon_amount > 0 ) {
-                            $points_from_coupon = (int) round( eao_yith_get_points_from_price( $coupon_amount, $currency ) );
-                            error_log('[EAO YITH SIMPLIFIED] Points to subtract: ' . $points_from_coupon);
+                            // Calculate points to subtract using same formula
+                            $points_from_coupon = (int) round( $coupon_amount * $earning_rate * $base_conversion_rate );
+                            error_log('[EAO YITH SIMPLIFIED] Points to subtract: $' . $coupon_amount . ' × ' . $earning_rate . ' × ' . $base_conversion_rate . ' = ' . $points_from_coupon . ' points');
                             $total_points = max( 0, $total_points - $points_from_coupon );
-                            error_log('[EAO YITH SIMPLIFIED] Line 3 - Final points after coupon: ' . $total_points);
+                            error_log('[EAO YITH SIMPLIFIED] Line 3 - Final points after coupon: ' . $total_points . ' points');
                             $earning_base_amount = max( 0, $earning_base_amount - $coupon_amount );
                             break; // Only process first YITH coupon
                         }

@@ -15,28 +15,41 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 /**
- * Calculate the total item-level discounts applied to an order.
- * This includes individual item discounts, but excludes global order-level discounts.
+ * Calculate ONLY EAO admin discounts (excludes WooCommerce coupons).
+ * Uses EAO metadata to calculate discounts, not WooCommerce item totals.
  *
  * @param WC_Order $order The WooCommerce order object.
- * @return float The total item-level discount amount.
+ * @return float The total EAO discount amount.
  */
 function eao_calculate_total_item_level_discounts(WC_Order $order) {
-    $total_item_discount = 0;
+    $total_eao_discount = 0;
+    
+    // Get global discount from order meta
+    $global_discount_percent = (float) $order->get_meta('_eao_global_product_discount_percent', true);
     
     foreach ($order->get_items() as $item) {
-        $item_total = $item->get_total();
         $item_subtotal = $item->get_subtotal();
-        $item_discount = $item_subtotal - $item_total;
+        $item_eao_discount = 0;
         
-        // DEBUG: Log each item calculation
-        error_log('[EAO Utility] Item ' . $item->get_name() . ': Subtotal=' . $item_subtotal . ', Total=' . $item_total . ', Discount=' . $item_discount);
+        // Check for per-item EAO discount
+        $item_discount_percent = (float) $item->get_meta('_eao_item_discount_percent', true);
         
-        $total_item_discount += $item_discount;
+        // Check if excluded from global discount
+        $exclude_from_global = boolval($item->get_meta('_eao_exclude_global_discount', true)) || 
+                              boolval($item->get_meta('_eao_exclude_from_global_discount', true));
+        
+        if ($item_discount_percent > 0) {
+            // Use per-item discount
+            $item_eao_discount = ($item_subtotal * $item_discount_percent) / 100;
+        } elseif (!$exclude_from_global && $global_discount_percent > 0) {
+            // Use global discount (if not excluded)
+            $item_eao_discount = ($item_subtotal * $global_discount_percent) / 100;
+        }
+        
+        $total_eao_discount += $item_eao_discount;
     }
     
-    error_log('[EAO Utility] Total calculated item discount: ' . $total_item_discount);
-    return $total_item_discount;
+    return $total_eao_discount;
 }
 
 /**

@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.0.83: Added debug logging for YITH points calculation)
-define('EAO_PLUGIN_VERSION', '5.0.83');
+// Plugin version constant (v5.0.84: Fixed eao_calculate_total_item_level_discounts to exclude coupons + manual points calculation)
+define('EAO_PLUGIN_VERSION', '5.0.84');
 
 /**
  * Check if we should load EAO functionality
