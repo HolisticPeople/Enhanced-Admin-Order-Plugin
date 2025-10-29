@@ -556,62 +556,6 @@
                 $btn.prop('disabled', false);
             });
         });
-
-        // --- Stripe Payment Request (Invoice) ---
-        $('#eao-pp-send-request').on('click', function(){
-            var orderId = $('#eao-pp-order-id').val();
-            var email = $('#eao-pp-request-email').val() || '';
-            var mode = $('input[name="eao-pp-line-mode"]:checked').val() || 'grand';
-            var gateway = $('#eao-pp-gateway').val();
-            var $msg = $('#eao-pp-request-messages');
-            $msg.html('<div class="notice notice-info"><p>Sending payment request...</p></div>');
-            $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
-                action: 'eao_stripe_send_payment_request',
-                nonce: $('#eao_payment_mockup_nonce').val(),
-                order_id: orderId,
-                email: email,
-                mode: mode,
-                gateway: gateway
-            }, function(resp){
-                if (resp && resp.success) {
-                    var url = resp.data && resp.data.url ? resp.data.url : '';
-                    var html = '<div class="notice notice-success"><p>Payment request sent.' + (url ? ' <a target="_blank" href="'+url+'">Open invoice</a>' : '') + '</p></div>';
-                    $msg.html(html);
-                    if (resp.data && resp.data.invoice_id) {
-                        $('#eao-pp-invoice-id').val(resp.data.invoice_id);
-                        $('#eao-pp-void-invoice').show();
-                    }
-                } else {
-                    var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to send payment request';
-                    $msg.html('<div class="notice notice-error"><p>'+err+'</p></div>');
-                }
-            }, 'json');
-        });
-
-        $('#eao-pp-void-invoice').on('click', function(){
-            var orderId = $('#eao-pp-order-id').val();
-            var invoiceId = $('#eao-pp-invoice-id').val();
-            var gateway = $('#eao-pp-gateway').val();
-            var $msg = $('#eao-pp-request-messages');
-            if (!invoiceId) { $msg.html('<div class="notice notice-warning"><p>No existing invoice to void.</p></div>'); return; }
-            if (!window.confirm('Void the existing payment request?')) { return; }
-            $msg.html('<div class="notice notice-info"><p>Voiding invoice...</p></div>');
-            $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
-                action: 'eao_stripe_void_invoice',
-                nonce: $('#eao_payment_mockup_nonce').val(),
-                order_id: orderId,
-                invoice_id: invoiceId,
-                gateway: gateway
-            }, function(resp){
-                if (resp && resp.success) {
-                    $msg.html('<div class="notice notice-success"><p>Payment request voided.</p></div>');
-                    $('#eao-pp-void-invoice').hide();
-                } else {
-                    var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to void payment request';
-                    $msg.html('<div class="notice notice-error"><p>'+err+'</p></div>');
-                }
-            }, 'json');
-        });
     });
 })(jQuery);
 

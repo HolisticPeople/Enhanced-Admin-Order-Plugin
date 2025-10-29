@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.8: Add Stripe "Send Payment Request" + void; ACH for US; itemized/grand toggle)
-define('EAO_PLUGIN_VERSION', '5.1.8');
+// Plugin version constant (v5.1.7: Remove debug logs and error_details; production ready)
+define('EAO_PLUGIN_VERSION', '5.1.7');
 
 /**
  * Check if we should load EAO functionality
