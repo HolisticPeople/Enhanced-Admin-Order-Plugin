@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.10: Tie button label to Copy Grand Total/amount changes; deploy-ready)
-define('EAO_PLUGIN_VERSION', '5.1.10');
+// Plugin version constant (v5.1.11: Re-enable request button after void + initial label fill; deploy to staging)
+define('EAO_PLUGIN_VERSION', '5.1.11');
 
 /**
  * Check if we should load EAO functionality
