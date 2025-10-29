@@ -210,17 +210,7 @@
             var shipAddr1 = (canonical && canonical.address_1) || (pendingShip && pendingShip.address_1) || (initialShip && initialShip.address_1) || jQuery('#eao_shipping_address_1').val() || '';
             var shipAddr2 = (canonical && canonical.address_2) || (pendingShip && pendingShip.address_2) || (initialShip && initialShip.address_2) || jQuery('#eao_shipping_address_2').val() || '';
 
-            if (window.eaoDebugSS) {
-                console.log('[EAO ShipStation Debug] Shipping payload (chosen source -> server):', {
-                    source: canonical ? ('customerAddresses[' + selectedShipKey + ']') : (pendingShip ? 'pendingShippingAddress' : (initialShip ? 'initialOrderData' : 'dom')),
-                    country: shipCountry,
-                    postcode: shipPostcode,
-                    city: shipCity,
-                    state: shipState,
-                    address_1: shipAddr1,
-                    address_2: shipAddr2
-                });
-            }
+            // Debug removed for production
 
             // Make AJAX request (include transient shipping fields so server can compute without a save)
             jQuery.ajax({
