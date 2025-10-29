@@ -193,14 +193,28 @@
                          eaoShipStationParams.ajaxUrl : 
                          (typeof ajaxurl !== 'undefined' ? ajaxurl : '/wp-admin/admin-ajax.php');
             
-            // Make AJAX request
+            // Collect current shipping address from the editor (do not require save)
+            var shipCountry = jQuery('#shipping_country').val() || jQuery('#eao_shipping_country').val() || '';
+            var shipPostcode = jQuery('#eao_shipping_postcode').val() || '';
+            var shipCity = jQuery('#eao_shipping_city').val() || '';
+            var shipState = jQuery('#shipping_state').val() || jQuery('#eao_shipping_state').val() || '';
+            var shipAddr1 = jQuery('#eao_shipping_address_1').val() || '';
+            var shipAddr2 = jQuery('#eao_shipping_address_2').val() || '';
+
+            // Make AJAX request (include transient shipping fields so server can compute without a save)
             jQuery.ajax({
                 url: ajaxUrl,
                 type: 'POST',
                 data: {
                     action: 'eao_shipstation_v2_get_rates',
                     order_id: orderId,
-                    eao_nonce: nonce
+                    eao_nonce: nonce,
+                    ship_country: shipCountry,
+                    ship_postcode: shipPostcode,
+                    ship_city: shipCity,
+                    ship_state: shipState,
+                    ship_address_1: shipAddr1,
+                    ship_address_2: shipAddr2
                 },
                 timeout: 30000,
                 success: function(response) {

@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.3: Address country/state mapping fix for international addresses)
-define('EAO_PLUGIN_VERSION', '5.1.3');
+// Plugin version constant (v5.1.4: ShipStation rates use transient shipping fields without save; address mapping improvements)
+define('EAO_PLUGIN_VERSION', '5.1.4');
 
 /**
  * Check if we should load EAO functionality
