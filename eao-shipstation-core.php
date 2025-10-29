@@ -478,6 +478,24 @@ function eao_ajax_shipstation_v2_get_rates_handler() {
         if ($posted_ship_addr1 !== '') { $order->set_shipping_address_1($posted_ship_addr1); }
         if ($posted_ship_addr2 !== '') { $order->set_shipping_address_2($posted_ship_addr2); }
 
+        // Debug what the server sees for shipping fields before validation
+        error_log('[EAO ShipStation AJAX Get Rates] Server shipping snapshot for order ' . $order_id . ': ' . json_encode(array(
+            'country' => $order->get_shipping_country(),
+            'postcode' => $order->get_shipping_postcode(),
+            'city' => $order->get_shipping_city(),
+            'state' => $order->get_shipping_state(),
+            'address_1' => $order->get_shipping_address_1(),
+            'address_2' => $order->get_shipping_address_2(),
+            'posted' => array(
+                'country' => $posted_ship_country,
+                'postcode' => $posted_ship_postcode,
+                'city' => $posted_ship_city,
+                'state' => $posted_ship_state,
+                'address_1' => $posted_ship_addr1,
+                'address_2' => $posted_ship_addr2,
+            )
+        )));
+
         // Check if order actually needs shipping by examining products
         $needs_shipping = false;
         foreach ($order->get_items() as $item) {
@@ -497,8 +515,16 @@ function eao_ajax_shipstation_v2_get_rates_handler() {
         }        
 
         if (empty($order->get_shipping_postcode()) || empty($order->get_shipping_country())) {
-            error_log('[EAO ShipStation AJAX Get Rates] Order ID ' . $order_id . ' is missing essential shipping address components (postcode or country).');
-            wp_send_json_error(array('message' => __('Order is missing essential shipping address details (postcode or country). Please complete the shipping address.', 'enhanced-admin-order')));
+            $missing = array();
+            if (empty($order->get_shipping_country())) { $missing[] = 'country'; }
+            if (empty($order->get_shipping_postcode())) { $missing[] = 'postcode'; }
+            $detail = 'Server saw: country="' . esc_html($order->get_shipping_country()) . '", postcode="' . esc_html($order->get_shipping_postcode()) . '"';
+            $posted_detail = 'Posted: country="' . esc_html($posted_ship_country) . '", postcode="' . esc_html($posted_ship_postcode) . '"';
+            error_log('[EAO ShipStation AJAX Get Rates] Missing essential shipping components (' . implode(', ', $missing) . '). ' . $detail . '. ' . $posted_detail);
+            wp_send_json_error(array(
+                'message' => __('Order is missing essential shipping address details (postcode or country). Please complete the shipping address.', 'enhanced-admin-order'),
+                'error_details' => $detail . '. ' . $posted_detail
+            ));
             return;
         }
         

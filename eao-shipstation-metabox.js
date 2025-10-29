@@ -193,13 +193,27 @@
                          eaoShipStationParams.ajaxUrl : 
                          (typeof ajaxurl !== 'undefined' ? ajaxurl : '/wp-admin/admin-ajax.php');
             
-            // Collect current shipping address from the editor (do not require save)
-            var shipCountry = jQuery('#shipping_country').val() || jQuery('#eao_shipping_country').val() || '';
-            var shipPostcode = jQuery('#eao_shipping_postcode').val() || '';
-            var shipCity = jQuery('#eao_shipping_city').val() || '';
-            var shipState = jQuery('#shipping_state').val() || jQuery('#eao_shipping_state').val() || '';
-            var shipAddr1 = jQuery('#eao_shipping_address_1').val() || '';
-            var shipAddr2 = jQuery('#eao_shipping_address_2').val() || '';
+            // Collect current shipping address (prefer module state, fallback to hidden inputs)
+            var pendingShip = (typeof window.pendingShippingAddress !== 'undefined' && window.pendingShippingAddress) ? window.pendingShippingAddress : null;
+            var initialShip = (window.EAO && window.EAO.ChangeDetection && window.EAO.ChangeDetection.initialOrderData) ? (window.EAO.ChangeDetection.initialOrderData.shipping_address_fields || null) : null;
+            var shipCountry = (pendingShip && pendingShip.country) || (initialShip && initialShip.country) || jQuery('#shipping_country').val() || jQuery('#eao_shipping_country').val() || '';
+            var shipPostcode = (pendingShip && pendingShip.postcode) || (initialShip && initialShip.postcode) || jQuery('#eao_shipping_postcode').val() || '';
+            var shipCity = (pendingShip && pendingShip.city) || (initialShip && initialShip.city) || jQuery('#eao_shipping_city').val() || '';
+            var shipState = (pendingShip && pendingShip.state) || (initialShip && initialShip.state) || jQuery('#shipping_state').val() || jQuery('#eao_shipping_state').val() || '';
+            var shipAddr1 = (pendingShip && pendingShip.address_1) || (initialShip && initialShip.address_1) || jQuery('#eao_shipping_address_1').val() || '';
+            var shipAddr2 = (pendingShip && pendingShip.address_2) || (initialShip && initialShip.address_2) || jQuery('#eao_shipping_address_2').val() || '';
+
+            if (window.eaoDebugSS) {
+                console.log('[EAO ShipStation Debug] Shipping payload (chosen source -> server):', {
+                    source: pendingShip ? 'pendingShippingAddress' : (initialShip ? 'initialOrderData' : 'dom'),
+                    country: shipCountry,
+                    postcode: shipPostcode,
+                    city: shipCity,
+                    state: shipState,
+                    address_1: shipAddr1,
+                    address_2: shipAddr2
+                });
+            }
 
             // Make AJAX request (include transient shipping fields so server can compute without a save)
             jQuery.ajax({
