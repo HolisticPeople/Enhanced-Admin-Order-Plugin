@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.11: Re-enable request button after void + initial label fill; deploy to staging)
-define('EAO_PLUGIN_VERSION', '5.1.11');
+// Plugin version constant (v5.1.12: Gray out after send; immediate re-enable on void; stronger initial label)
+define('EAO_PLUGIN_VERSION', '5.1.12');
 
 /**
  * Check if we should load EAO functionality
