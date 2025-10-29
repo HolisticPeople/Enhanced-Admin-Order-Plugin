@@ -170,6 +170,8 @@
                     if (!isNaN(num)) { amt = num; }
                 }
                 if (!isNaN(amt)) { $('#eao-pp-amount').val(amt.toFixed(2)); }
+                // Update request button label if available
+                try { if (typeof eaoUpdateRequestButton === 'function') { eaoUpdateRequestButton(); } } catch(_){ }
             } catch(_){ }
         });
 
@@ -580,7 +582,9 @@
             }
         }
         eaoUpdateRequestButton();
-        setInterval(eaoUpdateRequestButton, 1200);
+        // Avoid constant polling; update on user actions
+        $(document).on('change keyup', '#eao-pp-amount', eaoUpdateRequestButton);
+        $(document).on('click', '#eao-pp-copy-gt', eaoUpdateRequestButton);
         $(document).on('change', 'input[name="eao-pp-line-mode"], #eao-pp-request-email', eaoUpdateRequestButton);
 
         $('#eao-pp-send-request').on('click', function(){

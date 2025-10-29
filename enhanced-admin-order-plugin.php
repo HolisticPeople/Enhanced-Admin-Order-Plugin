@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.9: Fix invoice amount to use staged Grand Total; better error details; include pending invoice items)
-define('EAO_PLUGIN_VERSION', '5.1.9');
+// Plugin version constant (v5.1.10: Tie button label to Copy Grand Total/amount changes; deploy-ready)
+define('EAO_PLUGIN_VERSION', '5.1.10');
 
 /**
  * Check if we should load EAO functionality
