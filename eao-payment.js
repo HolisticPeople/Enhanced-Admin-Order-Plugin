@@ -598,6 +598,11 @@
                     }
                 } else {
                     var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to send payment request';
+                    try {
+                        if (resp && resp.data && resp.data.stripe && resp.data.stripe.error && resp.data.stripe.error.message) {
+                            err += ': ' + resp.data.stripe.error.message;
+                        }
+                    } catch(_){ }
                     $msg.html('<div class="notice notice-error"><p>'+err+'</p></div>');
                 }
             }, 'json');

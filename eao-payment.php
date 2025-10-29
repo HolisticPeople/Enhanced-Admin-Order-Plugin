@@ -1217,6 +1217,8 @@ function eao_stripe_send_payment_request() {
         // immediate due
         'due_date' => time(),
         'metadata[order_id]' => $order_id,
+        // Ensure the invoice captures the invoice items we just created
+        'pending_invoice_items_behavior' => 'include',
     );
     $pm_types = array('card');
     if ($allow_ach) { $pm_types[] = 'us_bank_account'; }
