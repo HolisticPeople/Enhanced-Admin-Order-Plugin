@@ -1085,6 +1085,7 @@ function eao_stripe_send_payment_request() {
     $email = sanitize_email($_POST['email'] ?? '');
     $mode  = in_array(($_POST['mode'] ?? 'grand'), array('grand','itemized'), true) ? $_POST['mode'] : 'grand';
     $gw    = isset($_POST['gateway']) ? sanitize_text_field($_POST['gateway']) : 'stripe_live';
+    $amount_override = isset($_POST['amount_override']) ? floatval($_POST['amount_override']) : 0.0;
 
     $opts = get_option('eao_stripe_settings', array());
     $secret = ($gw === 'stripe_live') ? ($opts['live_secret'] ?? '') : ($opts['test_secret'] ?? '');
@@ -1116,7 +1117,9 @@ function eao_stripe_send_payment_request() {
 
     // Optional: reuse open invoice with same remaining amount
     $existing_invoice_id = (string) $order->get_meta('_eao_stripe_invoice_id', true);
-    $expected_cents = (int) round(((float) $order->get_total()) * 100);
+    $expected_cents = ($amount_override > 0.0)
+        ? (int) round($amount_override * 100)
+        : (int) round(((float) $order->get_total()) * 100);
     if ($existing_invoice_id) {
         $inv_resp = wp_remote_get('https://api.stripe.com/v1/invoices/' . rawurlencode($existing_invoice_id), array('headers' => array('Authorization' => 'Bearer ' . $secret)));
         if (!is_wp_error($inv_resp)) {
@@ -1144,7 +1147,9 @@ function eao_stripe_send_payment_request() {
 
     // Create invoice items
     if ($mode === 'grand') {
-        $amount_cents = (int) round(((float) $order->get_total()) * 100);
+        $amount_cents = ($amount_override > 0.0)
+            ? (int) round($amount_override * 100)
+            : (int) round(((float) $order->get_total()) * 100);
         $ii = wp_remote_post('https://api.stripe.com/v1/invoiceitems', array(
             'headers' => $headers,
             'body' => array(

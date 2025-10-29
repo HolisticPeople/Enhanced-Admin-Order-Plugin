@@ -564,6 +564,20 @@
             var mode = $('input[name="eao-pp-line-mode"]:checked').val() || 'grand';
             var gateway = $('#eao-pp-gateway').val();
             var $msg = $('#eao-pp-request-messages');
+            function getGrandTotal(){
+                try {
+                    var s = window.currentOrderSummaryData || {};
+                    var gt = (typeof s.grand_total !== 'undefined') ? parseFloat(s.grand_total) : parseFloat(s.grand_total_raw);
+                    if (!isNaN(gt)) return gt;
+                } catch(_){ }
+                try {
+                    var txt = $('.eao-grand-total-line .eao-summary-monetary-value, .eao-grand-total-value, #eao-grand-total-value, .grand-total, [data-field="grand_total"]').first().text() || '';
+                    var num = parseFloat(String(txt).replace(/[^0-9.\-]/g,''));
+                    if (!isNaN(num)) return num;
+                } catch(_){ }
+                return NaN;
+            }
+            var amountOverride = getGrandTotal();
             $msg.html('<div class="notice notice-info"><p>Sending payment request...</p></div>');
             $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
                 action: 'eao_stripe_send_payment_request',
@@ -571,7 +585,8 @@
                 order_id: orderId,
                 email: email,
                 mode: mode,
-                gateway: gateway
+                gateway: gateway,
+                amount_override: isNaN(amountOverride) ? '' : amountOverride
             }, function(resp){
                 if (resp && resp.success) {
                     var url = resp.data && resp.data.url ? resp.data.url : '';
