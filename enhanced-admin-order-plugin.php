@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.13: Fix invoice due_date with 10-min buffer to satisfy Stripe requirement; staging deploy)
-define('EAO_PLUGIN_VERSION', '5.1.13');
+// Plugin version constant (v5.1.14: Itemized invoices include points/coupon adjustment so total matches staged Grand Total; staging deploy)
+define('EAO_PLUGIN_VERSION', '5.1.14');
 
 /**
  * Check if we should load EAO functionality

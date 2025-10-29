@@ -1187,7 +1187,8 @@ function eao_stripe_send_payment_request() {
         ));
         if (is_wp_error($ii)) { wp_send_json_error(array('message' => 'Stripe: invoice item failed: '.$ii->get_error_message())); }
     } else {
-        // Itemized: products
+        // Itemized: products + shipping + fees; then adjustment to match staged grand total (discounts/points)
+        $sum_created_cents = 0;
         foreach ($order->get_items('line_item') as $item) {
             $line_total = (float) $item->get_total() + (float) $item->get_total_tax();
             if ($line_total <= 0) { continue; }
@@ -1205,6 +1206,8 @@ function eao_stripe_send_payment_request() {
                 )
             ));
             if (is_wp_error($ii)) { wp_send_json_error(array('message' => 'Stripe: invoice item failed: '.$ii->get_error_message())); }
+            $created = json_decode(wp_remote_retrieve_body($ii), true);
+            if (!empty($created['amount'])) { $sum_created_cents += (int) $created['amount']; }
         }
         // Shipping
         $shipping_total = (float) $order->get_shipping_total() + (float) $order->get_shipping_tax();
@@ -1220,6 +1223,8 @@ function eao_stripe_send_payment_request() {
                 )
             ));
             if (is_wp_error($ii)) { wp_send_json_error(array('message' => 'Stripe: invoice item (shipping) failed: '.$ii->get_error_message())); }
+            $created = json_decode(wp_remote_retrieve_body($ii), true);
+            if (!empty($created['amount'])) { $sum_created_cents += (int) $created['amount']; }
         }
         // Fees (positive only)
         foreach ($order->get_fees() as $fee) {
@@ -1236,6 +1241,27 @@ function eao_stripe_send_payment_request() {
                 )
             ));
             if (is_wp_error($ii)) { wp_send_json_error(array('message' => 'Stripe: invoice item (fee) failed: '.$ii->get_error_message())); }
+            $created = json_decode(wp_remote_retrieve_body($ii), true);
+            if (!empty($created['amount'])) { $sum_created_cents += (int) $created['amount']; }
+        }
+        // Adjustment delta to include coupons/points so Stripe total matches staged grand total
+        $expected_cents = ($amount_override > 0.0)
+            ? (int) round($amount_override * 100)
+            : (int) round(((float) $order->get_total()) * 100);
+        $delta_cents = $expected_cents - $sum_created_cents;
+        if ($delta_cents !== 0) {
+            $descAdj = ($delta_cents < 0) ? 'Discount/Points adjustment' : 'Adjustment';
+            $ii = wp_remote_post('https://api.stripe.com/v1/invoiceitems', array(
+                'headers' => $headers,
+                'body' => array(
+                    'customer' => $stripe_customer_id,
+                    'amount'   => (int) $delta_cents,
+                    'currency' => strtolower($currency),
+                    'description' => $descAdj,
+                    'metadata[order_id]' => $order_id
+                )
+            ));
+            if (is_wp_error($ii)) { wp_send_json_error(array('message' => 'Stripe: invoice item (adjustment) failed: '.$ii->get_error_message())); }
         }
     }
 
