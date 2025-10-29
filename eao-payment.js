@@ -594,6 +594,9 @@
         $(document).on('change keyup', '#eao-pp-amount', eaoUpdateRequestButton);
         $(document).on('click', '#eao-pp-copy-gt', eaoUpdateRequestButton);
         $(document).on('change', 'input[name="eao-pp-line-mode"], #eao-pp-request-email', eaoUpdateRequestButton);
+        // Ensure initial value appears even if summary loads a bit later
+        setTimeout(eaoUpdateRequestButton, 600);
+        setTimeout(eaoUpdateRequestButton, 1500);
 
         $('#eao-pp-send-request').on('click', function(){
             var orderId = $('#eao-pp-order-id').val();
@@ -655,6 +658,14 @@
             if (!invoiceId) { $msg.html('<div class="notice notice-warning"><p>No existing invoice to void.</p></div>'); return; }
             if (!window.confirm('Void the existing payment request?')) { return; }
             $msg.html('<div class="notice notice-info"><p>Voiding invoice...</p></div>');
+            // Immediately re-enable send button; if server fails, we'll revert below
+            var prevId = $('#eao-pp-invoice-id').val()||'';
+            var prevStatus = $('#eao-pp-invoice-status').val()||'';
+            $('#eao-pp-void-invoice').hide();
+            $('#eao-pp-invoice-id').val('');
+            $('#eao-pp-invoice-status').val('void');
+            $('#eao-pp-send-request').prop('disabled', false);
+            eaoUpdateRequestButton();
             $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
                 action: 'eao_stripe_void_invoice',
                 nonce: $('#eao_payment_mockup_nonce').val(),
@@ -664,13 +675,15 @@
             }, function(resp){
                 if (resp && resp.success) {
                     $msg.html('<div class="notice notice-success"><p>Payment request voided.</p></div>');
-                    $('#eao-pp-void-invoice').hide();
-                    $('#eao-pp-invoice-id').val('');
-                    $('#eao-pp-invoice-status').val('void');
-                    $('#eao-pp-send-request').prop('disabled', false);
                 } else {
                     var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to void payment request';
                     $msg.html('<div class="notice notice-error"><p>'+err+'</p></div>');
+                    // Revert UI to previous state since server reported failure
+                    $('#eao-pp-void-invoice').show();
+                    $('#eao-pp-invoice-id').val(prevId);
+                    $('#eao-pp-invoice-status').val(prevStatus);
+                    $('#eao-pp-send-request').prop('disabled', true);
+                    eaoUpdateRequestButton();
                 }
             }, 'json');
         });
