@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.2: Fixed Create New Order button blocked by performance optimization)
-define('EAO_PLUGIN_VERSION', '5.1.2');
+// Plugin version constant (v5.1.3: Address country/state mapping fix for international addresses)
+define('EAO_PLUGIN_VERSION', '5.1.3');
 
 /**
  * Check if we should load EAO functionality
