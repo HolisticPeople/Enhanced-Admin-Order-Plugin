@@ -232,6 +232,33 @@
             // Populate all fields we have values for
             for (const key in fieldsToUse) {
                 if (!Object.prototype.hasOwnProperty.call(fieldsToUse, key)) continue;
+                // Special handling for country/state: these inputs use WC IDs without the eao_ prefix
+                if (key === 'country') {
+                    const countryVal = fieldsToUse[key] || '';
+                    const $country = $('#' + addressType + '_country');
+                    const $countryAlt = $('#eao_' + addressType + '_country'); // fallback if present in older markup
+                    if ($country && $country.length) {
+                        $country.val(countryVal).trigger('change');
+                    } else if ($countryAlt && $countryAlt.length) {
+                        $countryAlt.val(countryVal).trigger('change');
+                    }
+                    continue;
+                }
+                if (key === 'state') {
+                    const stateVal = fieldsToUse[key] || '';
+                    // Delay to allow country change handlers (wc_country_select) to rebuild state options
+                    setTimeout(function(){
+                        const $state = $('#' + addressType + '_state');
+                        const $stateAlt = $('#eao_' + addressType + '_state');
+                        if ($state && $state.length) {
+                            $state.val(stateVal).trigger('change');
+                        } else if ($stateAlt && $stateAlt.length) {
+                            $stateAlt.val(stateVal).trigger('change');
+                        }
+                    }, 50);
+                    continue;
+                }
+
                 const $inputField = $('#eao_' + addressType + '_' + key);
                 if ($inputField && $inputField.length) {
                     if (key === 'phone') {

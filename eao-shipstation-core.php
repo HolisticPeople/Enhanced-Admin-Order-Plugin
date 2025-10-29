@@ -463,6 +463,23 @@ function eao_ajax_shipstation_v2_get_rates_handler() {
             return;
         }
 
+        // Apply transient (unsaved) shipping fields from the request so users can get rates without saving
+        $posted_ship_country  = isset($_POST['ship_country'])   ? sanitize_text_field( wp_unslash( $_POST['ship_country'] ) )   : '';
+        $posted_ship_postcode = isset($_POST['ship_postcode'])  ? sanitize_text_field( wp_unslash( $_POST['ship_postcode'] ) )  : '';
+        $posted_ship_city     = isset($_POST['ship_city'])      ? sanitize_text_field( wp_unslash( $_POST['ship_city'] ) )      : '';
+        $posted_ship_state    = isset($_POST['ship_state'])     ? sanitize_text_field( wp_unslash( $_POST['ship_state'] ) )     : '';
+        $posted_ship_addr1    = isset($_POST['ship_address_1']) ? sanitize_text_field( wp_unslash( $_POST['ship_address_1'] ) ) : '';
+        $posted_ship_addr2    = isset($_POST['ship_address_2']) ? sanitize_text_field( wp_unslash( $_POST['ship_address_2'] ) ) : '';
+
+        if ($posted_ship_country !== '') { $order->set_shipping_country($posted_ship_country); }
+        if ($posted_ship_postcode !== '') { $order->set_shipping_postcode($posted_ship_postcode); }
+        if ($posted_ship_city !== '') { $order->set_shipping_city($posted_ship_city); }
+        if ($posted_ship_state !== '') { $order->set_shipping_state($posted_ship_state); }
+        if ($posted_ship_addr1 !== '') { $order->set_shipping_address_1($posted_ship_addr1); }
+        if ($posted_ship_addr2 !== '') { $order->set_shipping_address_2($posted_ship_addr2); }
+
+        // Debug removed for production
+
         // Check if order actually needs shipping by examining products
         $needs_shipping = false;
         foreach ($order->get_items() as $item) {

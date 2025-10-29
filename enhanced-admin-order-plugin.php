@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.2: Fixed Create New Order button blocked by performance optimization)
-define('EAO_PLUGIN_VERSION', '5.1.2');
+// Plugin version constant (v5.1.7: Remove debug logs and error_details; production ready)
+define('EAO_PLUGIN_VERSION', '5.1.7');
 
 /**
  * Check if we should load EAO functionality
