@@ -170,6 +170,8 @@
                     if (!isNaN(num)) { amt = num; }
                 }
                 if (!isNaN(amt)) { $('#eao-pp-amount').val(amt.toFixed(2)); }
+                // Update request button label if available
+                try { if (typeof eaoUpdateRequestButton === 'function') { eaoUpdateRequestButton(); } } catch(_){ }
             } catch(_){ }
         });
 
@@ -555,6 +557,135 @@
             }).always(function(){
                 $btn.prop('disabled', false);
             });
+        });
+
+        // --- Stripe Payment Request (Invoice) ---
+        function eaoUpdateRequestButton(){
+            var $btn = $('#eao-pp-send-request');
+            if (!$btn.length) return;
+            // Disable/enable based on existing invoice meta
+            try {
+                var invId = $('#eao-pp-invoice-id').val()||'';
+                var invStatus = String($('#eao-pp-invoice-status').val()||'').toLowerCase();
+                var active = (invId && invStatus !== 'void');
+                $btn.prop('disabled', !!active);
+                $('#eao-pp-void-invoice').toggle(!!active);
+            } catch(_){ }
+            function getGrandTotal(){
+                try {
+                    var s = window.currentOrderSummaryData || {};
+                    var gt = (typeof s.grand_total !== 'undefined') ? parseFloat(s.grand_total) : parseFloat(s.grand_total_raw);
+                    if (!isNaN(gt)) return gt;
+                } catch(_){ }
+                try {
+                    var txt = $('.eao-grand-total-line .eao-summary-monetary-value, .eao-grand-total-value, #eao-grand-total-value, .grand-total, [data-field="grand_total"]').first().text() || '';
+                    var num = parseFloat(String(txt).replace(/[^0-9.\-]/g,''));
+                    if (!isNaN(num)) return num;
+                } catch(_){ }
+                return NaN;
+            }
+            var val = getGrandTotal();
+            if (!isNaN(val)) {
+                $btn.text('Request payment of $' + val.toFixed(2));
+            }
+        }
+        eaoUpdateRequestButton();
+        // Avoid constant polling; update on user actions
+        $(document).on('change keyup', '#eao-pp-amount', eaoUpdateRequestButton);
+        $(document).on('click', '#eao-pp-copy-gt', eaoUpdateRequestButton);
+        $(document).on('change', 'input[name="eao-pp-line-mode"], #eao-pp-request-email', eaoUpdateRequestButton);
+        // Ensure initial value appears even if summary loads a bit later
+        setTimeout(eaoUpdateRequestButton, 600);
+        setTimeout(eaoUpdateRequestButton, 1500);
+
+        $('#eao-pp-send-request').on('click', function(){
+            var orderId = $('#eao-pp-order-id').val();
+            var email = $('#eao-pp-request-email').val() || '';
+            var mode = $('input[name="eao-pp-line-mode"]:checked').val() || 'grand';
+            var gateway = $('#eao-pp-gateway').val();
+            var $msg = $('#eao-pp-request-messages');
+            function getGrandTotal(){
+                try {
+                    var s = window.currentOrderSummaryData || {};
+                    var gt = (typeof s.grand_total !== 'undefined') ? parseFloat(s.grand_total) : parseFloat(s.grand_total_raw);
+                    if (!isNaN(gt)) return gt;
+                } catch(_){ }
+                try {
+                    var txt = $('.eao-grand-total-line .eao-summary-monetary-value, .eao-grand-total-value, #eao-grand-total-value, .grand-total, [data-field="grand_total"]').first().text() || '';
+                    var num = parseFloat(String(txt).replace(/[^0-9.\-]/g,''));
+                    if (!isNaN(num)) return num;
+                } catch(_){ }
+                return NaN;
+            }
+            var amountOverride = getGrandTotal();
+            $msg.html('<div class="notice notice-info"><p>Sending payment request...</p></div>');
+            $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
+                action: 'eao_stripe_send_payment_request',
+                nonce: $('#eao_payment_mockup_nonce').val(),
+                order_id: orderId,
+                email: email,
+                mode: mode,
+                gateway: gateway,
+                amount_override: isNaN(amountOverride) ? '' : amountOverride
+            }, function(resp){
+                if (resp && resp.success) {
+                    var url = resp.data && resp.data.url ? resp.data.url : '';
+                    var html = '<div class="notice notice-success"><p>Payment request sent.' + (url ? ' <a target=\"_blank\" href=\"'+url+'\">Open invoice</a>' : '') + '</p></div>';
+                    $msg.html(html);
+                    if (resp.data && resp.data.invoice_id) {
+                        $('#eao-pp-invoice-id').val(resp.data.invoice_id);
+                        $('#eao-pp-invoice-status').val(resp.data.status || 'open');
+                        $('#eao-pp-void-invoice').show();
+                        $('#eao-pp-send-request').prop('disabled', true);
+                    }
+                } else {
+                    var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to send payment request';
+                    try {
+                        if (resp && resp.data && resp.data.stripe && resp.data.stripe.error && resp.data.stripe.error.message) {
+                            err += ': ' + resp.data.stripe.error.message;
+                        }
+                    } catch(_){ }
+                    $msg.html('<div class=\"notice notice-error\"><p>'+err+'</p></div>');
+                }
+            }, 'json');
+        });
+
+        $('#eao-pp-void-invoice').on('click', function(){
+            var orderId = $('#eao-pp-order-id').val();
+            var invoiceId = $('#eao-pp-invoice-id').val();
+            var gateway = $('#eao-pp-gateway').val();
+            var $msg = $('#eao-pp-request-messages');
+            if (!invoiceId) { $msg.html('<div class="notice notice-warning"><p>No existing invoice to void.</p></div>'); return; }
+            if (!window.confirm('Void the existing payment request?')) { return; }
+            $msg.html('<div class="notice notice-info"><p>Voiding invoice...</p></div>');
+            // Immediately re-enable send button; if server fails, we'll revert below
+            var prevId = $('#eao-pp-invoice-id').val()||'';
+            var prevStatus = $('#eao-pp-invoice-status').val()||'';
+            $('#eao-pp-void-invoice').hide();
+            $('#eao-pp-invoice-id').val('');
+            $('#eao-pp-invoice-status').val('void');
+            $('#eao-pp-send-request').prop('disabled', false);
+            eaoUpdateRequestButton();
+            $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
+                action: 'eao_stripe_void_invoice',
+                nonce: $('#eao_payment_mockup_nonce').val(),
+                order_id: orderId,
+                invoice_id: invoiceId,
+                gateway: gateway
+            }, function(resp){
+                if (resp && resp.success) {
+                    $msg.html('<div class="notice notice-success"><p>Payment request voided.</p></div>');
+                } else {
+                    var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to void payment request';
+                    $msg.html('<div class="notice notice-error"><p>'+err+'</p></div>');
+                    // Revert UI to previous state since server reported failure
+                    $('#eao-pp-void-invoice').show();
+                    $('#eao-pp-invoice-id').val(prevId);
+                    $('#eao-pp-invoice-status').val(prevStatus);
+                    $('#eao-pp-send-request').prop('disabled', true);
+                    eaoUpdateRequestButton();
+                }
+            }, 'json');
         });
     });
 })(jQuery);

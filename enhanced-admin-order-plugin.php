@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.7: Remove debug logs and error_details; production ready)
-define('EAO_PLUGIN_VERSION', '5.1.7');
+// Plugin version constant (v5.1.14: Itemized invoices include points/coupon adjustment so total matches staged Grand Total; staging deploy)
+define('EAO_PLUGIN_VERSION', '5.1.14');
 
 /**
  * Check if we should load EAO functionality
