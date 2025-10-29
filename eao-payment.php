@@ -77,6 +77,10 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
     }
     $gateway_notice_style = ($gateway_label_text === '') ? 'display:none;' : '';
 
+    $existing_invoice_id = (string) $order->get_meta('_eao_stripe_invoice_id', true);
+    $existing_invoice_status = (string) $order->get_meta('_eao_stripe_invoice_status', true);
+    $has_active_invoice = ($existing_invoice_id !== '' && strtolower($existing_invoice_status) !== 'void');
+
     ?>
     <div id="eao-payment-processing-container">
         <div style="display:flex; gap:16px; align-items:flex-start;">
@@ -159,15 +163,16 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
 
         <div id="eao-pp-request-panel" style="margin-top:8px;">
             <p style="margin:6px 0 8px 0;">
-                <button type="button" id="eao-pp-send-request" class="button">Send Payment Request</button>
-                <button type="button" id="eao-pp-void-invoice" class="button button-secondary" style="display:none;">Void Payment Request</button>
+                <button type="button" id="eao-pp-send-request" class="button"<?php echo $has_active_invoice ? ' disabled="disabled"' : ''; ?>>Send Payment Request</button>
+                <button type="button" id="eao-pp-void-invoice" class="button button-secondary" style="<?php echo $has_active_invoice ? '' : 'display:none;'; ?>">Void Payment Request</button>
             </p>
             <div id="eao-pp-request-options" style="margin:6px 0 10px 0;">
                 <label>Email to send to: <input type="email" id="eao-pp-request-email" value="<?php echo esc_attr($billing_email); ?>" style="width:260px" /></label>
                 <span style="margin-left:12px;">Amount source:</span>
                 <label style="margin-left:6px;"><input type="radio" name="eao-pp-line-mode" value="grand" checked /> Grand total</label>
                 <label style="margin-left:6px;"><input type="radio" name="eao-pp-line-mode" value="itemized" /> Itemized</label>
-                <input type="hidden" id="eao-pp-invoice-id" value="<?php echo esc_attr((string)$order->get_meta('_eao_stripe_invoice_id', true)); ?>" />
+                <input type="hidden" id="eao-pp-invoice-id" value="<?php echo esc_attr($existing_invoice_id); ?>" />
+                <input type="hidden" id="eao-pp-invoice-status" value="<?php echo esc_attr($existing_invoice_status); ?>" />
             </div>
             <div id="eao-pp-request-messages"></div>
         </div>

@@ -563,6 +563,14 @@
         function eaoUpdateRequestButton(){
             var $btn = $('#eao-pp-send-request');
             if (!$btn.length) return;
+            // Disable/enable based on existing invoice meta
+            try {
+                var invId = $('#eao-pp-invoice-id').val()||'';
+                var invStatus = String($('#eao-pp-invoice-status').val()||'').toLowerCase();
+                var active = (invId && invStatus !== 'void');
+                $btn.prop('disabled', !!active);
+                $('#eao-pp-void-invoice').toggle(!!active);
+            } catch(_){ }
             function getGrandTotal(){
                 try {
                     var s = window.currentOrderSummaryData || {};
@@ -619,11 +627,13 @@
             }, function(resp){
                 if (resp && resp.success) {
                     var url = resp.data && resp.data.url ? resp.data.url : '';
-                    var html = '<div class="notice notice-success"><p>Payment request sent.' + (url ? ' <a target="_blank" href="'+url+'">Open invoice</a>' : '') + '</p></div>';
+                    var html = '<div class="notice notice-success"><p>Payment request sent.' + (url ? ' <a target=\"_blank\" href=\"'+url+'\">Open invoice</a>' : '') + '</p></div>';
                     $msg.html(html);
                     if (resp.data && resp.data.invoice_id) {
                         $('#eao-pp-invoice-id').val(resp.data.invoice_id);
+                        $('#eao-pp-invoice-status').val(resp.data.status || 'open');
                         $('#eao-pp-void-invoice').show();
+                        $('#eao-pp-send-request').prop('disabled', true);
                     }
                 } else {
                     var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to send payment request';
@@ -632,7 +642,7 @@
                             err += ': ' + resp.data.stripe.error.message;
                         }
                     } catch(_){ }
-                    $msg.html('<div class="notice notice-error"><p>'+err+'</p></div>');
+                    $msg.html('<div class=\"notice notice-error\"><p>'+err+'</p></div>');
                 }
             }, 'json');
         });
@@ -655,6 +665,9 @@
                 if (resp && resp.success) {
                     $msg.html('<div class="notice notice-success"><p>Payment request voided.</p></div>');
                     $('#eao-pp-void-invoice').hide();
+                    $('#eao-pp-invoice-id').val('');
+                    $('#eao-pp-invoice-status').val('void');
+                    $('#eao-pp-send-request').prop('disabled', false);
                 } else {
                     var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to void payment request';
                     $msg.html('<div class="notice notice-error"><p>'+err+'</p></div>');
