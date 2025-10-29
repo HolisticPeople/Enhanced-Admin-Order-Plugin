@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.5: Add robust ShipStation shipping field sourcing + debug details)
-define('EAO_PLUGIN_VERSION', '5.1.5');
+// Plugin version constant (v5.1.6: Use address book canonical data for ShipStation POST)
+define('EAO_PLUGIN_VERSION', '5.1.6');
 
 /**
  * Check if we should load EAO functionality
