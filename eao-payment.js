@@ -558,6 +558,31 @@
         });
 
         // --- Stripe Payment Request (Invoice) ---
+        function eaoUpdateRequestButton(){
+            var $btn = $('#eao-pp-send-request');
+            if (!$btn.length) return;
+            function getGrandTotal(){
+                try {
+                    var s = window.currentOrderSummaryData || {};
+                    var gt = (typeof s.grand_total !== 'undefined') ? parseFloat(s.grand_total) : parseFloat(s.grand_total_raw);
+                    if (!isNaN(gt)) return gt;
+                } catch(_){ }
+                try {
+                    var txt = $('.eao-grand-total-line .eao-summary-monetary-value, .eao-grand-total-value, #eao-grand-total-value, .grand-total, [data-field="grand_total"]').first().text() || '';
+                    var num = parseFloat(String(txt).replace(/[^0-9.\-]/g,''));
+                    if (!isNaN(num)) return num;
+                } catch(_){ }
+                return NaN;
+            }
+            var val = getGrandTotal();
+            if (!isNaN(val)) {
+                $btn.text('Request payment of $' + val.toFixed(2));
+            }
+        }
+        eaoUpdateRequestButton();
+        setInterval(eaoUpdateRequestButton, 1200);
+        $(document).on('change', 'input[name="eao-pp-line-mode"], #eao-pp-request-email', eaoUpdateRequestButton);
+
         $('#eao-pp-send-request').on('click', function(){
             var orderId = $('#eao-pp-order-id').val();
             var email = $('#eao-pp-request-email').val() || '';

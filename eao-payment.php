@@ -1115,6 +1115,26 @@ function eao_stripe_send_payment_request() {
         $order->save();
     }
 
+    // SAFETY: Clear any pending invoice items for this customer (previous failed attempts)
+    // to prevent totals from accumulating when re-sending on the same order.
+    try {
+        $starting_after = '';
+        for ($page = 0; $page < 5; $page++) {
+            $list_url = 'https://api.stripe.com/v1/invoiceitems?customer=' . rawurlencode($stripe_customer_id) . '&pending=true&limit=100' . ($starting_after ? ('&starting_after=' . rawurlencode($starting_after)) : '');
+            $list_resp = wp_remote_get($list_url, array('headers' => array('Authorization' => 'Bearer ' . $secret)));
+            if (is_wp_error($list_resp)) { break; }
+            $list = json_decode(wp_remote_retrieve_body($list_resp), true);
+            if (!is_array($list) || empty($list['data'])) { break; }
+            foreach ($list['data'] as $pending_item) {
+                if (!empty($pending_item['id'])) {
+                    wp_remote_request('https://api.stripe.com/v1/invoiceitems/' . rawurlencode($pending_item['id']), array('method' => 'DELETE', 'headers' => array('Authorization' => 'Bearer ' . $secret)));
+                    $starting_after = (string) $pending_item['id'];
+                }
+            }
+            if (empty($list['has_more'])) { break; }
+        }
+    } catch (Exception $e) { /* swallow */ }
+
     // Optional: reuse open invoice with same remaining amount
     $existing_invoice_id = (string) $order->get_meta('_eao_stripe_invoice_id', true);
     $expected_cents = ($amount_override > 0.0)
@@ -1156,7 +1176,8 @@ function eao_stripe_send_payment_request() {
                 'customer' => $stripe_customer_id,
                 'amount'   => $amount_cents,
                 'currency' => strtolower($currency),
-                'description' => 'Order #' . $order_id
+                'description' => 'Order #' . $order_id,
+                'metadata[order_id]' => $order_id
             )
         ));
         if (is_wp_error($ii)) { wp_send_json_error(array('message' => 'Stripe: invoice item failed: '.$ii->get_error_message())); }
@@ -1174,7 +1195,8 @@ function eao_stripe_send_payment_request() {
                     'customer' => $stripe_customer_id,
                     'amount'   => (int) round($line_total * 100),
                     'currency' => strtolower($currency),
-                    'description' => $desc
+                    'description' => $desc,
+                    'metadata[order_id]' => $order_id
                 )
             ));
             if (is_wp_error($ii)) { wp_send_json_error(array('message' => 'Stripe: invoice item failed: '.$ii->get_error_message())); }
@@ -1188,7 +1210,8 @@ function eao_stripe_send_payment_request() {
                     'customer' => $stripe_customer_id,
                     'amount'   => (int) round($shipping_total * 100),
                     'currency' => strtolower($currency),
-                    'description' => 'Shipping'
+                    'description' => 'Shipping',
+                    'metadata[order_id]' => $order_id
                 )
             ));
             if (is_wp_error($ii)) { wp_send_json_error(array('message' => 'Stripe: invoice item (shipping) failed: '.$ii->get_error_message())); }
@@ -1203,7 +1226,8 @@ function eao_stripe_send_payment_request() {
                     'customer' => $stripe_customer_id,
                     'amount'   => (int) round($fee_total * 100),
                     'currency' => strtolower($currency),
-                    'description' => 'Fee: ' . $fee->get_name()
+                    'description' => 'Fee: ' . $fee->get_name(),
+                    'metadata[order_id]' => $order_id
                 )
             ));
             if (is_wp_error($ii)) { wp_send_json_error(array('message' => 'Stripe: invoice item (fee) failed: '.$ii->get_error_message())); }
