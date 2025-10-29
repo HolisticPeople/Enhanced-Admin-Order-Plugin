@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.0.70
+ * Version: 5.1.2
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.1: Points now update in real-time during quantity changes)
-define('EAO_PLUGIN_VERSION', '5.1.1');
+// Plugin version constant (v5.1.2: Fixed Create New Order button blocked by performance optimization)
+define('EAO_PLUGIN_VERSION', '5.1.2');
 
 /**
  * Check if we should load EAO functionality
@@ -41,12 +41,17 @@ function eao_should_load() {
         return true;
     }
     
-    // 2. WooCommerce orders list page (HPOS)
+    // 2. EAO create new order action (from dashboard or elsewhere)
+    if ( $pagenow === 'admin.php' && isset( $_GET['action'] ) && $_GET['action'] === 'eao_create_new_order' ) {
+        return true;
+    }
+    
+    // 3. WooCommerce orders list page (HPOS)
     if ( $pagenow === 'admin.php' && isset( $_GET['page'] ) && $_GET['page'] === 'wc-orders' ) {
         return true;
     }
     
-    // 3. WooCommerce orders list page (Legacy)
+    // 4. WooCommerce orders list page (Legacy)
     if ( $pagenow === 'edit.php' && isset( $_GET['post_type'] ) && $_GET['post_type'] === 'shop_order' ) {
         return true;
     }
