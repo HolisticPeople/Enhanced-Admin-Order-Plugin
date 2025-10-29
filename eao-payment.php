@@ -1243,8 +1243,8 @@ function eao_stripe_send_payment_request() {
     $body = array(
         'customer' => $stripe_customer_id,
         'collection_method' => 'send_invoice',
-        // immediate due
-        'due_date' => time(),
+        // immediate due (buffer a few minutes to avoid timezone/clock drift issues)
+        'due_date' => time() + 600,
         'metadata[order_id]' => $order_id,
         // Ensure the invoice captures the invoice items we just created
         'pending_invoice_items_behavior' => 'include',

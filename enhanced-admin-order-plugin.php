@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.12: Gray out after send; immediate re-enable on void; stronger initial label)
-define('EAO_PLUGIN_VERSION', '5.1.12');
+// Plugin version constant (v5.1.13: Fix invoice due_date with 10-min buffer to satisfy Stripe requirement; staging deploy)
+define('EAO_PLUGIN_VERSION', '5.1.13');
 
 /**
  * Check if we should load EAO functionality
