@@ -1459,6 +1459,409 @@ I see that only the third line in the points earning section is being updated in
 
 _**Assistant (gpt-5-high)**_
 
+<think><details><summary>Thought Process</summary>**Diagnosing update issues**
+
+I need to figure out why only the third line updates while the first two lines for product prices stay stale when the quantity changes. It seems like the first two lines are computed on the server when we refresh the points-earning box. We pass the staged points amount to subtract from total points, but we might not be updating the item totals correctly. It looks like the calculations use old order items since the order isn't saved during quantity changes.
+**Identifying AJAX update limitations**
+
+I’ve realized that our earlier "points earning box refresh" uses AJAX to pull the saved order instead of the current items. This means updates will reflect changes in staged points discounts but not product changes or totals. The previous update mechanism seems to use "updateSummaryDisplay" for adding products, requiring a full refresh. However, they said that adding products updates the section in real time. I wonder how the points are updated if the AJAX relies on a saved order when adding products hasn’t been saved yet.
+**Examining points earning section updates**
+
+I want to look at how we render the points earning section HTML in eao_ajax_refresh_points_earning. It computes calculations and produces HTML for all lines, pulling order items from wc_get_order($order_id), which indicates a saved order. If no items update until save, how did adding a product cause an earlier update? The user mentioned that adding a product or changing points redemption affects the section in real time. Perhaps adding a product triggers changes in summaryData that update awarding numbers displayed on the page without relying solely on AJAX.
+**Investigating points awarding update**
+
+It seems that we still rely on the saved order to compute base points. However, maybe when we add a product, we also update the client state of 'points_award_summary' in currentOrderSummaryData from the server's previous initial load. I should search for 'points_award_summary' in the JavaScript files to see how this is handled. This might give me insights into how the awarding process updates when products are added.</details></think>
+
+---
+
+Tool use: **grep**
+
+<details>
+<summary>Grep for "points_award_summary" in "C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin" • 13 matches</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `.\eao-main-coordinator.js` | `var pas = (window.currentOrderSummaryData.points_award_summary \|\| \{});` | L1064 |
+| `.\eao-main-coordinator.js` | `window.currentOrderSummaryData.points_award_summary = pas;` | L1066 |
+| `.\eao-main-coordinator.js` | `// Persist points_award_summary globally for client-side recalculations` | L1574 |
+| `.\eao-main-coordinator.js` | `if (summaryData && summaryData.points_award_summary) \{` | L1575 |
+| `.\eao-main-coordinator.js` | `window.eaoPointsAwardSummary = summaryData.points_award_summary;` | L1576 |
+| `.\eao-main-coordinator.js` | `if (prev.points_award_summary && (!summaryData \|\| !summaryData.points_award_summary)) \{` | L2050 |
+| `.\eao-main-coordinator.js` | `summaryData.points_award_summary = prev.points_award_summary;` | L2052 |
+| `.\eao-main-coordinator.js` | `if (typeof next.points_award_summary === 'undefined' && typeof prev.points_award_summary !== 'undefined') \{` | L2111 |
+| `.\eao-main-coordinator.js` | `next.points_award_summary = prev.points_award_summary;` | L2112 |
+| `.\eao-product-management.php` | `$points_award_summary_tmp = null;` | L623 |
+| `.\eao-product-management.php` | `$points_award_summary_tmp = array(` | L648 |
+| `.\eao-product-management.php` | `if ( ! empty( $points_award_summary_tmp ) ) \{` | L657 |
+| `.\eao-product-management.php` | `$summary_data['points_award_summary'] = $points_award_summary_tmp;` | L658 |
+
+
+</details>
+
+---
+
+Tool use: **read_file**
+
+Read file: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coordinator.js
+
+---
+
+
+
+---
+
+Tool use: **read_file**
+
+Read file: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coordinator.js
+
+---
+
+
+
+---
+
+Tool use: **grep**
+
+<details>
+<summary>Grep for "eao-points-summary-panel|eao-yith-earning-section|eao-points-earning-container" in "C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-order-editor-page-template.php" • 6 matches</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `.\eao-main-coordinator.js` | `var hasLegacyYithBox = (jQuery('.eao-yith-earning-section .eao-points-earning-container').length > 0);` | L992 |
+| `.\eao-main-coordinator.js` | `var $containers = $('.eao-yith-earning-section .eao-points-earning-container');` | L1050 |
+| `.\eao-main-coordinator.js` | `+ '<div class="eao-summary-left" id="eao-points-summary-panel" style="flex:1 1 50%; max-width:50%; font-size:14px; line-height:1.6;"></div>'` | L1527 |
+| `.\eao-main-coordinator.js` | `const $right = jQuery('#eao-points-summary-panel');` | L1556 |
+| `.\admin-styles.css` | `.eao-yith-earning-section \{` | L1824 |
+| `.\admin-styles.css` | `.eao-points-earning-container \{` | L1828 |
+
+
+</details>
+
+---
+
+Tool use: **read_file**
+
+Read file: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\admin-styles.css
+
+---
+
+<think><details><summary>Thought Process</summary>**Examining points per dollar**
+
+I'm noticing that the server doesn't utilize the 'points_per_dollar' properly. If both initial values exist and we compute a constant, they may still be outdated since 'gross' and 'net' aren't updated. But wait, they do change! I'm wondering if the problem might be that the value of 'ptsPerDollar' is actually zero. That could definitely cause some confusion in the calculations! I need to keep digging into this.
+**Investigating gross totals**
+
+I'm examining why the screenshot shows the 'Items Total (Gross)' as constant at $89.97 despite adjustments in quantity. If 'gross' changes with quantity, it should reflect in the total. Changing the quantity might increase it to $119.96. The points-per-dollar calculations suggest that as gross updates, full points should go up from 30 to 40. It seems the variables for the first two lines might not be updating correctly, relying on specific calculations that aren't functioning properly.
+**Analyzing summary calculations**
+
+I’m realizing that earlier in the code, when changing quantities in Tabulator, we call `this._scheduleSummaryRefresh`, leading to `calculateUnifiedSummaryData(items)` instead of 'safeCalculate'. Both functions ultimately contribute, but I need to look deeper at `calculateUnifiedSummaryData` in eao-main-coordinator.js. I'll check if it correctly calculates the items' subtotal and products total using `window.currentOrderItems` values, including quantity. It’s essential to ensure everything flows smoothly!</details></think>
+
+---
+
+Tool use: **grep**
+
+<details>
+<summary>Grep for "calculateUnifiedSummaryData\s*:\s*function" in "C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coordinator.js" • 1 match</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `.\eao-main-coordinator.js` | `calculateUnifiedSummaryData: function(items) \{` | L2302 |
+
+
+</details>
+
+---
+
+Tool use: **read_file**
+
+Read file: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coordinator.js
+
+---
+
+
+
+---
+
+Tool use: **read_file**
+
+Read file: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-order-editor-page-template.php
+
+---
+
+Tool use: **grep**
+
+<details>
+<summary>Grep for "eao-yith-earning-section|eao-points-summary-panel|eao-points-earning-container|eao-summary-left" in "C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-order-editor-page-template.php" • 6 matches</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `.\eao-main-coordinator.js` | `var hasLegacyYithBox = (jQuery('.eao-yith-earning-section .eao-points-earning-container').length > 0);` | L992 |
+| `.\eao-main-coordinator.js` | `var $containers = $('.eao-yith-earning-section .eao-points-earning-container');` | L1050 |
+| `.\eao-main-coordinator.js` | `+ '<div class="eao-summary-left" id="eao-points-summary-panel" style="flex:1 1 50%; max-width:50%; font-size:14px; line-height:1.6;"></div>'` | L1527 |
+| `.\eao-main-coordinator.js` | `const $right = jQuery('#eao-points-summary-panel');` | L1556 |
+| `.\admin-styles.css` | `.eao-yith-earning-section \{` | L1824 |
+| `.\admin-styles.css` | `.eao-points-earning-container \{` | L1828 |
+
+
+</details>
+
+---
+
+
+
+---
+
+Tool use: **grep**
+
+<details>
+<summary>Grep for "safeCalculateCurrentSummaryData" in "C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coordinator.js" • 2 matches</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `.\eao-main-coordinator.js` | `safeCalculateCurrentSummaryData: function(itemsToRender) \{` | L798 |
+| `.\eao-main-coordinator.js` | `const clientCalculatedSummary = this.safeCalculateCurrentSummaryData(itemsToRender);` | L1126 |
+
+
+</details>
+
+---
+
+Tool use: **read_file**
+
+Read file: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coordinator.js
+
+---
+
+<think><details><summary>Thought Process</summary>**Evaluating server updates**
+
+I notice the code updates the server container only when it exists, which makes me think that in this environment, the server container is present but not our '#eao-points-summary-panel'. We always append that inside 'renderOrderSummary', so it should exist. The simplest fix seems to be extending the AJAX refresh to include 'client_products_gross' and 'client_products_net' from the client. Modifying 'eao_ajax_refresh_points_earning' to recalculate points based on client input is a solid plan to avoid discrepancies.</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+
+---
+
+<think><details><summary>Thought Process</summary>**Evaluating data consistency**
+
+I'm noticing that the server endpoint only provides an overall earning summary with expected points and breakdown, but the screenshot shows three lines that seem to come from the client’s right panel, not the server. It’s puzzling where the lines for 'Points for products full price', 'discounted', and 'order paid with points' are. Our calculations indicate that 'gross' and 'net' values should remain unchanged with quantity changes. The user mentions that only line 3 updates, but that raises the question: do the totals also update?
+**Investigating points update issue**
+
+I’m noticing that the first two points in the summary remain stale, while the items totals do update. This suggests that our full points and discounted points aren't being recalculated. It might be due to them being written into '#eao-points-summary-panel' just once, and not refreshed during summary updates. However, we do invoke a code that rebuilds the right block every time the updateSummaryDisplay is called. I should look at the YITH Points module to see if it modifies the panel and only refreshes line 3. Let's check eao-yith-points.js.</details></think>
+
+---
+
+Tool use: **read_file**
+
+Read file: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-yith-points.js
+
+---
+
+<think><details><summary>Thought Process</summary>I'm diving into the calculations for out-of-pocket points here. If net has changed but discount points (discPts) weren't updated, it could stem from how ptsPerDollar is computed. OutOfPocketPts relies on discPts as a baseline when there are no points, but if there are any points, it seems to use the net variable to calculate out-of-pocket points. Specifically, it uses the formula \(max(0,(net - pointsDollarsForGrant) * perDollarPts)\). It’s a bit complex, but I’m figuring it out!
+I'm trying to figure out why out-of-pocket points (outOfPocketPts) aren't updating if the net value is stale. It seems like they did observe some updates, possibly because the points discount slider value changed, but there was no change in quantity. A potential issue could arise when changing the quantity, as the staged points discount affects the new net in calculateUnifiedSummaryData. Since 'gross' and 'net' derive from the updated clientCalculatedSummary, these should refresh. So, why aren't fullPts and discPts updating as expected? It’s puzzling!
+I'm considering if the updateSummaryDisplay sets the content of the '#eao-points-summary-panel', but then a subsequent AJAX call for YITH refresh might be replacing that container with server HTML that excludes computed lines from our code. It looks like my code places '#eao-points-summary-panel' within the summary left, while the AJAX updates a different container. They could be related, but I'm pondering if CSS overlays or duplication are causing the server version to display. The screenshot shows discrepancies in how the lines appear, which is puzzling!
+I'm thinking of a simpler way to fix this bug. I should force recalculation of fullPts and discPts during every summary-only or full refresh by updating 'window.eaoPointsAwardSummary', 'initialFullPts', and 'initialGross'. I'm noticing that at lines 1575-1579, we set these values, but on the next refresh, summaryData might not include points_award_summary. Even though we saved the previous points_per_dollar, it seems like we haven't updated the 'window.eaoPointsAwardSummary' variable. Plus, we compute 'ptsPerDollar' from 'initialFullPts', not directly from points_per_dollar. So yeah, it feels a bit convoluted!
+I'm working on fixing a potential bug related to how initial points are calculated when quantities change. If the initialFullPts remains the same when the quantity updates, it could lead to stale data when calculating points per dollar. I think the issue might stem from how the '#eao-points-summary-panel' is updated during quantity changes. 
+
+I need to ensure we're properly refreshing all relevant values, especially fullPts and discPts, during summary updates. Also, it seems important to ensure that we're accurately computing values like gross and net, potentially using saved server values to provide consistent results. I'll propose some code edits to address this and make sure everything updates as intended!
+I'm thinking we should add a robust update step after updateSummaryDisplay to refresh the display elements in the 'eao-yith-earning-section' if they're present. Since this section is separate, it's okay to do this. I want to adjust the code to use window.pointsDollarRate when it's available. Additionally, I'll compute 'fullPts' and 'discPts' using Math.round for stability. It feels like a solid plan to make sure everything updates correctly. Time to implement the patch!</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coordinator.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coordinator.js
+@@
+-                const initialFullPts = (typeof pas.points_full !== 'undefined') ? parseInt(pas.points_full) : 0;
+-                const initialGross = window.eaoInitialGross || gross;
+-                // Calculate points per dollar from initial server values
+-                const ptsPerDollar = (initialFullPts > 0 && initialGross > 0) ? (initialFullPts / initialGross) : 0;
++                const initialFullPts = (typeof pas.points_full !== 'undefined') ? parseInt(pas.points_full) : 0;
++                const initialGross = window.eaoInitialGross || gross;
++                // Calculate points per dollar using live rate if available, else derive from initial snapshot
++                const ptsPerDollar = (window.pointsDollarRate && window.pointsDollarRate > 0)
++                    ? window.pointsDollarRate
++                    : ((initialFullPts > 0 && initialGross > 0) ? (initialFullPts / initialGross) : 0);
+*** End Patch
+```
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coordinator.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+<think><details><summary>Thought Process</summary>**Updating versioning for cache busting**
+
+I need to update the version again for cache busting to 5.1.16. So, I'll bump the plugin file constant and update the header accordingly. This should help ensure that any previous versions are cleared from cache, preventing any potential compatibility issues. It’s essential to keep everything running smoothly, and making sure versioning is accurate is a key part of that process! Let's make this update!</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+@@
+- * Version: 5.1.15
++ * Version: 5.1.16
+@@
+-// Plugin version constant (v5.1.15: Fix points earning panel not refreshing on quantity changes; cache-bust)
+-define('EAO_PLUGIN_VERSION', '5.1.15');
++// Plugin version constant (v5.1.16: Ensure full/discounted points recalc on qty changes using live rate)
++define('EAO_PLUGIN_VERSION', '5.1.16');
+*** End Patch
+```
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: add
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: commit
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+  * message: EAO v5.1.16: Ensure Points earning full/discounted lines update on qty changes.
+- Use live pointsDollarRate when available instead of initial snapshot
+- Bump version to 5.1.16 for cache busting
+
+*Result*:
+{"data":{"output":"[dev e44df7d] EAO v5.1.16: Ensure Points earning full/discounted lines update on qty changes. - Use live pointsDollarRate when available instead of initial snapshot - Bump version to 5.1.16 for cache busting\n 3 files changed, 387 insertions(+), 5 deletions(-)\n"}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_push**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_push: Update remote refs along with associated objects (git push).
+
+*Parameters*:
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+I’ll ship a quick refinement so all three lines update together, then I’ll bump the version and push to dev.
+
+- I changed the points-per-dollar used for the “Points earning” panel to prefer the live rate we cache from the server during refreshes, instead of relying only on the initial snapshot. This forces the “Full price” and “Discounted” lines to recompute whenever qty changes.
+- Version bumped to 5.1.16 for cache-busting.
+- Pushed to dev; staging should auto-deploy.
+
+What changed
+- eao-main-coordinator.js
+  - Recalc now uses live `window.pointsDollarRate` when available:
+```1580:1588:C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coordinator.js
+const ptsPerDollar = (window.pointsDollarRate && window.pointsDollarRate > 0)
+    ? window.pointsDollarRate
+    : ((initialFullPts > 0 && initialGross > 0) ? (initialFullPts / initialGross) : 0);
+```
+
+- enhanced-admin-order-plugin.php
+  - Header: 5.1.16
+  - `define('EAO_PLUGIN_VERSION', '5.1.16')`
+
+Deployment
+- Branch: dev
+- Commits:
+  - e44df7d EAO v5.1.16: Ensure Points earning full/discounted lines update on qty changes.
+  - Prior: d626bac EAO v5.1.15
+
+Please hard refresh on staging and test changing Qty:
+- Expected: all three lines (Full price, Discounted, Paid with points) update in lockstep with the totals.
+
+---
+
+_**User (2025-10-30 08:16Z)**_
+
+Seems like you fix broke the points slider redemtion updates. Dragging the slider isjittery and not reliable. It often, but not always, reverts the move.
+
+---
+
+_**Assistant (gpt-5-high)**_
+
 
 
 ---

@@ -171,6 +171,8 @@ window.EAO.YithPoints = {
                         window.eaoInputFocusLock = true;
                         if (releaseFocusTimer) { clearTimeout(releaseFocusTimer); }
                         releaseFocusTimer = setTimeout(function(){ window.eaoInputFocusLock = false; }, 260);
+                        // Prevent eaoSummaryUpdated from reasserting values while dragging
+                        window.eaoPointsLockUntil = Date.now() + 900;
                     } catch(_) {}
                     // Mark user interaction to suppress max recalculation in hooks
                     self.userIsChangingPoints = true;
@@ -208,6 +210,8 @@ window.EAO.YithPoints = {
                     if (window.EAO && window.EAO.FormSubmission) {
                         window.EAO.FormSubmission.lastPostedPoints = value;
                     }
+                    // Short lock to ignore late eaoSummaryUpdated while the refresh propagates
+                    try { window.eaoPointsLockUntil = Date.now() + 1200; } catch(_) {}
                     // Trigger a targeted summary-only update so totals change immediately
                     try {
                         if (window.EAO && window.EAO.MainCoordinator) {
