@@ -1100,7 +1100,7 @@ window.EAO.MainCoordinator = {
                 const $sel = jQuery('#order_status');
                 const rawStatus = ($sel && $sel.length) ? String($sel.val()||'') : (window.eaoEditorParams ? ('wc-' + String(window.eaoEditorParams.order_status||'')) : '');
                 const normalizedStatus = String(rawStatus||'').replace(/^wc-/,'').toLowerCase();
-                const isUnpaidOrder = !(normalizedStatus === 'processing' || normalizedStatus === 'completed' || normalizedStatus === 'shipped');
+                const isUnpaidOrder = !(normalizedStatus === 'processing' || normalizedStatus === 'completed' || normalizedStatus === 'shipped' || normalizedStatus === 'delivered');
                 if (isUnpaidOrder) {
                     const totalAvail = parseInt(window.totalAvailablePoints||0,10) || 0;
                     const redeemRate = (window.pointsRedeemRate && window.pointsRedeemRate > 0) ? window.pointsRedeemRate : 10;
@@ -1196,7 +1196,7 @@ window.EAO.MainCoordinator = {
         const statusForDiscount = getOrderStatusSlug();
         // Persist points discount on paid/shipped orders so item-level edits don't zero it
         try {
-            const isPaid = (statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped');
+            const isPaid = (statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped' || statusForDiscount === 'delivered');
             if (isPaid && (typeof window.eaoPersistedPointsDiscount === 'undefined')) {
                 let amt = 0, pts = 0;
                 if (window.eaoCurrentPointsDiscount && parseFloat(window.eaoCurrentPointsDiscount.amount||0) > 0) {
@@ -1217,7 +1217,7 @@ window.EAO.MainCoordinator = {
                 const $sel = jQuery('#order_status');
                 const rawStatus = ($sel && $sel.length) ? String($sel.val()||'') : (window.eaoEditorParams ? ('wc-' + String(window.eaoEditorParams.order_status||'')) : '');
                 const normalizedStatus = String(rawStatus||'').replace(/^wc-/,'').toLowerCase();
-                const isUnpaid = !(normalizedStatus === 'processing' || normalizedStatus === 'completed' || normalizedStatus === 'shipped');
+                const isUnpaid = !(normalizedStatus === 'processing' || normalizedStatus === 'completed' || normalizedStatus === 'shipped' || normalizedStatus === 'delivered');
                 const hasZeroAvailable = (parseInt(window.totalAvailablePoints||0,10) === 0);
                 if (isUnpaid && hasZeroAvailable) {
                     try { if (window.eaoStagedPointsDiscount) { window.eaoStagedPointsDiscount.points = 0; window.eaoStagedPointsDiscount.amount = 0; } } catch(_){ }
@@ -1254,7 +1254,7 @@ window.EAO.MainCoordinator = {
                 }
                 // Clamp to max points for the new customer (unpaid orders only)
                 try {
-                    const isPaid = (statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped');
+                    const isPaid = (statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped' || statusForDiscount === 'delivered');
                     if (!isPaid) {
                         // IMPORTANT: Pass 0 to get the true cap; passing current would return at least current
                         const maxPointsAllowed = this.calculateMaxPoints(0);
@@ -1269,7 +1269,7 @@ window.EAO.MainCoordinator = {
                         }
                     }
                 } catch(_){ }
-                if (statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped') {
+                if (statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped' || statusForDiscount === 'delivered') {
                     if (typeof window.eaoPersistedPointsDiscount !== 'undefined') {
                         pointsDiscountForGrandTotalCalc = parseFloat(window.eaoPersistedPointsDiscount)||pointsDiscountForGrandTotalCalc;
                     }
@@ -1302,7 +1302,7 @@ window.EAO.MainCoordinator = {
                 }
                 // Clamp staged points to max for unpaid orders
                 try {
-                    const isPaid = (statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped');
+                    const isPaid = (statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped' || statusForDiscount === 'delivered');
                     if (!isPaid && currentPoints > 0) {
                         // IMPORTANT: Pass 0 to get the true cap; passing current would return at least current
                         const maxPts = this.calculateMaxPoints(0);
@@ -1316,7 +1316,7 @@ window.EAO.MainCoordinator = {
                         }
                     }
                 } catch(_){ }
-                if (statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped') {
+                if (statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped' || statusForDiscount === 'delivered') {
                     // Paid orders: prefer existing coupon values if no staged/current data present
                     if ((currentPoints === 0) && (parseFloat(pointsDiscountForGrandTotalCalc || 0) === 0)) {
                         const existingPts = parseInt(window.existingPointsRedeemed || 0, 10);
@@ -1353,8 +1353,21 @@ window.EAO.MainCoordinator = {
                 );
                 }
             }
-            } else if (statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped') {
+            } else if (statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped' || statusForDiscount === 'delivered') {
                 // Paid orders: keep existing display logic handled below
+            } else {
+                // Unpaid order with 0 available points: still show the slider (max=0) so UI is consistent
+                const currentPoints = 0;
+                const maxPoints = this.calculateMaxPoints(0); // will be 0 when no balance
+                const labelWithInput = `Points Discount (<input type="number" id="eao_points_to_redeem_inline" name="eao_points_to_redeem" class="eao-points-input eao-points-input-inline" min="0" max="${maxPoints}" value="${currentPoints}" step="1"> points):`;
+                const displayAmount = eaoFormatPrice(0);
+                summaryHtml += this.createSummaryRowWithControl(
+                    labelWithInput,
+                    displayAmount,
+                    this.createInlinePointsSlider(currentPoints),
+                    true,
+                    'eao-summary-points-discount'
+                );
             }
         } else if (hasOrderCustomer) {
 
@@ -1435,7 +1448,7 @@ window.EAO.MainCoordinator = {
             // If there is no points UI or no staged/current points object, ensure zero discount on first load
             // BUT keep coupon-derived amount visible for paid orders
             if ((!window.eaoStagedPointsDiscount && !window.eaoCurrentPointsDiscount)) {
-                if (!(statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped')) {
+                if (!(statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped' || statusForDiscount === 'delivered')) {
                 pointsDiscountForGrandTotalCalc = 0;
                 }
             }
@@ -1580,8 +1593,10 @@ window.EAO.MainCoordinator = {
                 const pas = window.eaoPointsAwardSummary || {};
                 const initialFullPts = (typeof pas.points_full !== 'undefined') ? parseInt(pas.points_full) : 0;
                 const initialGross = window.eaoInitialGross || gross;
-                // Calculate points per dollar from initial server values
-                const ptsPerDollar = (initialFullPts > 0 && initialGross > 0) ? (initialFullPts / initialGross) : 0;
+                // Calculate points per dollar using live rate if available, else derive from initial snapshot
+                const ptsPerDollar = (window.pointsDollarRate && window.pointsDollarRate > 0)
+                    ? window.pointsDollarRate
+                    : ((initialFullPts > 0 && initialGross > 0) ? (initialFullPts / initialGross) : 0);
                 // Line 1: Recalculate from current Gross total (responds to quantity changes)
                 const fullPts = Math.max(0, Math.round(gross * ptsPerDollar));
                 // Line 2: Recalculate from current Net total (responds to discount changes in UI)
@@ -1747,14 +1762,14 @@ window.EAO.MainCoordinator = {
                         // Only show preview before payment
                         const grantPreview = Math.max(0, Math.floor(outOfPocketPts));
                         note = grantPreview + ' points will be granted to the user when this order is paid (status changes to processing).';
-                    } else if (status === 'processing' || status === 'completed') {
+                    } else if (status === 'processing' || status === 'completed' || status === 'shipped' || status === 'delivered') {
                         note = 'Points not granted yet for this order';
                     }
                     jQuery('.eao-grant-note').text(note);
 
                     // When order is already paid/processing, freeze the points discount input & slider
                     try {
-                        if (status === 'processing' || status === 'completed' || status === 'shipped') {
+                        if (status === 'processing' || status === 'completed' || status === 'shipped' || status === 'delivered') {
                             jQuery('#eao_points_to_redeem_inline').prop('disabled', true).addClass('disabled');
                             jQuery('.eao-summary-points-discount .eao-slider').prop('disabled', true).addClass('disabled');
                             // Also disable YITH metabox controls to enforce read-only state after payment
@@ -2076,7 +2091,7 @@ window.EAO.MainCoordinator = {
     /**
      * Two-phase rendering: products first, then summary with all data ready
      */
-    renderAllOrderItemsAndSummary: function(itemsToRender, summaryData) {
+    renderAllOrderItemsAndSummary: function(itemsToRender, summaryData, options) {
         try {
             if (window.eaoAvoidProductRepaintUntil && Date.now() < window.eaoAvoidProductRepaintUntil) {
                 const items = itemsToRender || (window.currentOrderItems || []);
@@ -2141,13 +2156,13 @@ window.EAO.MainCoordinator = {
         } catch(e) {}
         
         // PHASE 2: Calculate all data and render summary when ready
-        this.renderSummaryWhenReady(itemsToRender, summaryData);
+        this.renderSummaryWhenReady(itemsToRender, summaryData, options);
     },
     
     /**
      * Render summary only after ensuring all external data is calculated
      */
-    renderSummaryWhenReady: function(itemsToRender, summaryData) {
+    renderSummaryWhenReady: function(itemsToRender, summaryData, options) {
         const self = this;
         
         // First, trigger YITH Points calculation if needed
@@ -2159,30 +2174,35 @@ window.EAO.MainCoordinator = {
                     
                     // Wait a moment for the calculation to complete, then render our summary
                     setTimeout(() => {
-                        self.renderSummaryWithAllData(itemsToRender, summaryData);
+                        self.renderSummaryWithAllData(itemsToRender, summaryData, options);
                     }, 50); // Short delay for calculation to complete
                     
                 } catch (error) {
                     // Render summary anyway, but without points
-                    self.renderSummaryWithAllData(itemsToRender, summaryData);
+                    self.renderSummaryWithAllData(itemsToRender, summaryData, options);
                 }
             } else {
-                self.renderSummaryWithAllData(itemsToRender, summaryData);
+                self.renderSummaryWithAllData(itemsToRender, summaryData, options);
             }
         } else {
-            self.renderSummaryWithAllData(itemsToRender, summaryData);
+            self.renderSummaryWithAllData(itemsToRender, summaryData, options);
         }
     },
     
     /**
      * Render summary with all data guaranteed to be ready
      */
-    renderSummaryWithAllData: function(itemsToRender, summaryData) {
+    renderSummaryWithAllData: function(itemsToRender, summaryData, options) {
         // Use the centralized summary update with all data ready
-        this.updateSummaryDisplay(itemsToRender, summaryData, {
-            context: 'full_refresh_with_all_data',
-            trigger_hooks: false // Don't trigger hooks since we already have the data
-        });
+        var opts = { context: 'full_refresh_with_all_data', trigger_hooks: false };
+        try {
+            if (options && typeof options === 'object') {
+                for (var k in options) {
+                    if (Object.prototype.hasOwnProperty.call(options, k)) { opts[k] = options[k]; }
+                }
+            }
+        } catch(_) {}
+        this.updateSummaryDisplay(itemsToRender, summaryData, opts);
         
         // Execute post-render tasks
         this.executePostRenderTasks();
@@ -2440,13 +2460,13 @@ window.EAO.MainCoordinator = {
 };
 
 // Expose rendering functions globally for backward compatibility and module access
-window.renderAllOrderItemsAndSummary = function(itemsToRender, summaryData) {
+window.renderAllOrderItemsAndSummary = function(itemsToRender, summaryData, options) {
     // Set global variables needed by YITH Points and other systems FIRST
     window.currentOrderItems = itemsToRender || window.currentOrderItems || [];
     window.currentOrderSummaryData = summaryData || window.currentOrderSummaryData || {};
     
     if (window.EAO && window.EAO.MainCoordinator) {
-        window.EAO.MainCoordinator.renderAllOrderItemsAndSummary(itemsToRender, summaryData);
+        window.EAO.MainCoordinator.renderAllOrderItemsAndSummary(itemsToRender, summaryData, options);
     }
 };
 

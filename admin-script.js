@@ -67,13 +67,13 @@ jQuery(document).ready(function($) {
         
         // Use two-phase rendering system for proper YITH Points preservation
         if (window.EAO && window.EAO.MainCoordinator) {
-            window.EAO.MainCoordinator.renderAllOrderItemsAndSummary(window.currentOrderItems, window.currentOrderSummaryData);
+            window.EAO.MainCoordinator.renderAllOrderItemsAndSummary(window.currentOrderItems, window.currentOrderSummaryData, { has_changes: true });
         } else {
             // Fallback to direct call
             const summaryData = (typeof window.calculateCurrentSummaryData === 'function') ? 
                 window.calculateCurrentSummaryData(window.currentOrderItems) : 
                 (window.currentOrderSummaryData || {});
-            window.renderAllOrderItemsAndSummary(window.currentOrderItems, summaryData);
+            window.renderAllOrderItemsAndSummary(window.currentOrderItems, summaryData, { has_changes: true });
         }
     });
 
@@ -118,11 +118,11 @@ jQuery(document).ready(function($) {
             
             // Use two-phase rendering system for proper YITH Points preservation
             if (window.EAO && window.EAO.MainCoordinator) {
-                window.EAO.MainCoordinator.renderAllOrderItemsAndSummary(window.currentOrderItems, window.currentOrderSummaryData);
+                window.EAO.MainCoordinator.renderAllOrderItemsAndSummary(window.currentOrderItems, window.currentOrderSummaryData, { has_changes: true });
             } else {
                 // Fallback to direct call
                 const calculatedSummary = window.calculateCurrentSummaryData(window.currentOrderItems);
-                window.renderAllOrderItemsAndSummary(window.currentOrderItems, calculatedSummary);
+                window.renderAllOrderItemsAndSummary(window.currentOrderItems, calculatedSummary, { has_changes: true });
             }
         }
     });
@@ -303,13 +303,13 @@ jQuery(document).ready(function($) {
                 // Use two-phase rendering system for proper YITH Points preservation
                 setTimeout(function(){
                     if (window.EAO && window.EAO.MainCoordinator) {
-                        window.EAO.MainCoordinator.renderAllOrderItemsAndSummary(window.currentOrderItems, window.currentOrderSummaryData);
+                        window.EAO.MainCoordinator.renderAllOrderItemsAndSummary(window.currentOrderItems, window.currentOrderSummaryData, { has_changes: true });
                     } else {
                         // Fallback to direct call
                         const summaryData = (typeof window.calculateCurrentSummaryData === 'function') ? 
                             window.calculateCurrentSummaryData(window.currentOrderItems) : 
                             (window.currentOrderSummaryData || {});
-                        window.renderAllOrderItemsAndSummary(window.currentOrderItems, summaryData);
+                        window.renderAllOrderItemsAndSummary(window.currentOrderItems, summaryData, { has_changes: true });
                     }
                 }, 0);
             });

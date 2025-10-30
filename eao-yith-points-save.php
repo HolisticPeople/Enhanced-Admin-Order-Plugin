@@ -30,10 +30,7 @@ function eao_process_yith_points_redemption( $order_id, $request_data ) {
 
     try {
         // Check if YITH is available
-        if ( ! eao_yith_is_available() ) {
-            error_log( '[EAO YITH] YITH Points plugin not available during save' );
-            return $result; // Silently skip if YITH not available
-        }
+        if ( ! eao_yith_is_available() ) { return $result; }
 
         // Get NEW points to redeem from request
         $new_points_to_redeem = isset( $request_data['eao_points_to_redeem'] ) 
@@ -45,7 +42,6 @@ function eao_process_yith_points_redemption( $order_id, $request_data ) {
         if ( ! $order ) {
             $result['success'] = false;
             $result['errors'][] = 'Invalid order for points redemption';
-            error_log( '[EAO YITH] Invalid order ID: ' . $order_id );
             return $result;
         }
 
@@ -54,7 +50,6 @@ function eao_process_yith_points_redemption( $order_id, $request_data ) {
         if ( ! $customer_id ) {
             $result['success'] = false;
             $result['errors'][] = 'Points redemption only available for registered customers';
-            error_log( '[EAO YITH] No customer ID for order: ' . $order_id );
             return $result;
         }
 
@@ -80,7 +75,7 @@ function eao_process_yith_points_redemption( $order_id, $request_data ) {
             }
         }
 
-        error_log( '[EAO YITH] Points redemption analysis - Order: ' . $order_id . ', Existing: ' . $existing_points_redeemed . ', New: ' . $new_points_to_redeem );
+        
 
         // CRITICAL FIX: Calculate the DIFFERENCE (net change needed)
         $points_change = $new_points_to_redeem - $existing_points_redeemed;
@@ -97,7 +92,6 @@ function eao_process_yith_points_redemption( $order_id, $request_data ) {
         $recent_processing = get_transient( $recent_processing_key );
         
         if ( $recent_processing ) {
-            error_log( '[EAO YITH] Points redemption already in progress for order ' . $order_id . ', skipping duplicate' );
             $result['messages'][] = 'Points redemption already processed for this order';
             return $result;
         }
@@ -121,8 +115,10 @@ function eao_process_yith_points_redemption( $order_id, $request_data ) {
                 return $result;
             }
 
-            // Deduct additional points
-            $deduction_result = eao_adjust_customer_points( $customer_id, -$points_change, $order_id );
+            // Deduct points (first time vs additional)
+            $is_first_deduction = ( $existing_points_redeemed <= 0 );
+            // When calling adjust, pass delta only; the function will record proper action text
+            $deduction_result = eao_adjust_customer_points( $customer_id, -$points_change, $order_id, $is_first_deduction );
             
             if ( ! $deduction_result['success'] ) {
                 delete_transient( $recent_processing_key );
@@ -131,8 +127,12 @@ function eao_process_yith_points_redemption( $order_id, $request_data ) {
                 return $result;
             }
 
-            $result['messages'][] = sprintf( 'Deducted additional %d points (total now: %d points)', $points_change, $new_points_to_redeem );
-            error_log('[EAO YITH] Deducted additional points: ' . $points_change);
+            $result['messages'][] = sprintf( '%s %d points (total now: %d points)'
+                , $is_first_deduction ? 'Deducted' : 'Deducted additional'
+                , $points_change
+                , $new_points_to_redeem
+            );
+            
         }
         
         // Handle DECREASE in points usage (need to refund points back)
@@ -140,7 +140,7 @@ function eao_process_yith_points_redemption( $order_id, $request_data ) {
             $points_to_refund = abs( $points_change );
             
             // Add points back to customer
-            $refund_result = eao_adjust_customer_points( $customer_id, $points_to_refund, $order_id );
+            $refund_result = eao_adjust_customer_points( $customer_id, $points_to_refund, $order_id, false );
             
             if ( ! $refund_result['success'] ) {
                 delete_transient( $recent_processing_key );
@@ -150,7 +150,6 @@ function eao_process_yith_points_redemption( $order_id, $request_data ) {
             }
 
             $result['messages'][] = sprintf( 'Refunded %d points back to customer (total now: %d points)', $points_to_refund, $new_points_to_redeem );
-            error_log('[EAO YITH] Refunded points: ' . $points_to_refund);
         }
 
         // Update/create coupon with new total points
@@ -167,7 +166,7 @@ function eao_process_yith_points_redemption( $order_id, $request_data ) {
                 if ( strpos( $existing_code, 'ywpar_discount_' ) === 0 ) {
                     $order->remove_coupon( $existing_code );
                     $removed_yith_coupon = $existing_code;
-                    error_log( '[EAO YITH VALIDATION] Temporarily removed existing points coupon for validation: ' . $existing_code );
+                    
                     break;
                 }
             }
@@ -240,18 +239,13 @@ function eao_process_yith_points_redemption( $order_id, $request_data ) {
             }
             
             // Comprehensive debug logging
-            error_log( '[EAO YITH VALIDATION] Points validation analysis:' );
-            error_log( '  - Order ID: ' . $order_id );
-            error_log( '  - Points requested: ' . $new_points_to_redeem );
-            error_log( '  - Discount amount requested: $' . $discount_amount );
-            error_log( '  - Order total (before points): $' . $order_total_before_points );
-            error_log( '  - Using order total for cap: $' . $order_total );
+            
             
             if ( $discount_amount > $order_total ) {
                 $discount_amount = $order_total;
                 $new_points_to_redeem = $order_total * 10;
                 
-                error_log( '[EAO YITH VALIDATION] Discount capped - Original points: ' . (($discount_amount + 1) * 10) . ', Capped points: ' . $new_points_to_redeem . ', Order total: $' . $order_total );
+                
                 
                 $result['messages'][] = sprintf(
                     'Discount capped at order total. Using %d points for $%.2f discount',
@@ -389,7 +383,6 @@ function eao_create_points_discount_coupon( $order, $points_redeemed, $discount_
 
         // Apply coupon to order
         $order->apply_coupon( $coupon_code );
-        error_log('[EAO YITH] Applied points coupon: ' . $coupon_code . ' amount=$' . $discount_amount );
         
         // Store YITH's standard order metadata
         $order->update_meta_data( '_ywpar_coupon_points', $points_redeemed );
@@ -400,12 +393,11 @@ function eao_create_points_discount_coupon( $order, $points_redeemed, $discount_
         $order->save();
 
         $result['messages'][] = sprintf( 'Created YITH points discount coupon: %s', $coupon_code );
-        error_log( '[EAO YITH] Created YITH-compatible coupon: ' . $coupon_code . ' for $' . $discount_amount );
+        
 
-    } catch ( Exception $e ) {
+        } catch ( Exception $e ) {
         $result['success'] = false;
         $result['errors'][] = 'Failed to create discount coupon: ' . $e->getMessage();
-        error_log( '[EAO YITH] Exception creating coupon: ' . $e->getMessage() );
     }
 
     return $result;
@@ -419,7 +411,7 @@ function eao_create_points_discount_coupon( $order, $points_redeemed, $discount_
  * @param int $order_id Order ID for reference
  * @return array Result with success status and messages
  */
-function eao_adjust_customer_points( $customer_id, $points_delta, $order_id ) {
+function eao_adjust_customer_points( $customer_id, $points_delta, $order_id, $is_first_deduction = false ) {
     $result = array(
         'success' => true,
         'messages' => array(),
@@ -436,7 +428,9 @@ function eao_adjust_customer_points( $customer_id, $points_delta, $order_id ) {
         } else if ( $points_delta < 0 ) {
             // NEGATIVE DELTA = DEDUCT additional points from customer
             $yith_action = 'redeemed_points';  // YITH's standard redemption action
-            $description = sprintf( 'Additional redemption for Order #%d', $order_id );
+            $description = $is_first_deduction
+                ? sprintf( 'Redeemed points for Order #%d', $order_id )
+                : sprintf( 'Additional redemption for Order #%d', $order_id );
             $log_message = sprintf( 'Deducted additional %d points from customer %d', abs($points_delta), $customer_id );
         } else {
             // Zero delta - should not happen but handle gracefully
@@ -444,7 +438,7 @@ function eao_adjust_customer_points( $customer_id, $points_delta, $order_id ) {
             return $result;
         }
 
-        error_log( '[EAO YITH] Processing points delta - Customer: ' . $customer_id . ', Delta: ' . $points_delta . ', Order: #' . $order_id );
+        
 
         // Use YITH's API to adjust points with proper transaction recording
         if ( function_exists( 'ywpar_get_customer' ) ) {
@@ -463,8 +457,6 @@ function eao_adjust_customer_points( $customer_id, $points_delta, $order_id ) {
                 
                 if ( $success ) {
                     $result['messages'][] = $log_message . ' using YITH native transaction';
-                    error_log( '[EAO YITH] Points delta applied successfully - Customer: ' . $customer_id . 
-                              ', Delta: ' . $points_delta . ', Order: #' . $order_id );
                     return $result;
                 }
             }
@@ -478,12 +470,11 @@ function eao_adjust_customer_points( $customer_id, $points_delta, $order_id ) {
         update_user_meta( $customer_id, '_ywpar_user_total_points', $new_points );
         
         $result['messages'][] = $log_message . ' using fallback method (no transaction record)';
-        error_log( '[EAO YITH] Points delta applied via fallback - Customer: ' . $customer_id . ', Delta: ' . $points_delta );
 
     } catch ( Exception $e ) {
         $result['success'] = false;
         $result['errors'][] = 'Failed to adjust customer points: ' . $e->getMessage();
-        error_log( '[EAO YITH] Exception adjusting points: ' . $e->getMessage() );
+        
     }
 
     return $result;

@@ -94,12 +94,43 @@ class EAO_YITH_Points_Core {
      * Initialize hooks for YITH integration
      */
     private function init_hooks() {
-        // Hook into order status changes for automatic point awarding
-        add_action( 'woocommerce_order_status_completed', array( $this, 'trigger_order_points_award' ), 5 );
-        add_action( 'woocommerce_order_status_processing', array( $this, 'trigger_order_points_award' ), 5 );
+        // EAO coordinates awarding explicitly via its own status-change handler in admin.
+        // Remove YITH native admin hooks for order awarding to avoid double-awards (+1 symptoms),
+        // but do NOT affect frontend checkout behavior.
+        if ( is_admin() ) {
+            // Unhook late as some plugins attach on init/plugins_loaded
+            add_action( 'init', array( $this, 'remove_admin_yith_award_hooks' ), 100 );
+        }
 
-        // Async award hook (used when status is changed via our AJAX save to avoid timeouts)
+        // Keep async endpoint available for any future internal calls.
         add_action( 'eao_award_points_async', array( $this, 'award_order_points' ), 10, 1 );
+    }
+
+    /**
+     * Remove YITH native admin award hooks (late) to prevent double-awards.
+     */
+    public function remove_admin_yith_award_hooks() {
+        try {
+            if ( ! is_admin() ) { return; }
+            if ( class_exists( 'YITH_WC_Points_Rewards_Earning' ) ) {
+                $earning = YITH_WC_Points_Rewards_Earning::get_instance();
+                // Remove across common priorities in case YITH attaches with different priorities
+                $hooks = array(
+                    'woocommerce_order_status_completed',
+                    'woocommerce_order_status_processing',
+                    'woocommerce_payment_complete',
+                    'woocommerce_order_status_changed',
+                );
+                $priorities = array(1, 5, 10, 20, 50, 100);
+                foreach ($hooks as $hk) {
+                    foreach ($priorities as $p) {
+                        if ( has_action( $hk, array( $earning, 'add_order_points' ) ) ) {
+                            remove_action( $hk, array( $earning, 'add_order_points' ), $p );
+                        }
+                    }
+                }
+            }
+        } catch ( Exception $e ) { /* no-op */ }
     }
     
     /**
@@ -127,9 +158,7 @@ class EAO_YITH_Points_Core {
                 $customer = ywpar_get_customer( $user_id );
                 return $customer ? $customer->get_usable_points() : 0;
             }
-        } catch ( Exception $e ) {
-            error_log( '[EAO YITH] Error getting customer points: ' . $e->getMessage() );
-        }
+        } catch ( Exception $e ) { /* no-op */ }
         
         return 0;
     }
@@ -219,9 +248,7 @@ class EAO_YITH_Points_Core {
                     return true;
                 }
             }
-        } catch ( Exception $e ) {
-            error_log( '[EAO YITH] Error awarding order points: ' . $e->getMessage() );
-        }
+        } catch ( Exception $e ) { /* no-op */ }
         
         return false;
     }
