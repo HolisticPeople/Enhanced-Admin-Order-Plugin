@@ -2076,7 +2076,7 @@ window.EAO.MainCoordinator = {
     /**
      * Two-phase rendering: products first, then summary with all data ready
      */
-    renderAllOrderItemsAndSummary: function(itemsToRender, summaryData) {
+    renderAllOrderItemsAndSummary: function(itemsToRender, summaryData, options) {
         try {
             if (window.eaoAvoidProductRepaintUntil && Date.now() < window.eaoAvoidProductRepaintUntil) {
                 const items = itemsToRender || (window.currentOrderItems || []);
@@ -2141,13 +2141,13 @@ window.EAO.MainCoordinator = {
         } catch(e) {}
         
         // PHASE 2: Calculate all data and render summary when ready
-        this.renderSummaryWhenReady(itemsToRender, summaryData);
+        this.renderSummaryWhenReady(itemsToRender, summaryData, options);
     },
     
     /**
      * Render summary only after ensuring all external data is calculated
      */
-    renderSummaryWhenReady: function(itemsToRender, summaryData) {
+    renderSummaryWhenReady: function(itemsToRender, summaryData, options) {
         const self = this;
         
         // First, trigger YITH Points calculation if needed
@@ -2159,30 +2159,35 @@ window.EAO.MainCoordinator = {
                     
                     // Wait a moment for the calculation to complete, then render our summary
                     setTimeout(() => {
-                        self.renderSummaryWithAllData(itemsToRender, summaryData);
+                        self.renderSummaryWithAllData(itemsToRender, summaryData, options);
                     }, 50); // Short delay for calculation to complete
                     
                 } catch (error) {
                     // Render summary anyway, but without points
-                    self.renderSummaryWithAllData(itemsToRender, summaryData);
+                    self.renderSummaryWithAllData(itemsToRender, summaryData, options);
                 }
             } else {
-                self.renderSummaryWithAllData(itemsToRender, summaryData);
+                self.renderSummaryWithAllData(itemsToRender, summaryData, options);
             }
         } else {
-            self.renderSummaryWithAllData(itemsToRender, summaryData);
+            self.renderSummaryWithAllData(itemsToRender, summaryData, options);
         }
     },
     
     /**
      * Render summary with all data guaranteed to be ready
      */
-    renderSummaryWithAllData: function(itemsToRender, summaryData) {
+    renderSummaryWithAllData: function(itemsToRender, summaryData, options) {
         // Use the centralized summary update with all data ready
-        this.updateSummaryDisplay(itemsToRender, summaryData, {
-            context: 'full_refresh_with_all_data',
-            trigger_hooks: false // Don't trigger hooks since we already have the data
-        });
+        var opts = { context: 'full_refresh_with_all_data', trigger_hooks: false };
+        try {
+            if (options && typeof options === 'object') {
+                for (var k in options) {
+                    if (Object.prototype.hasOwnProperty.call(options, k)) { opts[k] = options[k]; }
+                }
+            }
+        } catch(_) {}
+        this.updateSummaryDisplay(itemsToRender, summaryData, opts);
         
         // Execute post-render tasks
         this.executePostRenderTasks();
@@ -2440,13 +2445,13 @@ window.EAO.MainCoordinator = {
 };
 
 // Expose rendering functions globally for backward compatibility and module access
-window.renderAllOrderItemsAndSummary = function(itemsToRender, summaryData) {
+window.renderAllOrderItemsAndSummary = function(itemsToRender, summaryData, options) {
     // Set global variables needed by YITH Points and other systems FIRST
     window.currentOrderItems = itemsToRender || window.currentOrderItems || [];
     window.currentOrderSummaryData = summaryData || window.currentOrderSummaryData || {};
     
     if (window.EAO && window.EAO.MainCoordinator) {
-        window.EAO.MainCoordinator.renderAllOrderItemsAndSummary(itemsToRender, summaryData);
+        window.EAO.MainCoordinator.renderAllOrderItemsAndSummary(itemsToRender, summaryData, options);
     }
 };
 
