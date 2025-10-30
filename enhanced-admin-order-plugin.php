@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.1.29
+ * Version: 5.1.30
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin version constant (v5.1.29: broaden YITH unhook across priorities; message tweak)
-define('EAO_PLUGIN_VERSION', '5.1.29');
+define('EAO_PLUGIN_VERSION', '5.1.30');
 
 /**
  * Check if we should load EAO functionality
@@ -823,6 +823,15 @@ if ( eao_should_load() ) {
         eao_points_debug_log('Status hook: delivered', $order_id);
         eao_points_grant_if_needed($order_id);
     }, 10, 1);
+}
+
+// Prevent YITH admin auto-award while EAO editor is active (skip add_order_points via filter)
+if ( eao_should_load() ) {
+    add_filter('ywpar_add_order_points', function($skip, $order_id){
+        // When editing in admin (EAO loaded), always skip YITH earning for this order
+        if ( is_admin() ) { return true; }
+        return $skip;
+    }, 999, 2);
 }
 
 // Lightweight debug helper for points operations
