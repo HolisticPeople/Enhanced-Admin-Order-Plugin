@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.1.15
+ * Version: 5.1.16
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.15: Fix points earning panel not refreshing on quantity changes; cache-bust)
-define('EAO_PLUGIN_VERSION', '5.1.15');
+// Plugin version constant (v5.1.16: Ensure full/discounted points recalc on qty changes using live rate)
+define('EAO_PLUGIN_VERSION', '5.1.16');
 
 /**
  * Check if we should load EAO functionality

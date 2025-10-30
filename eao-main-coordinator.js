@@ -1580,8 +1580,10 @@ window.EAO.MainCoordinator = {
                 const pas = window.eaoPointsAwardSummary || {};
                 const initialFullPts = (typeof pas.points_full !== 'undefined') ? parseInt(pas.points_full) : 0;
                 const initialGross = window.eaoInitialGross || gross;
-                // Calculate points per dollar from initial server values
-                const ptsPerDollar = (initialFullPts > 0 && initialGross > 0) ? (initialFullPts / initialGross) : 0;
+                // Calculate points per dollar using live rate if available, else derive from initial snapshot
+                const ptsPerDollar = (window.pointsDollarRate && window.pointsDollarRate > 0)
+                    ? window.pointsDollarRate
+                    : ((initialFullPts > 0 && initialGross > 0) ? (initialFullPts / initialGross) : 0);
                 // Line 1: Recalculate from current Gross total (responds to quantity changes)
                 const fullPts = Math.max(0, Math.round(gross * ptsPerDollar));
                 // Line 2: Recalculate from current Net total (responds to discount changes in UI)
