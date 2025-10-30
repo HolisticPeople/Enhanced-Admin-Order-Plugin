@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.1.21
+ * Version: 5.1.22
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.21: Grant points only on Shipped/Completed, not Processing)
-define('EAO_PLUGIN_VERSION', '5.1.21');
+// Plugin version constant (v5.1.22: Correct grant amount; add Delivered; grant once with top-up)
+define('EAO_PLUGIN_VERSION', '5.1.22');
 
 /**
  * Check if we should load EAO functionality
@@ -802,7 +802,7 @@ function eao_ajax_save_order_details() {
 function eao_points_handle_status_change( $order_id, $from_status, $to_status, $order ) {
     if (!function_exists('eao_yith_is_available') || !eao_yith_is_available()) { return; }
     $to_status = strtolower($to_status);
-    if (in_array($to_status, array('completed','shipped'), true)) {
+    if (in_array($to_status, array('completed','shipped','delivered'), true)) {
         eao_points_grant_if_needed($order_id);
     }
 }
@@ -884,7 +884,8 @@ function eao_points_grant_if_needed( $order_id ) {
         }
 
         $oop = max(0.0, $products_net - $points_discount_amount);
-        $points_to_grant = (int) floor($oop * $earn_rate);
+        // Round to nearest integer like UI line 3 calculation
+        $points_to_grant = (int) round($oop * $earn_rate);
         eao_points_debug_log(sprintf('Computed grant: earn_rate=%s, products_net=%s, points_discount=$%s, oop=$%s => points=%d',
             number_format($earn_rate, 6), number_format($products_net, 2), number_format($points_discount_amount, 2), number_format($oop, 2), $points_to_grant), $order_id);
         }

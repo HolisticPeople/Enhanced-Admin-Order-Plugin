@@ -3290,3 +3290,142 @@ Output mode: content
 
 ---
 
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+@@
+- * Version: 5.1.20
++ * Version: 5.1.21
+@@
+-// Plugin version constant (v5.1.20: Always render points slider even when balance is 0)
+-define('EAO_PLUGIN_VERSION', '5.1.20');
++// Plugin version constant (v5.1.21: Grant points only on Shipped/Completed, not Processing)
++define('EAO_PLUGIN_VERSION', '5.1.21');
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+@@
+-    if (in_array($to_status, array('processing','completed','shipped'), true)) {
++    if (in_array($to_status, array('completed','shipped'), true)) {
+         eao_points_grant_if_needed($order_id);
+     }
+ }
+*** End Patch
+```
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: add
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: commit
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+  * message: EAO v5.1.21: Grant points only on Shipped/Completed (not Processing).
+- Restrict status change hook to ['completed','shipped']
+- Bump version to 5.1.21 for cache busting
+
+*Result*:
+{"data":{"output":"[dev d00b87e] EAO v5.1.21: Grant points only on Shipped/Completed (not Processing). - Restrict status change hook to ['completed','shipped'] - Bump version to 5.1.21 for cache busting\n 2 files changed, 210 insertions(+), 4 deletions(-)\n"}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_push**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_push: Update remote refs along with associated objects (git push).
+
+*Parameters*:
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+Done — points now grant only on Shipped or Completed, not Processing.
+
+- Version: 5.1.21
+- Branch: dev
+- Commit: d00b87e
+- Change: limited the status-change hook to ['completed','shipped'] and bumped the version.
+
+This won’t affect the slider or preview; it only changes when the actual award is executed. Hard refresh on staging and test status transitions:
+- Pending → Processing: no grant
+- Processing → Shipped or Completed: grant executes (top-up logic still applies).
+
+---
+
+_**User (2025-10-30 08:16Z)**_
+
+When the order moved to shipped only 1 point was granted instead of 45.
+
+Also, add "Delivered" as a status to grant the points on if they were not granted before. Make sure they are granted once, either in shipped, delivered or completed but not more than once.
+
+---
+
+_**Assistant (gpt-5-high)**_
+
+
+
+---
+
