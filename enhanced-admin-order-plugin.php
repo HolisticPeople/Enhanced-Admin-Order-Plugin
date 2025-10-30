@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.1.18
+ * Version: 5.1.19
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.18: Ensure line 3 updates on slider release by clearing focus lock)
-define('EAO_PLUGIN_VERSION', '5.1.18');
+// Plugin version constant (v5.1.19: Grant on shipped; award exact line-3 value with top-up logic)
+define('EAO_PLUGIN_VERSION', '5.1.19');
 
 /**
  * Check if we should load EAO functionality
@@ -802,7 +802,7 @@ function eao_ajax_save_order_details() {
 function eao_points_handle_status_change( $order_id, $from_status, $to_status, $order ) {
     if (!function_exists('eao_yith_is_available') || !eao_yith_is_available()) { return; }
     $to_status = strtolower($to_status);
-    if (in_array($to_status, array('processing','completed'), true)) {
+    if (in_array($to_status, array('processing','completed','shipped'), true)) {
         eao_points_grant_if_needed($order_id);
     }
 }
@@ -821,10 +821,10 @@ if (!function_exists('eao_points_debug_log')) {
 function eao_points_grant_if_needed( $order_id ) {
     $order = wc_get_order($order_id);
     if (!$order) { return; }
-    // Skip if already granted and not revoked; allow re-grant after revoke
+    // If already granted, allow a "top-up" when expected award increased (e.g., status moved to shipped)
     $already_granted = (bool)$order->get_meta('_eao_points_granted', true);
     $was_revoked     = (bool)$order->get_meta('_eao_points_revoked', true);
-    if ($already_granted && !$was_revoked) { return; }
+    $already_pts     = intval($order->get_meta('_eao_points_granted_points', true));
     $customer_id = $order->get_customer_id();
     if (!$customer_id) { return; }
 
@@ -890,6 +890,14 @@ function eao_points_grant_if_needed( $order_id ) {
         }
     }
 
+    // If points were already granted and not revoked, only top up the delta when higher expected points are needed
+    if ($already_granted && !$was_revoked) {
+        $delta = max(0, intval($points_to_grant) - max(0, $already_pts));
+        if ($delta <= 0) { return; }
+        $points_to_grant = $delta;
+        eao_points_debug_log('Top-up grant detected. Previously granted=' . $already_pts . ', delta=' . $points_to_grant, $order_id);
+    }
+
     if ($points_to_grant <= 0) { return; }
 
     // Prefer our YITH wrapper which respects plugin options and records YITH meta
@@ -917,13 +925,22 @@ function eao_points_grant_if_needed( $order_id ) {
 
     if ($granted_ok) {
         $order->update_meta_data('_eao_points_granted', 1);
-        $order->update_meta_data('_eao_points_granted_points', intval($points_to_grant));
+        // If we topped up, accumulate; otherwise set to full expected
+        $final_total = $points_to_grant;
+        if ($already_granted && !$was_revoked) {
+            $final_total = max(0, $already_pts) + intval($points_to_grant);
+        }
+        $order->update_meta_data('_eao_points_granted_points', intval($final_total));
         $order->update_meta_data('_eao_points_granted_ts', time());
         // Clear any previous revoke marker to allow future re-grants to be controlled by state
         $order->delete_meta_data('_eao_points_revoked');
         $order->delete_meta_data('_eao_points_revoked_points');
         // Add order note trail
-        $order->add_order_note(sprintf(__('EAO: Granted %d points to customer on status change.', 'enhanced-admin-order'), intval($points_to_grant)));
+        if ($already_granted && !$was_revoked) {
+            $order->add_order_note(sprintf(__('EAO: Granted an additional %d points (top-up). Total granted now %d.', 'enhanced-admin-order'), intval($points_to_grant), intval($final_total)));
+        } else {
+            $order->add_order_note(sprintf(__('EAO: Granted %d points to customer on status change.', 'enhanced-admin-order'), intval($final_total)));
+        }
         $order->save();
         eao_points_debug_log('Grant recorded successfully: ' . $points_to_grant . ' pts', $order_id);
     }
