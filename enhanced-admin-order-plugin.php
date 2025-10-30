@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.1.27
+ * Version: 5.1.28
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.27: Remove all YITH admin award hooks incl. payment_complete; single grant path)
-define('EAO_PLUGIN_VERSION', '5.1.27');
+// Plugin version constant (v5.1.28: refine YITH unhooks; clearer redemption note on first use)
+define('EAO_PLUGIN_VERSION', '5.1.28');
 
 /**
  * Check if we should load EAO functionality

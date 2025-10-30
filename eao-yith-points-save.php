@@ -121,7 +121,9 @@ function eao_process_yith_points_redemption( $order_id, $request_data ) {
                 return $result;
             }
 
-            // Deduct additional points
+            // Deduct points (first time vs additional)
+            $is_first_deduction = ( $existing_points_redeemed <= 0 );
+            // When calling adjust, pass delta only; the function will record proper action text
             $deduction_result = eao_adjust_customer_points( $customer_id, -$points_change, $order_id );
             
             if ( ! $deduction_result['success'] ) {
@@ -131,8 +133,12 @@ function eao_process_yith_points_redemption( $order_id, $request_data ) {
                 return $result;
             }
 
-            $result['messages'][] = sprintf( 'Deducted additional %d points (total now: %d points)', $points_change, $new_points_to_redeem );
-            error_log('[EAO YITH] Deducted additional points: ' . $points_change);
+            $result['messages'][] = sprintf( '%s %d points (total now: %d points)'
+                , $is_first_deduction ? 'Deducted' : 'Deducted additional'
+                , $points_change
+                , $new_points_to_redeem
+            );
+            error_log('[EAO YITH] Deducted points: ' . $points_change . ($is_first_deduction ? ' (first deduction)' : ' (additional)'));
         }
         
         // Handle DECREASE in points usage (need to refund points back)
