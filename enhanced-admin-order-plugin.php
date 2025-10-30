@@ -901,27 +901,24 @@ function eao_points_grant_if_needed( $order_id ) {
 
     if ($points_to_grant <= 0) { return; }
 
-    // Prefer our YITH wrapper which respects plugin options and records YITH meta
+    // Prefer exact-point APIs to avoid YITH recalculating a different amount
     $granted_ok = false;
-    if (function_exists('eao_yith_award_order_points')) {
-        eao_points_debug_log('Calling eao_yith_award_order_points with ' . $points_to_grant . ' pts for user ' . $customer_id, $order_id);
+    if (function_exists('ywpar_increase_points')) {
+        eao_points_debug_log('ywpar_increase_points exact grant: ' . $points_to_grant . ' pts', $order_id);
+        ywpar_increase_points($customer_id, $points_to_grant, sprintf(__('Granted for Order #%d (admin backend)', 'enhanced-admin-order'), $order_id), $order_id);
+        $granted_ok = true;
+    } elseif (function_exists('ywpar_get_customer')) {
+        $cust = ywpar_get_customer($customer_id);
+        if ($cust && method_exists($cust, 'update_points')) {
+            eao_points_debug_log('customer->update_points exact grant: ' . $points_to_grant . ' pts', $order_id);
+            $granted_ok = (bool)$cust->update_points($points_to_grant, 'order_completed', array('order_id' => $order_id, 'description' => sprintf('Points earned from Order #%d', $order_id)));
+        }
+    }
+    // Last resort: call the wrapper (may recalc). We only use this when direct APIs are not available
+    if (!$granted_ok && function_exists('eao_yith_award_order_points')) {
+        eao_points_debug_log('Wrapper fallback grant with expected points ' . $points_to_grant, $order_id);
         $award = eao_yith_award_order_points($order_id, $points_to_grant);
         $granted_ok = is_array($award) ? !empty($award['success']) : (bool)$award;
-        eao_points_debug_log('eao_yith_award_order_points result: ' . var_export($award, true), $order_id);
-    }
-    // Fallback to direct YITH functions if wrapper not available
-    if (!$granted_ok) {
-        if (function_exists('ywpar_increase_points')) {
-            eao_points_debug_log('Fallback ywpar_increase_points with ' . $points_to_grant . ' pts', $order_id);
-            ywpar_increase_points($customer_id, $points_to_grant, sprintf(__('Granted for Order #%d (admin backend)', 'enhanced-admin-order'), $order_id), $order_id);
-            $granted_ok = true;
-        } elseif (function_exists('ywpar_get_customer')) {
-            $cust = ywpar_get_customer($customer_id);
-            if ($cust && method_exists($cust, 'update_points')) {
-                eao_points_debug_log('Fallback customer->update_points with ' . $points_to_grant . ' pts', $order_id);
-                $granted_ok = (bool)$cust->update_points($points_to_grant, 'order_completed', array('order_id' => $order_id, 'description' => sprintf('Points earned from Order #%d', $order_id)));
-            }
-        }
     }
 
     if ($granted_ok) {
