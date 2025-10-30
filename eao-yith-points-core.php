@@ -122,6 +122,14 @@ class EAO_YITH_Points_Core {
                     remove_action( 'woocommerce_order_status_processing', array( $earning, 'add_order_points' ), 10 );
                     error_log('[EAO Points] Removed YITH add_order_points from processing in admin (late)');
                 }
+                if ( has_action( 'woocommerce_payment_complete', array( $earning, 'add_order_points' ) ) ) {
+                    remove_action( 'woocommerce_payment_complete', array( $earning, 'add_order_points' ), 10 );
+                    error_log('[EAO Points] Removed YITH add_order_points from payment_complete in admin (late)');
+                }
+                if ( has_action( 'woocommerce_order_status_changed', array( $earning, 'add_order_points' ) ) ) {
+                    remove_action( 'woocommerce_order_status_changed', array( $earning, 'add_order_points' ), 10 );
+                    error_log('[EAO Points] Removed YITH add_order_points from status_changed in admin (late)');
+                }
             }
         } catch ( Exception $e ) { /* no-op */ }
     }

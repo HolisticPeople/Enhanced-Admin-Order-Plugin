@@ -5884,6 +5884,191 @@ Ok, do it. I cleared the log files BTW
 
 _**Assistant (gpt-5-high)**_
 
+<think><details><summary>Thought Process</summary>**Updating code and logging**
+
+I need to commit and push changes using GitKraken tools. It's crucial not to forget to update eao-main-coordinator to include delivered items, which we’ve already addressed. Good, I’ll also modify the `enhanced-admin-order-plugin.php` awarding function. Additionally, I plan to add extra logging to ensure the expected award meta is present. Let’s move forward with that patch. It's all about keeping everything in sync!</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+@@
+- * Version: 5.1.25
++ * Version: 5.1.26
+@@
+-// Plugin version constant (v5.1.25: Late unhook YITH admin award; include delivered in UI)
+-define('EAO_PLUGIN_VERSION', '5.1.25');
++// Plugin version constant (v5.1.26: Deterministic grant fallback via customer->update_points)
++define('EAO_PLUGIN_VERSION', '5.1.26');
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+@@
+-    if (!function_exists('ywpar_increase_points')) {
+-        eao_points_debug_log('ERROR: ywpar_increase_points not available; cannot grant points deterministically.', $order_id);
+-        return;
+-    }
+-    ywpar_increase_points($customer_id, $points_to_grant, sprintf(__('Granted for Order #%d (admin backend)', 'enhanced-admin-order'), $order_id), $order_id);
+-    $granted_ok = true;
++    if (function_exists('ywpar_increase_points')) {
++        eao_points_debug_log('Granting via ywpar_increase_points exact=' . $points_to_grant, $order_id);
++        ywpar_increase_points($customer_id, $points_to_grant, sprintf(__('Granted for Order #%d (admin backend)', 'enhanced-admin-order'), $order_id), $order_id);
++        $granted_ok = true;
++    } else if (function_exists('ywpar_get_customer')) {
++        // Deterministic fallback: use YITH native customer->update_points with exact value (no recalculation)
++        try {
++            $cust = ywpar_get_customer($customer_id);
++            if ($cust && method_exists($cust, 'update_points')) {
++                eao_points_debug_log('Granting via customer->update_points exact=' . $points_to_grant, $order_id);
++                $granted_ok = (bool)$cust->update_points($points_to_grant, 'order_completed', array('order_id' => $order_id, 'description' => sprintf('Points earned from Order #%d (EAO)', $order_id)));
++            }
++        } catch (Exception $e) {
++            eao_points_debug_log('ERROR: customer->update_points exception: ' . $e->getMessage(), $order_id);
++        }
++        if (!$granted_ok) {
++            eao_points_debug_log('ERROR: customer->update_points path failed.', $order_id);
++            return;
++        }
++    } else {
++        eao_points_debug_log('ERROR: No YITH API available for deterministic grant.', $order_id);
++        return;
++    }
+*** End Patch
+```
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: add
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: commit
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+  * message: v5.1.26: Deterministic grant fallback via customer->update_points; version bump.
+
+*Result*:
+{"data":{"output":"[dev 0404101] v5.1.26: Deterministic grant fallback via customer-\u003eupdate_points; version bump.\n 2 files changed, 730 insertions(+), 7 deletions(-)\n"}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_push**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_push: Update remote refs along with associated objects (git push).
+
+*Parameters*:
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "cd public && head -30 wp-content/plugins/enhanced-admin-order-plugin/enhanced-admin-order-plugin.php | grep -E 'Version:|EAO_PLUGIN_VERSION'"
+```
+
+```
+ * Version: 5.1.26
+define('EAO_PLUGIN_VERSION', '5.1.26');
+
+```
+
+---
+
+I updated the grant path to use a deterministic fallback and bumped/deployed to 5.1.26.
+
+- If ywpar_increase_points exists, we use it (exact amount).
+- If not, we now call ywpar_get_customer()->update_points with the same exact amount (no recalculation).
+- Admin auto-award unhook stays in place (and is now executed late in init).
+- Delivered is treated as “paid” in the UI.
+
+Staging shows:
+- Version: 5.1.26
+
+Please switch an order to Shipped or Delivered again and I’ll tail the fresh logs to confirm:
+- Removed YITH admin hook lines are present
+- “Granting via … exact=XX” shows the chosen path
+- No error lines about missing YITH APIs
+
+---
+
+_**User (2025-10-30 08:16Z)**_
+
+No fallbacks! We try it once, if it does not exist we use something else. We don't create a code that needs to deal with all this uncertainty. We resolve the uncertainty during the development phase.
+
+Check order 124837 - I did the same process with htis new order.
+
+Seems like both EAO and YITH fired
+
+
+
+---
+
+_**Assistant (gpt-5-high)**_
+
 
 
 ---
