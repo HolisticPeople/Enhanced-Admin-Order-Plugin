@@ -94,11 +94,9 @@ class EAO_YITH_Points_Core {
      * Initialize hooks for YITH integration
      */
     private function init_hooks() {
-        // Hook into order status changes for automatic point awarding
-        add_action( 'woocommerce_order_status_completed', array( $this, 'trigger_order_points_award' ), 5 );
-        add_action( 'woocommerce_order_status_processing', array( $this, 'trigger_order_points_award' ), 5 );
-
-        // Async award hook (used when status is changed via our AJAX save to avoid timeouts)
+        // EAO coordinates awarding explicitly via its own status-change handler.
+        // Do not hook native YITH awarding here to avoid double-award and ensure a single source of truth.
+        // Keep async endpoint available for any future internal calls.
         add_action( 'eao_award_points_async', array( $this, 'award_order_points' ), 10, 1 );
     }
     

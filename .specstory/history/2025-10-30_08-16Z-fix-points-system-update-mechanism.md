@@ -3667,6 +3667,227 @@ Here 100 points were supposed to be granted and the UI is consistent about it. H
 
 _**Assistant (gpt-5-high)**_
 
+<think><details><summary>Thought Process</summary>**Investigating point awarding issues**
+
+I need to look into the issue of awarding only 1 point instead of the expected 100. It seems that revoking points works fine but granting points shows a discrepancy in the output. The line for points granted actually indicates that only 1 point is being processed instead of 100. I suspect there might be an error when calling the function that awards points, possibly a conversion problem in how the points are tallied. I’m curious about where the expected award meta is stored!
+**Examining point award logic**
+
+I’m investigating the `eao-main-coordinator.js` file where I set the hidden input `eao_expected_points_award` to `outOfPocketPts` as an integer. The server saves this with `_eao_points_expected_award`, and `eao_points_grant_if_needed` should award those expected points precisely. However, it seems they’re only getting 1 point, which might be due to rounding in the points plugin or a misinterpretation in the awarding function. I need to figure out why the `points_to_grant` is showing only 1 instead of 100. Where is that discrepancy coming from?
+**Investigating point conversion process**
+
+Let’s trace the conversions involved in the awarding process. If the `eao_yith_award_order_points` wrapper is present, I call `eao_yith_award_order_points($order_id, $points_to_grant)` in the `eao-yith-points-core.php` class. It might be incorrectly expecting the 'order total' and dividing by 100. I need to inspect the code within the `eao_yith_award_order_points` function. I'll search for the awarding function in `eao-yith-points-core.php` to understand what's happening there.</details></think>
+
+---
+
+Tool use: **grep**
+
+<details>
+<summary>Grep for "eao_yith_award_order_points\(|award_order_points" in "C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin" • 8 matches</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `.\enhanced-admin-order-plugin.php` | `if (function_exists('eao_yith_award_order_points')) \{` | L906 |
+| `.\enhanced-admin-order-plugin.php` | `eao_points_debug_log('Calling eao_yith_award_order_points with ' . $points_to_grant . ' pts for user ' . $customer_id, $order_id);` | L907 |
+| `.\enhanced-admin-order-plugin.php` | `$award = eao_yith_award_order_points($order_id, $points_to_grant);` | L908 |
+| `.\enhanced-admin-order-plugin.php` | `eao_points_debug_log('eao_yith_award_order_points result: ' . var_export($award, true), $order_id);` | L910 |
+| `.\eao-yith-points-core.php` | `add_action( 'eao_award_points_async', array( $this, 'award_order_points' ), 10, 1 );` | L102 |
+| `.\eao-yith-points-core.php` | `$this->award_order_points( $order_id, $expected_award > 0 ? $expected_award : null );` | L190 |
+| `.\eao-yith-points-core.php` | `public function award_order_points( $order_id, $points_to_award = null ) \{` | L199 |
+| `.\eao-yith-points-core.php` | `function eao_yith_award_order_points( $order_id, $points_to_award = null ) \{` | L784 |
+
+
+</details>
+
+---
+
+Tool use: **read_file**
+
+Read file: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-yith-points-core.php
+
+---
+
+<think><details><summary>Thought Process</summary>**Evaluating points award process**
+
+I think there might be an issue with the YITH wrapper computing points incorrectly. Instead, it seems our function, eao_points_grant_if_needed, could use direct increments with ywpar_increase_points to fix the discrepancy between computed points. 
+
+Currently, both our function and the YITH integration trigger when an order status changes to completed. To solve this, we should prioritize using direct point increases over the wrapper approach. If needed, I could pass explicit points to the wrapper to ensure accuracy.
+**Reassessing point awarding process**
+
+I see that the wrapper path results in YITH awarding their own computed points, which creates a mismatch. Our function sets the meta for _eao_points_granted, but it may not add points directly because we exit after the wrapper returns. This leads to the UI displaying an incorrect number of granted points.
+
+To fix this, I need to change the awarding process so it calls the YITH API with exact amounts instead of relying on their computations. It seems like it'd be simpler to skip the wrapper entirely and use direct increments with ywpar_increase_points to ensure consistency in awarding points.
+**Modifying points grant function**
+
+I'm thinking that I need to modify eao_points_grant_if_needed by removing the use of eao_yith_award_order_points or keeping it behind a feature toggle called 'force_exact_award'. My aim is to prioritize direct awarding of points, only using the wrapper as a fallback if needed. 
+
+I also want to include an award for 'delivered' status. The plan is to reorder the code so that we try ywpar_increase_points first, then customer->update_points, and lastly the wrapper. This adjustment should help with consistency and accuracy, ensuring we don't award points during 'processing' status. Let's implement these changes!</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+@@
+-    // Prefer our YITH wrapper which respects plugin options and records YITH meta
+-    $granted_ok = false;
+-    if (function_exists('eao_yith_award_order_points')) {
+-        eao_points_debug_log('Calling eao_yith_award_order_points with ' . $points_to_grant . ' pts for user ' . $customer_id, $order_id);
+-        $award = eao_yith_award_order_points($order_id, $points_to_grant);
+-        $granted_ok = is_array($award) ? !empty($award['success']) : (bool)$award;
+-        eao_points_debug_log('eao_yith_award_order_points result: ' . var_export($award, true), $order_id);
+-    }
+-    // Fallback to direct YITH functions if wrapper not available
+-    if (!$granted_ok) {
+-        if (function_exists('ywpar_increase_points')) {
+-            eao_points_debug_log('Fallback ywpar_increase_points with ' . $points_to_grant . ' pts', $order_id);
+-            ywpar_increase_points($customer_id, $points_to_grant, sprintf(__('Granted for Order #%d (admin backend)', 'enhanced-admin-order'), $order_id), $order_id);
+-            $granted_ok = true;
+-        } elseif (function_exists('ywpar_get_customer')) {
+-            $cust = ywpar_get_customer($customer_id);
+-            if ($cust && method_exists($cust, 'update_points')) {
+-                eao_points_debug_log('Fallback customer->update_points with ' . $points_to_grant . ' pts', $order_id);
+-                $granted_ok = (bool)$cust->update_points($points_to_grant, 'order_completed', array('order_id' => $order_id, 'description' => sprintf('Points earned from Order #%d', $order_id)));
+-            }
+-        }
+-    }
++    // Prefer exact-point APIs to avoid YITH recalculating a different amount
++    $granted_ok = false;
++    if (function_exists('ywpar_increase_points')) {
++        eao_points_debug_log('ywpar_increase_points exact grant: ' . $points_to_grant . ' pts', $order_id);
++        ywpar_increase_points($customer_id, $points_to_grant, sprintf(__('Granted for Order #%d (admin backend)', 'enhanced-admin-order'), $order_id), $order_id);
++        $granted_ok = true;
++    } elseif (function_exists('ywpar_get_customer')) {
++        $cust = ywpar_get_customer($customer_id);
++        if ($cust && method_exists($cust, 'update_points')) {
++            eao_points_debug_log('customer->update_points exact grant: ' . $points_to_grant . ' pts', $order_id);
++            $granted_ok = (bool)$cust->update_points($points_to_grant, 'order_completed', array('order_id' => $order_id, 'description' => sprintf('Points earned from Order #%d', $order_id)));
++        }
++    }
++    // Last resort: call the wrapper (may recalc). We only use this when direct APIs are not available
++    if (!$granted_ok && function_exists('eao_yith_award_order_points')) {
++        eao_points_debug_log('Wrapper fallback grant with expected points ' . $points_to_grant, $order_id);
++        $award = eao_yith_award_order_points($order_id, $points_to_grant);
++        $granted_ok = is_array($award) ? !empty($award['success']) : (bool)$award;
++    }
+*** End Patch
+```
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: add
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: commit
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+  * message: Prefer exact YITH API for awarding points to avoid 1-point grants.
+- Use ywpar_increase_points / customer->update_points first
+- Only fallback to wrapper if direct APIs unavailable
+
+*Result*:
+{"data":{"output":"[dev 15396ee] Prefer exact YITH API for awarding points to avoid 1-point grants. - Use ywpar_increase_points / customer-\u003eupdate_points first - Only fallback to wrapper if direct APIs unavailable\n 2 files changed, 257 insertions(+), 18 deletions(-)\n"}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_push**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_push: Update remote refs along with associated objects (git push).
+
+*Parameters*:
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+Thanks for the screenshots—this confirms the bug: YITH’s internal “award” recalculation was getting called and granting only 1 point, despite the UI showing 100. I’ve corrected the grant path to award the exact number of points we compute in the UI.
+
+What I changed
+- Awarding logic now uses YITH’s exact-point APIs first:
+  - Tries ywpar_increase_points(customerId, exactPoints, ...) if available.
+  - Else uses ywpar_get_customer(...)->update_points(exactPoints, ...).
+  - Only if neither exists do we fall back to the wrapper that lets YITH recalc.
+- Statuses
+  - Points grant on Shipped, Completed, or Delivered only (not Processing).
+  - Still one-time with delta top-up if already partially granted.
+- Version: 5.1.22
+- Branch: dev
+- Commit: 4ee4b6d, plus follow-up commit 15396ee (exact grant preference).
+
+Why this fixes the +1 issue
+- The previous path called YITH’s add_order_points which recalculated from order data and sometimes yielded 1. Now we directly increment the customer’s points by the exact UI value (100), bypassing the recalculation.
+
+How to test
+1) Set order to Pending/On-hold; set the slider so “Points for order paid with points” shows 100.
+2) Save the order (this stores the expected award).
+3) Change status to Shipped, Completed, or Delivered and save.
+4) In the customer’s YITH points history, you should see +100 (or a top-up if some points were granted before). Revoke still deducts the correct amount.
+
+If you still see a mismatch, tell me the history lines around the grant and I’ll add a verification step to reconcile YITH’s recorded delta with our meta.
+
+---
+
+_**User (2025-10-30 08:16Z)**_
+
+Good. always grant what we show on the UI and don't recalculate. Also, I don't like the use of fallbacks. I want one source of truth. Remove fallbacks and if we have an issue we will solve it, but we will have consistant behavior
+
+---
+
+_**Assistant (gpt-5-high)**_
+
 
 
 ---
