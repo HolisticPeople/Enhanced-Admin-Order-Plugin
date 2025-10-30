@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.1.25
+ * Version: 5.1.26
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.25: Late unhook YITH admin award; include delivered in UI)
-define('EAO_PLUGIN_VERSION', '5.1.25');
+// Plugin version constant (v5.1.26: Deterministic grant fallback via customer->update_points)
+define('EAO_PLUGIN_VERSION', '5.1.26');
 
 /**
  * Check if we should load EAO functionality
@@ -869,12 +869,29 @@ function eao_points_grant_if_needed( $order_id ) {
 
     // Prefer exact-point APIs to avoid YITH recalculating a different amount
     // Single awarding path: direct YITH increase by exact amount. If unavailable, log and stop.
-    if (!function_exists('ywpar_increase_points')) {
-        eao_points_debug_log('ERROR: ywpar_increase_points not available; cannot grant points deterministically.', $order_id);
+    if (function_exists('ywpar_increase_points')) {
+        eao_points_debug_log('Granting via ywpar_increase_points exact=' . $points_to_grant, $order_id);
+        ywpar_increase_points($customer_id, $points_to_grant, sprintf(__('Granted for Order #%d (admin backend)', 'enhanced-admin-order'), $order_id), $order_id);
+        $granted_ok = true;
+    } else if (function_exists('ywpar_get_customer')) {
+        // Deterministic fallback: use YITH native customer->update_points with exact value (no recalculation)
+        try {
+            $cust = ywpar_get_customer($customer_id);
+            if ($cust && method_exists($cust, 'update_points')) {
+                eao_points_debug_log('Granting via customer->update_points exact=' . $points_to_grant, $order_id);
+                $granted_ok = (bool)$cust->update_points($points_to_grant, 'order_completed', array('order_id' => $order_id, 'description' => sprintf('Points earned from Order #%d (EAO)', $order_id)));
+            }
+        } catch (Exception $e) {
+            eao_points_debug_log('ERROR: customer->update_points exception: ' . $e->getMessage(), $order_id);
+        }
+        if (!$granted_ok) {
+            eao_points_debug_log('ERROR: customer->update_points path failed.', $order_id);
+            return;
+        }
+    } else {
+        eao_points_debug_log('ERROR: No YITH API available for deterministic grant.', $order_id);
         return;
     }
-    ywpar_increase_points($customer_id, $points_to_grant, sprintf(__('Granted for Order #%d (admin backend)', 'enhanced-admin-order'), $order_id), $order_id);
-    $granted_ok = true;
 
     if ($granted_ok) {
         $order->update_meta_data('_eao_points_granted', 1);
