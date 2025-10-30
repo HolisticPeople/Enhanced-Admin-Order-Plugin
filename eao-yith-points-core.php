@@ -114,21 +114,21 @@ class EAO_YITH_Points_Core {
             if ( ! is_admin() ) { return; }
             if ( class_exists( 'YITH_WC_Points_Rewards_Earning' ) ) {
                 $earning = YITH_WC_Points_Rewards_Earning::get_instance();
-                if ( has_action( 'woocommerce_order_status_completed', array( $earning, 'add_order_points' ) ) ) {
-                    remove_action( 'woocommerce_order_status_completed', array( $earning, 'add_order_points' ), 10 );
-                    error_log('[EAO Points] Removed YITH add_order_points from completed in admin (late)');
-                }
-                if ( has_action( 'woocommerce_order_status_processing', array( $earning, 'add_order_points' ) ) ) {
-                    remove_action( 'woocommerce_order_status_processing', array( $earning, 'add_order_points' ), 10 );
-                    error_log('[EAO Points] Removed YITH add_order_points from processing in admin (late)');
-                }
-                if ( has_action( 'woocommerce_payment_complete', array( $earning, 'add_order_points' ) ) ) {
-                    remove_action( 'woocommerce_payment_complete', array( $earning, 'add_order_points' ), 10 );
-                    error_log('[EAO Points] Removed YITH add_order_points from payment_complete in admin (late)');
-                }
-                if ( has_action( 'woocommerce_order_status_changed', array( $earning, 'add_order_points' ) ) ) {
-                    remove_action( 'woocommerce_order_status_changed', array( $earning, 'add_order_points' ), 10 );
-                    error_log('[EAO Points] Removed YITH add_order_points from status_changed in admin (late)');
+                // Remove across common priorities in case YITH attaches with different priorities
+                $hooks = array(
+                    'woocommerce_order_status_completed',
+                    'woocommerce_order_status_processing',
+                    'woocommerce_payment_complete',
+                    'woocommerce_order_status_changed',
+                );
+                $priorities = array(1, 5, 10, 20, 50, 100);
+                foreach ($hooks as $hk) {
+                    foreach ($priorities as $p) {
+                        if ( has_action( $hk, array( $earning, 'add_order_points' ) ) ) {
+                            remove_action( $hk, array( $earning, 'add_order_points' ), $p );
+                        }
+                    }
+                    error_log('[EAO Points] Sanitized YITH add_order_points from ' . $hk . ' in admin (scan priorities)');
                 }
             }
         } catch ( Exception $e ) { /* no-op */ }

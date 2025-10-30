@@ -124,7 +124,7 @@ function eao_process_yith_points_redemption( $order_id, $request_data ) {
             // Deduct points (first time vs additional)
             $is_first_deduction = ( $existing_points_redeemed <= 0 );
             // When calling adjust, pass delta only; the function will record proper action text
-            $deduction_result = eao_adjust_customer_points( $customer_id, -$points_change, $order_id );
+            $deduction_result = eao_adjust_customer_points( $customer_id, -$points_change, $order_id, $is_first_deduction );
             
             if ( ! $deduction_result['success'] ) {
                 delete_transient( $recent_processing_key );
@@ -146,7 +146,7 @@ function eao_process_yith_points_redemption( $order_id, $request_data ) {
             $points_to_refund = abs( $points_change );
             
             // Add points back to customer
-            $refund_result = eao_adjust_customer_points( $customer_id, $points_to_refund, $order_id );
+            $refund_result = eao_adjust_customer_points( $customer_id, $points_to_refund, $order_id, false );
             
             if ( ! $refund_result['success'] ) {
                 delete_transient( $recent_processing_key );
@@ -425,7 +425,7 @@ function eao_create_points_discount_coupon( $order, $points_redeemed, $discount_
  * @param int $order_id Order ID for reference
  * @return array Result with success status and messages
  */
-function eao_adjust_customer_points( $customer_id, $points_delta, $order_id ) {
+function eao_adjust_customer_points( $customer_id, $points_delta, $order_id, $is_first_deduction = false ) {
     $result = array(
         'success' => true,
         'messages' => array(),
@@ -442,7 +442,9 @@ function eao_adjust_customer_points( $customer_id, $points_delta, $order_id ) {
         } else if ( $points_delta < 0 ) {
             // NEGATIVE DELTA = DEDUCT additional points from customer
             $yith_action = 'redeemed_points';  // YITH's standard redemption action
-            $description = sprintf( 'Additional redemption for Order #%d', $order_id );
+            $description = $is_first_deduction
+                ? sprintf( 'Redeemed points for Order #%d', $order_id )
+                : sprintf( 'Additional redemption for Order #%d', $order_id );
             $log_message = sprintf( 'Deducted additional %d points from customer %d', abs($points_delta), $customer_id );
         } else {
             // Zero delta - should not happen but handle gracefully
