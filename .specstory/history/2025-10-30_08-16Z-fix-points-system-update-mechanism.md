@@ -3080,6 +3080,212 @@ Read file: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coo
 
 ---
 
+<think><details><summary>Thought Process</summary>**Analyzing slider logic**
+
+Okay, I'm trying to understand the logic behind the slider. It appears that it's built when "hasYithData" is true and the status isn't paid. The slider only shows if there are available points. If there aren't, we get a zero line instead. In the "hasYithData" branch, the points line should always show when points are available. If totalAvailablePoints is zero and the order is unpaid, it seems the grand total resets to zero. But will there be a slider then?
+**Investigating slider behavior**
+
+If "hasYithData" is true but totalAvailablePoints equals zero and the order is unpaid, the slider might be missing completely. There’s a 'zero' line shown when no discounts apply. The slider only appears when points are available. So if a customer's points are zero, the slider won’t be visible. The screenshot indicates "Granted so far: 0 pts" while points discounts are shown. Perhaps the missing slider results from adjusting the points after revoking them? That could explain the situation.
+**Clarifying slider functionality**
+
+Alright, the slider is for redeeming points, so if awarded points are revoked, it typically shouldn’t affect redemption points. However, in many loyalty systems, revoking granted points lowers the user's balance, possibly to zero, which hides the slider. The user might expect the slider to remain visible even if they have zero points for potential future redemptions. Maybe the points were positive before, but since the status changed to pending, they want to adjust the redemption slider. It seems like the slider should be available for that purpose.
+**Rethinking slider visibility**
+
+Even if available points are zero, it could be useful to display the slider to indicate that. The previous code showed a fallback to indicate zero when no active discount exists, but only executed when totalAvailablePoints is greater than zero. It seems beneficial to show a slider with a maximum of zero, even if there aren't any points. The fallback message indicates zero points but lacks the slider. So, I think the immediate fix should be to always show the slider, even if it's disabled or set to max zero.
+**Adjusting slider visibility**
+
+To ensure the slider is visible, we need to address the case where "hasYithData" is true but totalAvailablePoints equals zero. We'll want to show a row with a slider having a maximum of zero for unpaid statuses. This logic will display a zero slider when there are no available points, making it clearer. The screenshot shows discounts, but since points are zero, we might be missing the slider. The fix is to always show that slider, clearly indicating zero points available. Let's implement this patch.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coordinator.js</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coordinator.js
+@@
+-            } else if (statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped') {
+-                // Paid orders: keep existing display logic handled below
+-            }
++            } else if (statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped') {
++                // Paid orders: keep existing display logic handled below
++            } else {
++                // Unpaid order with 0 available points: still show the slider (max=0) so UI is consistent
++                const currentPoints = 0;
++                const maxPoints = this.calculateMaxPoints(0); // will be 0 when no balance
++                const labelWithInput = `Points Discount (<input type="number" id="eao_points_to_redeem_inline" name="eao_points_to_redeem" class="eao-points-input eao-points-input-inline" min="0" max="${maxPoints}" value="${currentPoints}" step="1"> points):`;
++                const displayAmount = eaoFormatPrice(0);
++                summaryHtml += this.createSummaryRowWithControl(
++                    labelWithInput,
++                    displayAmount,
++                    this.createInlinePointsSlider(currentPoints),
++                    true,
++                    'eao-summary-points-discount'
++                );
++            }
+*** End Patch
+```
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coordinator.js`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+@@
+- * Version: 5.1.19
++ * Version: 5.1.20
+@@
+-// Plugin version constant (v5.1.19: Grant on shipped; award exact line-3 value with top-up logic)
+-define('EAO_PLUGIN_VERSION', '5.1.19');
++// Plugin version constant (v5.1.20: Always render points slider even when balance is 0)
++define('EAO_PLUGIN_VERSION', '5.1.20');
+*** End Patch
+```
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: add
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: commit
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+  * message: EAO v5.1.20: Always render points slider even with 0 available points.
+- Unpaid orders with zero balance now show slider (max=0) for consistency
+- Bump version to 5.1.20 for cache busting
+
+*Result*:
+{"data":{"output":"[dev 70c1e4b] EAO v5.1.20: Always render points slider even with 0 available points. - Unpaid orders with zero balance now show slider (max=0) for consistency - Bump version to 5.1.20 for cache busting\n 3 files changed, 799 insertions(+), 3 deletions(-)\n"}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_push**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_push: Update remote refs along with associated objects (git push).
+
+*Parameters*:
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+I see why the slider disappeared: when the customer’s available points are 0, our render path with YITH data skipped adding the row entirely. After a revoke + switch to Pending, your customer most likely had a zero balance, so the UI showed nothing.
+
+I’ve changed it to always render the inline slider even when balance is 0 (max=0) on unpaid orders, so the row stays visible and consistent.
+
+- Version: 5.1.20
+- Branch: dev
+- Commit: 70c1e4b
+- Change: in `eao-main-coordinator.js`, for the “has YITH data but totalAvailablePoints == 0 and status is unpaid” case, we now render the row with the number input and slider (max=0) and $0.00.
+
+Please hard refresh on staging and set the order to Pending Payment; the slider should be present again. Then you can adjust redemption and move to Shipped to verify the grant top-up fix from 5.1.19.
+
+---
+
+_**User (2025-10-30 08:16Z)**_
+
+No, the customer has many points, but I think your change helped, I see the slider.
+
+Now, we need to make sure the points are granted only when the order status is changed to Shipped or Completed, not when it changes to processing
+
+---
+
+_**Assistant (gpt-5-high)**_
+
+
+
+---
+
+Tool use: **grep**
+
+<details>
+<summary>Grep for "eao_points_grant_if_needed\(" in "C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin" • 2 matches</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `.\enhanced-admin-order-plugin.php` | `eao_points_grant_if_needed($order_id);` | L806 |
+| `.\enhanced-admin-order-plugin.php` | `function eao_points_grant_if_needed( $order_id ) \{` | L821 |
+
+
+</details>
+
+---
+
 
 
 ---

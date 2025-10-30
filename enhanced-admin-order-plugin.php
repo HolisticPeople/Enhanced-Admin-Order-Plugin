@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.1.20
+ * Version: 5.1.21
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.20: Always render points slider even when balance is 0)
-define('EAO_PLUGIN_VERSION', '5.1.20');
+// Plugin version constant (v5.1.21: Grant points only on Shipped/Completed, not Processing)
+define('EAO_PLUGIN_VERSION', '5.1.21');
 
 /**
  * Check if we should load EAO functionality
@@ -802,7 +802,7 @@ function eao_ajax_save_order_details() {
 function eao_points_handle_status_change( $order_id, $from_status, $to_status, $order ) {
     if (!function_exists('eao_yith_is_available') || !eao_yith_is_available()) { return; }
     $to_status = strtolower($to_status);
-    if (in_array($to_status, array('processing','completed','shipped'), true)) {
+    if (in_array($to_status, array('completed','shipped'), true)) {
         eao_points_grant_if_needed($order_id);
     }
 }
