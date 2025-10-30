@@ -802,6 +802,7 @@ function eao_ajax_save_order_details() {
 function eao_points_handle_status_change( $order_id, $from_status, $to_status, $order ) {
     if (!function_exists('eao_yith_is_available') || !eao_yith_is_available()) { return; }
     $to_status = strtolower($to_status);
+    eao_points_debug_log('Status changed handler fired: from=' . strtolower($from_status) . ' to=' . $to_status, $order_id);
     if (in_array($to_status, array('completed','shipped','delivered'), true)) {
         eao_points_grant_if_needed($order_id);
     }
@@ -809,6 +810,19 @@ function eao_points_handle_status_change( $order_id, $from_status, $to_status, $
 // Admin-only: Only process order status changes from admin area (not frontend AJAX)
 if ( eao_should_load() ) {
     add_action('woocommerce_order_status_changed', 'eao_points_handle_status_change', 10, 4);
+    // Also hook the concrete status events to ensure we always run in admin
+    add_action('woocommerce_order_status_shipped', function($order_id){
+        eao_points_debug_log('Status hook: shipped', $order_id);
+        eao_points_grant_if_needed($order_id);
+    }, 10, 1);
+    add_action('woocommerce_order_status_completed', function($order_id){
+        eao_points_debug_log('Status hook: completed', $order_id);
+        eao_points_grant_if_needed($order_id);
+    }, 10, 1);
+    add_action('woocommerce_order_status_delivered', function($order_id){
+        eao_points_debug_log('Status hook: delivered', $order_id);
+        eao_points_grant_if_needed($order_id);
+    }, 10, 1);
 }
 
 // Lightweight debug helper for points operations
@@ -821,6 +835,7 @@ if (!function_exists('eao_points_debug_log')) {
 function eao_points_grant_if_needed( $order_id ) {
     $order = wc_get_order($order_id);
     if (!$order) { return; }
+    eao_points_debug_log('Grant check started', $order_id);
     // If already granted, allow a "top-up" when expected award increased (e.g., status moved to shipped)
     $already_granted = (bool)$order->get_meta('_eao_points_granted', true);
     $was_revoked     = (bool)$order->get_meta('_eao_points_revoked', true);
@@ -850,7 +865,7 @@ function eao_points_grant_if_needed( $order_id ) {
         eao_points_debug_log('Top-up grant detected. Previously granted=' . $already_pts . ', delta=' . $points_to_grant, $order_id);
     }
 
-    if ($points_to_grant <= 0) { return; }
+    if ($points_to_grant <= 0) { eao_points_debug_log('No grant due to 0 amount', $order_id); return; }
 
     // Prefer exact-point APIs to avoid YITH recalculating a different amount
     // Single awarding path: direct YITH increase by exact amount. If unavailable, log and stop.
