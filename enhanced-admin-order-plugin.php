@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.1.30
+ * Version: 5.1.31
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin version constant (v5.1.29: broaden YITH unhook across priorities; message tweak)
-define('EAO_PLUGIN_VERSION', '5.1.30');
+define('EAO_PLUGIN_VERSION', '5.1.31');
 
 /**
  * Check if we should load EAO functionality
@@ -832,6 +832,12 @@ if ( eao_should_load() ) {
         if ( is_admin() ) { return true; }
         return $skip;
     }, 999, 2);
+
+    // Also prevent the alternate Orders manager path from assigning earned points in admin
+    add_filter('ywpar_order_status_to_assign_earned_points', function($status){
+        if ( is_admin() ) { return array(); }
+        return $status;
+    }, 999);
 }
 
 // Lightweight debug helper for points operations
