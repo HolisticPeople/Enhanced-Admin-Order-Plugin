@@ -128,7 +128,6 @@ class EAO_YITH_Points_Core {
                             remove_action( $hk, array( $earning, 'add_order_points' ), $p );
                         }
                     }
-                    error_log('[EAO Points] Sanitized YITH add_order_points from ' . $hk . ' in admin (scan priorities)');
                 }
             }
         } catch ( Exception $e ) { /* no-op */ }
@@ -159,9 +158,7 @@ class EAO_YITH_Points_Core {
                 $customer = ywpar_get_customer( $user_id );
                 return $customer ? $customer->get_usable_points() : 0;
             }
-        } catch ( Exception $e ) {
-            error_log( '[EAO YITH] Error getting customer points: ' . $e->getMessage() );
-        }
+        } catch ( Exception $e ) { /* no-op */ }
         
         return 0;
     }
@@ -251,9 +248,7 @@ class EAO_YITH_Points_Core {
                     return true;
                 }
             }
-        } catch ( Exception $e ) {
-            error_log( '[EAO YITH] Error awarding order points: ' . $e->getMessage() );
-        }
+        } catch ( Exception $e ) { /* no-op */ }
         
         return false;
     }

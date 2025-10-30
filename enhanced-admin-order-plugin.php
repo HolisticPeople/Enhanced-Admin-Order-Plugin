@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.1.31
+ * Version: 5.2.0
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin version constant (v5.1.29: broaden YITH unhook across priorities; message tweak)
-define('EAO_PLUGIN_VERSION', '5.1.31');
+define('EAO_PLUGIN_VERSION', '5.2.0');
 
 /**
  * Check if we should load EAO functionality
@@ -802,7 +802,6 @@ function eao_ajax_save_order_details() {
 function eao_points_handle_status_change( $order_id, $from_status, $to_status, $order ) {
     if (!function_exists('eao_yith_is_available') || !eao_yith_is_available()) { return; }
     $to_status = strtolower($to_status);
-    eao_points_debug_log('Status changed handler fired: from=' . strtolower($from_status) . ' to=' . $to_status, $order_id);
     if (in_array($to_status, array('completed','shipped','delivered'), true)) {
         eao_points_grant_if_needed($order_id);
     }
@@ -812,15 +811,12 @@ if ( eao_should_load() ) {
     add_action('woocommerce_order_status_changed', 'eao_points_handle_status_change', 10, 4);
     // Also hook the concrete status events to ensure we always run in admin
     add_action('woocommerce_order_status_shipped', function($order_id){
-        eao_points_debug_log('Status hook: shipped', $order_id);
         eao_points_grant_if_needed($order_id);
     }, 10, 1);
     add_action('woocommerce_order_status_completed', function($order_id){
-        eao_points_debug_log('Status hook: completed', $order_id);
         eao_points_grant_if_needed($order_id);
     }, 10, 1);
     add_action('woocommerce_order_status_delivered', function($order_id){
-        eao_points_debug_log('Status hook: delivered', $order_id);
         eao_points_grant_if_needed($order_id);
     }, 10, 1);
 }
@@ -850,7 +846,6 @@ if (!function_exists('eao_points_debug_log')) {
 function eao_points_grant_if_needed( $order_id ) {
     $order = wc_get_order($order_id);
     if (!$order) { return; }
-    eao_points_debug_log('Grant check started', $order_id);
     // If already granted, allow a "top-up" when expected award increased (e.g., status moved to shipped)
     $already_granted = (bool)$order->get_meta('_eao_points_granted', true);
     $was_revoked     = (bool)$order->get_meta('_eao_points_revoked', true);
@@ -864,12 +859,10 @@ function eao_points_grant_if_needed( $order_id ) {
     $points_to_grant  = 0;
     if ($override_enabled && $override_points > 0) {
         $points_to_grant = $override_points;
-        eao_points_debug_log('Grant using override: ' . $points_to_grant, $order_id);
     } else {
         // Only use exact expected award saved during last save/render
         $expected_award_meta = intval($order->get_meta('_eao_points_expected_award', true));
         $points_to_grant = max(0, $expected_award_meta);
-        eao_points_debug_log('Grant using expected_award meta (single source): ' . $points_to_grant, $order_id);
     }
 
     // If points were already granted and not revoked, only top up the delta when higher expected points are needed
@@ -877,15 +870,13 @@ function eao_points_grant_if_needed( $order_id ) {
         $delta = max(0, intval($points_to_grant) - max(0, $already_pts));
         if ($delta <= 0) { return; }
         $points_to_grant = $delta;
-        eao_points_debug_log('Top-up grant detected. Previously granted=' . $already_pts . ', delta=' . $points_to_grant, $order_id);
     }
 
-    if ($points_to_grant <= 0) { eao_points_debug_log('No grant due to 0 amount', $order_id); return; }
+    if ($points_to_grant <= 0) { return; }
 
     // Prefer exact-point APIs to avoid YITH recalculating a different amount
     // Single awarding path: direct YITH increase by exact amount. If unavailable, log and stop.
     if (function_exists('ywpar_increase_points')) {
-        eao_points_debug_log('Granting via ywpar_increase_points exact=' . $points_to_grant, $order_id);
         ywpar_increase_points($customer_id, $points_to_grant, sprintf(__('Granted for Order #%d (admin backend)', 'enhanced-admin-order'), $order_id), $order_id);
         $granted_ok = true;
     } else if (function_exists('ywpar_get_customer')) {
@@ -893,18 +884,13 @@ function eao_points_grant_if_needed( $order_id ) {
         try {
             $cust = ywpar_get_customer($customer_id);
             if ($cust && method_exists($cust, 'update_points')) {
-                eao_points_debug_log('Granting via customer->update_points exact=' . $points_to_grant, $order_id);
                 $granted_ok = (bool)$cust->update_points($points_to_grant, 'order_completed', array('order_id' => $order_id, 'description' => sprintf('Points earned from Order #%d (EAO)', $order_id)));
             }
         } catch (Exception $e) {
-            eao_points_debug_log('ERROR: customer->update_points exception: ' . $e->getMessage(), $order_id);
+            
         }
-        if (!$granted_ok) {
-            eao_points_debug_log('ERROR: customer->update_points path failed.', $order_id);
-            return;
-        }
+        if (!$granted_ok) { return; }
     } else {
-        eao_points_debug_log('ERROR: No YITH API available for deterministic grant.', $order_id);
         return;
     }
 
@@ -927,7 +913,6 @@ function eao_points_grant_if_needed( $order_id ) {
             $order->add_order_note(sprintf(__('EAO: Granted %d points to customer on status change.', 'enhanced-admin-order'), intval($final_total)));
         }
         $order->save();
-        eao_points_debug_log('Grant recorded successfully: ' . $points_to_grant . ' pts', $order_id);
     }
 }
 

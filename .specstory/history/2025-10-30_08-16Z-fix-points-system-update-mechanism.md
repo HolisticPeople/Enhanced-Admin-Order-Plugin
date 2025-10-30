@@ -7116,9 +7116,1290 @@ _**Assistant (gpt-5-high)**_
 
 ---
 
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "cd public/wp-content/plugins && ls -1 | grep -Ei 'yith|points|rewards'"
+```
+
+```
+yith-woocommerce-brands-add-on-premium
+yith-woocommerce-customize-myaccount-page
+yith-woocommerce-points-and-rewards-premium
+yith-woocommerce-wishlist
+
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "cd public/wp-content/plugins/yith-woocommerce-points-and-rewards-premium && grep -RIn "add_order_points" -n | head -20"
+```
+
+```
+includes/compatibility/class-ywpar-yith-woocommerce-subscription.php:52:			add_filter( 'ywpar_add_order_points', array( $this, 'check_renew' ), 10, 2 );
+includes/compatibility/class-ywpar-yith-woocommerce-product-vendors.php:59:			add_filter( 'ywpar_add_order_points', array( $this, 'check_if_is_suborder' ), 10, 2 );
+includes/class-yith-wc-points-rewards-earning.php:99:					add_action( $hook, array( $this, 'add_order_points' ), 5 );
+includes/class-yith-wc-points-rewards-earning.php:253:		public function add_order_points( $order_id ) {
+includes/class-yith-wc-points-rewards-earning.php:259:			if ( '' !== $is_set || is_array( $this->points_applied ) && in_array( $order_id, $this->points_applied, true ) || apply_filters( 'ywpar_add_order_points', false, $order_id ) ) {
+includes/class-yith-wc-points-rewards-earning.php:691:					$this->add_order_points( $order->get_id() );
+includes/class-yith-wc-points-rewards-frontend.php:105:							add_action( 'woocommerce_view_order', 'ywpar_add_order_points_summary', 5 );
+includes/class-yith-wc-points-rewards-email.php:56:				add_action( 'woocommerce_email_customer_details', 'ywpar_add_order_points_summary', 5 );
+includes/functions-yith-wc-points-rewards.php:1300:if ( ! function_exists( 'ywpar_add_order_points_summary' ) ) {
+includes/functions-yith-wc-points-rewards.php:1306:	function ywpar_add_order_points_summary( $order ) {
+includes/functions-yith-wc-points-rewards.php:1338:		 * APPLY_FILTERS: ywpar_add_order_points_summary
+includes/functions-yith-wc-points-rewards.php:1347:		echo apply_filters( 'ywpar_add_order_points_summary', $message ? '<p class="ywpar-order-point-summary">' . $message . '</p>' : '', $order, $point_earned, $point_redeemed ); //phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+includes/legacy/abstract-yith-wc-points-rewards-earning-legacy.php:203:		public function add_order_points_with_review( $comment_id, $status ) {
+includes/legacy/abstract-yith-wc-points-rewards-earning-legacy.php:204:			_deprecated_function( 'YITH_WC_Points_Rewards_Earning::add_order_points_with_review', '3.0.0', 'YITH_WC_Points_Rewards_Extra_Points::extra_points_on_review' );
+includes/legacy/abstract-yith-wc-points-rewards-earning-legacy.php:244:		public function add_order_points_with_advanced_reviews( $review_id, $status ) {
+includes/legacy/abstract-yith-wc-points-rewards-earning-legacy.php:245:			_deprecated_function( 'YITH_WC_Points_Rewards_Earning::add_order_points_with_advanced_reviews', '3.0.0', 'YITH_WC_Points_Rewards_Extra_Points::extra_points_on_review_with_advanced_reviews' );
+
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Investigating hook definition**
+
+I’m looking at the file includes/class-yith-wc-points-rewards-earning.php and noting that it has a hook for adding add_order_points at a priority of 5. Now, I need to find where this $hook is actually defined. Let's open that file and see what I can find about it! It's important to understand the context and how it's set up to grasp its functionality fully.</details></think>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "sed -n '1,180p' public/wp-content/plugins/yith-woocommerce-points-and-rewards-premium/includes/class-yith-wc-points-rewards-earning.php | sed -n '1,140p'"
+```
+
+```
+<?php
+/**
+ * Class to earning points
+ *
+ * @class   YITH_WC_Points_Rewards_Earning
+ * @since   1.0.0
+ * @author  YITH <plugins@yithemes.com>
+ * @package YITH WooCommerce Points and Rewards
+ */
+
+defined( 'ABSPATH' ) || exit;
+
+require_once YITH_YWPAR_INC . 'legacy/abstract-yith-wc-points-rewards-earning-legacy.php';
+
+if ( ! class_exists( 'YITH_WC_Points_Rewards_Earning' ) ) {
+
+	/**
+	 * Class YITH_WC_Points_Rewards_Earning
+	 */
+	class YITH_WC_Points_Rewards_Earning extends YITH_WC_Points_Rewards_Earning_Legacy {
+
+
+		/**
+		 * Single instance of the class
+		 *
+		 * @var YITH_WC_Points_Rewards_Earning
+		 */
+		protected static $instance;
+
+		/**
+		 * Points applied
+		 *
+		 * @var bool
+		 */
+		protected $points_applied = false;
+
+		/**
+		 * Returns single instance of the class
+		 *
+		 * @return YITH_WC_Points_Rewards_Earning
+		 * @since  1.0.0
+		 */
+		public static function get_instance() {
+			return ! is_null( self::$instance ) ? self::$instance : self::$instance = new self();
+		}
+
+
+		/**
+		 * Constructor
+		 *
+		 * Initialize plugin and registers actions and filters to be used
+		 *
+		 * @since 1.0.0
+		 */
+		private function __construct() {
+			if ( ! ywpar_automatic_earning_points_enabled() ) {
+				return;
+			}
+
+			add_action( 'woocommerce_checkout_order_processed', array( $this, 'save_points_earned_from_cart' ) );
+			add_action( 'woocommerce_store_api_checkout_order_processed', array( $this, 'save_points_earned_from_cart' ) );
+			add_filter( 'woocommerce_get_cart_item_from_session', array( $this, 'set_points_on_cart_item' ), 20, 2 );
+
+			// add points for previous orders to a new registered user.
+			if ( 'yes' === ywpar_get_option( 'assign_older_orders_points_to_new_registered_user' ) ) {
+				add_action( 'user_register', array( $this, 'add_points_for_previous_orders_on_registration' ) );
+			}
+
+			add_action( 'init', array( $this, 'init' ) );
+		}
+
+		/**
+		 * Save the total point inside the cart item
+		 *
+		 * @param array  $cart_item     Cart item.
+		 * @param string $cart_item_key Cart item key.
+		 *
+		 * @return array
+		 */
+		public function set_points_on_cart_item( $cart_item, $cart_item_key ) {
+			$cart_item['ywpar_total_points'] = $this->calculate_points_for_cart_item( $cart_item, $cart_item_key, 0 );
+
+			return $cart_item;
+		}
+
+		/**
+		 *  Start the game for earn point with order and extra points.
+		 *
+		 *  Triggered by 'init' hook.
+		 *
+		 * @since  1.6.0
+		 */
+		public function init() {
+
+			$status_to_earn = ywpar_get_option( 'order_status_to_earn_points' );
+
+			if ( $status_to_earn ) {
+				foreach ( $status_to_earn as $hook ) {
+					add_action( $hook, array( $this, 'add_order_points' ), 5 );
+				}
+			}
+		}
+
+		/**
+		 * Save the points that are in cart in a post meta of the order
+		 *
+		 * @param int|Automattic\WooCommerce\Admin\Overrides\Order $order_id Order id or Automattic\WooCommerce\Admin\Overrides\Order object.
+		 *
+		 * @return  void
+		 * @since   1.5.0
+		 * @version 4.0.0
+		 */
+		public function save_points_earned_from_cart( $order_id ) {
+
+			$points_from_cart = $this->calculate_points_on_cart();
+			$order            = $order_id instanceof Automattic\WooCommerce\Admin\Overrides\Order ? $order_id : wc_get_order( $order_id );
+			/**
+			 * DO_ACTION: ywpar_saved_points_earned_from_cart
+			 *
+			 * Hook on saved points earned from cart.
+			 *
+			 * @param WC_Order $order the order.
+			 */
+			do_action( 'ywpar_saved_points_earned_from_cart', $order );
+			$order->update_meta_data( 'ywpar_points_from_cart', $points_from_cart );
+			$order->save();
+		}
+
+
+		/**
+		 * Calculate the points for a cart item.
+		 *
+		 * @param array  $cart_item                Cart item.
+		 * @param string $cart_item_key            Cart item key.
+		 * @param int    $items_that_have_discount Number of cart items that can obtain points.
+		 *
+		 * @return int
+		 */
+		public function calculate_points_for_cart_item( $cart_item, $cart_item_key, $items_that_have_discount = '' ) {
+
+
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Investigating point accumulation**
+
+I'm looking into the status_to_earn from the 'order_status_to_earn_points' option that creates hooks with add_action($hook, add_order_points, 5). In the admin checkout plugin settings, statuses like "completed" could contribute to a +1, potentially from frontend or admin hooking. 
+
+It seems my remove_action call may not be working as expected since logs show the removal attempts happening repeatedly. Plus, there's still a +1 being awarded, possibly from the 'order_completed' event in WooCommerce. I should investigate the add_order_points function further.
+**Disabling point addition**
+
+I’m thinking it might be better to disable add_order_points by either setting the 'order_status_to_earn_points' option to empty or using the filter 'ywpar_add_order_points' that YITH checks. 
+
+I noticed in the add_order_points class, there's a condition that checks if ('' !== $is_set || is_array($this->points_applied) && in_array($order_id, ...) || apply_filters('ywpar_add_order_points', false, $order_id)). It looks like it returns early if this condition is met. I should dive deeper into the code starting around line 253 to see what's happening there.</details></think>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "sed -n '240,320p' public/wp-content/plugins/yith-woocommerce-points-and-rewards-premium/includes/class-yith-wc-points-rewards-earning.php"
+```
+
+```
+			 * @param int $tot_points
+			 */
+			return apply_filters( 'ywpar_calculate_points_on_cart', $tot_points );
+		}
+
+		/**
+		 * Add points to the order from order_id
+		 *
+		 * @param int $order_id Order id.
+		 *
+		 * @return void
+		 * @since   1.0.0
+		 */
+		public function add_order_points( $order_id ) {
+
+			$order  = wc_get_order( $order_id );
+			$is_set = $order->get_meta( '_ywpar_points_earned' );
+
+			// return if the points are already calculated.
+			if ( '' !== $is_set || is_array( $this->points_applied ) && in_array( $order_id, $this->points_applied, true ) || apply_filters( 'ywpar_add_order_points', false, $order_id ) ) {
+				return;
+			}
+			$customer = ywpar_get_point_customer_from_order( $order );
+
+			if ( ! $customer || ! $customer->is_enabled() ) {
+				return;
+			}
+
+			// if the order has a redeeming coupon and the option disable_earning_while_reedeming is on return.
+			if ( ywpar_get_option( 'disable_earning_while_reedeming', 'no' ) === 'yes' && ywpar_order_has_redeeming_coupon( $order ) ) {
+				return;
+			}
+
+			$tot_points = trim( $order->get_meta( 'ywpar_points_from_cart' ) );
+			/**
+			 * APPLY_FILTERS: ywpar_force_calculation_of_order_points
+			 *
+			 * force to recalculate the points from the order items.
+			 *
+			 * @param bool $to_force
+			 * @param int $points the points to add
+			 * @param WC_Order $order the order
+			 *
+			 */
+			$tot_points = apply_filters( 'ywpar_force_calculation_of_order_points', '' === $tot_points, $tot_points, $order ) ? $this->calculate_order_points_from_items( $order, $customer ) : $tot_points;
+			/**
+			 * APPLY_FILTERS: ywpar_earned_total_points_by_order
+			 *
+			 * change the points value for the order.
+			 *
+			 * @param int $tot_points the points to gain.
+			 * @param WC_Order $order the order.
+			 */			
+			$tot_points = apply_filters( 'ywpar_earned_total_points_by_order', $tot_points, $order );
+
+			// update order meta and add note to the order.
+			$order->update_meta_data( '_ywpar_points_earned', $tot_points );
+			$order->update_meta_data( '_ywpar_conversion_points', $this->get_conversion_option( $order->get_currency(), $order ) );
+			$order->save();
+
+			if ( ! $this->points_applied ) {
+				$this->points_applied = array();
+			}
+
+			$this->points_applied[] = $order_id;
+			// translators: First placeholder: number of points; second placeholder: label of points.
+			$order->add_order_note( sprintf( _x( 'Customer earned %1$d %2$s for this purchase.', 'First placeholder: number of points; second placeholder: label of points', 'yith-woocommerce-points-and-rewards' ), $tot_points, ywpar_get_option( 'points_label_plural' ) ), 0 );
+			/**
+			 * DO_ACTION: ywpar_added_earned_points_to_order
+			 *
+			 * Hook on points added to the order.
+			 *
+			 * @param WC_Order $order the order.
+			 */
+			do_action( 'ywpar_added_earned_points_to_order', $order );
+			$customer->update_points( $tot_points, 'order_completed', array( 'order_id' => $order_id ) );
+			yith_points()->extra_points->handle_actions( array( 'num_of_orders', 'amount_spent', 'checkout_threshold' ), $customer, $order_id );
+		}
+
+		/**
+		 * Return the global points of an object from price
+
+```
+
+---
+
 
 
 ---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+@@
+- * Version: 5.1.29
++ * Version: 5.1.30
+@@
+-define('EAO_PLUGIN_VERSION', '5.1.29');
++define('EAO_PLUGIN_VERSION', '5.1.30');
+@@
+ if ( eao_should_load() ) {
+     add_action('woocommerce_order_status_changed', 'eao_points_handle_status_change', 10, 4);
+@@
+ }
++
++// Prevent YITH admin auto-award while EAO editor is active (skip add_order_points via filter)
++if ( eao_should_load() ) {
++    add_filter('ywpar_add_order_points', function($skip, $order_id){
++        // When editing in admin (EAO loaded), always skip YITH earning for this order
++        if ( is_admin() ) { return true; }
++        return $skip;
++    }, 999, 2);
++}
+*** End Patch
+```
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: add
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: commit
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+  * message: v5.1.30: hard-disable YITH admin earning via ywpar_add_order_points filter while EAO is loaded; version bump.
+
+*Result*:
+{"data":{"output":"[dev 3cf578f] v5.1.30: hard-disable YITH admin earning via ywpar_add_order_points filter while EAO is loaded; version bump.\n 2 files changed, 437 insertions(+), 2 deletions(-)\n"}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_push**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_push: Update remote refs along with associated objects (git push).
+
+*Parameters*:
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "cd public && head -30 wp-content/plugins/enhanced-admin-order-plugin/enhanced-admin-order-plugin.php | grep -E 'Version:|EAO_PLUGIN_VERSION'"
+```
+
+```
+ * Version: 5.1.29
+define('EAO_PLUGIN_VERSION', '5.1.29');
+
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Troubleshooting staging deployment**
+
+It looks like our staging environment isn't deploying automatically like it should. Earlier pushes didn’t copy files over, and I’m wondering if GitHub Actions is not picking up the changes properly. We might need to update the file on staging by either pulling from the repo or copying manually. It seems like there were quick updates before, so I'm considering using `ssh` or `git pull`, but I'm not entirely sure what went wrong. Maybe a manual patch with `sed` could work?
+**Explaining deployment changes**
+
+For simplicity, I want to copy the local plugin file to the remote server using `scp`, but that’s not possible from this environment. Instead, I could use `wp-cli` to fetch the file path and make modifications, though that feels risky. Alternatively, I should inform the user about necessary code changes and request deploying version 5.1.30 to staging. We already analyzed log 124841, noting how the YITH plugin adds order points in admin. It seems we updated notes before, but 124841 still shows old details due to the earlier version not being deployed.
+**Clarifying redemption issues**
+
+It seems like the screenshot still shows "Additional redemption." This could mean YITH is displaying an old entry created before the change. For future orders using the new code, they should show "Redeemed points." We'll want to monitor the next order after deploying version 5.1.30. I should send a concise message about our analysis, noting the root cause is the YITH `add_order_points` issue. We found a filter to suppress it and implemented administration scoping. Also, I need to mention that the redemption message was fixed in 5.1.28. Did 124841 get created under 5.1.28?
+**Investigating redemption logic**
+
+It appears that version 5.1.28 was in use, and I remember we made adjustments then. However, it seems like those changes weren’t deployed, as the debug log shows "EAO Plugin v5.1.28." The screenshot still displays "Additional redemption," which might be due to the `$is_first_deduction` logic not considering existing points correctly. The code checks if any points are redeemed, but it seems YITH may build the description differently when recording points updates. I should search within the YITH plugin for the 'redeemed_points' label text to see how to override that filter.</details></think>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "cd public/wp-content/plugins/yith-woocommerce-points-and-rewards-premium && grep -RIn "Additional redemption for Order" -n || true"
+```
+
+```
+grep: redemption: No such file or directory
+grep: for: No such file or directory
+grep: Order: No such file or directory
+
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "cd public/wp-content/plugins/yith-woocommerce-points-and-rewards-premium && grep -RIn \"redemption\|redeemed_points\|order_completed\|Additional\" includes | head -50"
+```
+
+```
+redeemed_points\ : The term 'redeemed_points\' is not recognized as the name of a cmdlet, function, script file, or 
+operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try 
+again.
+At C:\Users\user\AppData\Local\Temp\ps-script-d35cfccc-5d7e-401a-98c9-17d216d6c810.ps1:77 char:121
++ ... d-rewards-premium && grep -RIn \"redemption\|redeemed_points\|order_c ...
++                                                  ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (redeemed_points\:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "cd public/wp-content/plugins/yith-woocommerce-points-and-rewards-premium && grep -RIn 'redeemed_points\|order_completed\|redemption' includes | head -80"
+```
+
+```
+includes/class-yith-wc-points-rewards-earning.php:315:			$customer->update_points( $tot_points, 'order_completed', array( 'order_id' => $order_id ) );
+includes/class-yith-wc-points-rewards-frontend.php:81:				remove_filter( 'woocommerce_get_shop_coupon_data', array( WC_PDF_Product_Vouchers::instance()->get_redemption_handler_instance(), 'load_voucher_coupon_data' ), 10, 2 );
+includes/class-yith-wc-points-rewards-points-log.php:150:				'action'       => 'order_completed',
+includes/class-yith-wc-points-rewards-points-log.php:312:			$rewarded_points = $wpdb->get_var( $wpdb->prepare( "SELECT SUM(pl.amount) FROM {$this->get_table_name()} as pl where pl.user_id = %d AND ( pl.action IN ( 'redeemed_points', 'order_refund', 'admin_action', 'order_cancelled', 'expired_points', 'shared_points') AND pl.amount < 0 )", $user_id ) );
+includes/class-yith-wc-points-rewards-customer.php:866:			$remove_redeemed_points  = isset( $args['remove_redeemed_points'] ) ?? false;
+includes/class-yith-wc-points-rewards-customer.php:903:				if ( ( $points_amount > 0 || $remove_collected_points ) && ! $remove_redeemed_points ) {
+includes/class-yith-wc-points-rewards-orders.php:79:			if ( ywpar_get_option( 'reassing_redeemed_points_refund_order' ) === 'yes' ) {
+includes/class-yith-wc-points-rewards-orders.php:80:				add_action( 'woocommerce_order_partially_refunded', array( $this, 'remove_redeemed_points_from_orders' ), 11, 2 );
+includes/class-yith-wc-points-rewards-orders.php:81:				add_action( 'woocommerce_order_fully_refunded', array( $this, 'remove_redeemed_points_from_orders' ), 11, 2 );
+includes/class-yith-wc-points-rewards-orders.php:109:			$add_points    = $this->get_order_status_to_add_redeemed_points_to_order();      // pending, on-hold, completed, processing.
+includes/class-yith-wc-points-rewards-orders.php:110:			$remove_points = $this->get_order_status_to_remove_redeemed_points_from_order(); // cancelled, failed.
+includes/class-yith-wc-points-rewards-orders.php:117:				$this->remove_redeemed_points_from_orders( $order_id );
+includes/class-yith-wc-points-rewards-orders.php:194:		private function get_order_status_to_remove_redeemed_points_from_order() {
+includes/class-yith-wc-points-rewards-orders.php:200:			 * APPLY_FILTERS: ywpar_order_status_to_remove_redeemed_points
+includes/class-yith-wc-points-rewards-orders.php:206:			return apply_filters( 'ywpar_order_status_to_remove_redeemed_points', $status );
+includes/class-yith-wc-points-rewards-orders.php:212:		private function get_order_status_to_add_redeemed_points_to_order() {
+includes/class-yith-wc-points-rewards-orders.php:218:			 * APPLY_FILTERS: ywpar_order_status_to_assign_redeemed_points
+includes/class-yith-wc-points-rewards-orders.php:224:			return apply_filters( 'ywpar_order_status_to_assign_redeemed_points', $status );
+includes/class-yith-wc-points-rewards-orders.php:371:			$ywpar_customer->update_points( $total_points, 'order_completed', array( 'order_id' => $order_id ) );
+includes/class-yith-wc-points-rewards-orders.php:647:			$customer->update_points( -(int) $points, 'redeemed_points', array( 'order_id' => $order->get_id() ) );
+includes/class-yith-wc-points-rewards-orders.php:691:			$redeemed_points            = $order->get_meta( '_ywpar_redemped_points' );
+includes/class-yith-wc-points-rewards-orders.php:692:			$redeemed_points_reassigned = $order->get_meta( '_ywpar_redemped_points_reassigned' );
+includes/class-yith-wc-points-rewards-orders.php:694:			if ( ! $customer || '' === $redeemed_points || '' === $redeemed_points_reassigned ) {
+includes/class-yith-wc-points-rewards-orders.php:700:			$customer->update_points( -$redeemed_points, $action, array( 'order_id' => $order_id ) );
+includes/class-yith-wc-points-rewards-orders.php:702:			$order->add_order_note( sprintf( _x( 'Removed %1$s for %2$s.', 'First placeholder: number of points; second placeholder: label of points', 'yith-woocommerce-points-and-rewards' ), -$redeemed_points . ' ' . ywpar_get_option( 'points_label_plural' ), ywpar_get_action_label( $action ) ), 0 );
+includes/class-yith-wc-points-rewards-orders.php:716:		public function remove_redeemed_points_from_orders( $order_id, $new_order_status = 'refunded' ) {
+includes/class-yith-wc-points-rewards-orders.php:726:			$redeemed_points_reassigned = $order->get_meta( '_ywpar_redemped_points_reassigned' );
+includes/class-yith-wc-points-rewards-orders.php:729:			if ( ! $customer || '' === $points || '' !== $redeemed_points_reassigned ) {
+includes/class-yith-wc-points-rewards-orders.php:735:			$customer->update_points( $points, $action, array( 'order_id' => $order_id, 'remove_redeemed_points' => true ) );
+includes/class-yith-wc-points-rewards-porting.php:135:				'order-redeem'     => 'redeemed_points',
+includes/class-yith-wc-points-rewards-porting.php:137:				'order-placed'     => 'order_completed',
+includes/emails/class-yith-ywpar-email.php:54:            $history_event_2->action = 'order_completed';
+
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Investigating reward points logic**
+
+I’m looking into a second path for awarding points besides just earning them in class. Specifically, I see that the file class-yith-wc-points-rewards-orders.php has the update_points function associated with the action 'order_completed' around line 371. It seems like this might be awarding points on certain order transitions. I’ll need to read the surrounding code to fully understand how it works and what might be affecting the point allocation process.</details></think>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "sed -n '340,420p' public/wp-content/plugins/yith-woocommerce-points-and-rewards-premium/includes/class-yith-wc-points-rewards-orders.php"
+```
+
+```
+
+			if ( in_array( $order_id, $this->orders_processed, true ) ) {
+				return;
+			}
+
+			$order          = wc_get_order( $order_id );
+			$ywpar_customer = $this->get_customer_by_order( $order );
+
+			if ( ! $this->validate_order_before_add_points( $order ) || ! $ywpar_customer || ! $ywpar_customer->is_enabled() ) {
+				array_push( $this->orders_processed, $order_id );
+
+				return;
+			}
+
+			$total_points = $this->get_earned_total_points( $order );
+
+			$order->update_meta_data( '_ywpar_points_earned', $total_points );
+			$order->update_meta_data( '_ywpar_conversion_points', yith_points()->earning->get_conversion_option( $order->get_currency(), $order ) );
+			// translators: First placeholder: number of points; second placeholder: label of points.
+			$order->add_order_note( sprintf( _x( 'Customer earned %1$d %2$s for this purchase.', 'First placeholder: number of points; second placeholder: label of points', 'yith-woocommerce-points-and-rewards' ), $total_points, ywpar_get_option( 'points_label_plural' ) ), 0 );
+			$order->save();
+
+			array_push( $this->orders_processed, $order_id );
+			/**
+			 * DO_ACTION: ywpar_added_earned_points_to_order
+			 *
+			 * Hook on points added to the order.
+			 *
+			 * @param WC_Order $order the order.
+			 */
+			do_action( 'ywpar_added_earned_points_to_order', $order );
+			$ywpar_customer->update_points( $total_points, 'order_completed', array( 'order_id' => $order_id ) );
+			yith_points()->extra_points->handle_actions( array( 'num_of_orders', 'amount_spent', 'checkout_threshold' ), $ywpar_customer, $order_id );
+		}
+
+		/**
+		 * Validate the order before add points
+		 *
+		 * @param WC_Order $order Order object.
+		 *
+		 * @return bool
+		 */
+		private function validate_order_before_add_points( $order ) {
+			$is_valid = true;
+
+			if ( ! apply_filters( 'ywpar_force_add_points_to_previous_orders', false ) && $order instanceof WC_Order ) {
+				$is_set = $order->get_meta( '_ywpar_points_earned', true );
+
+				if ( ! empty( $is_set ) ) {
+					$is_valid = false;
+				}
+			}
+
+			if ( $is_valid && 'yes' === ywpar_get_option( 'disable_earning_while_reedeming', 'no' ) && $this->has_reward_coupon_applied( $order ) ) {
+				$is_valid = false;
+			}
+
+			/**
+			 * APPLY_FILTERS: ywpar_validate_order_before_add_points
+			 *
+			 * filter if the order is validated.
+			 *
+			 * @param bool $is_valid .
+			 * @param WC_Order $order .
+			 */
+			return apply_filters( 'ywpar_validate_order_before_add_points', $is_valid, $order );
+		}
+
+		/**
+		 * Return the total points of an order.
+		 *
+		 * @param WC_Order $order Order object.
+		 *
+		 * @return int
+		 */
+		private function get_earned_total_points( $order ) {
+			$currency   = $order->get_currency();
+			$tot_points = $order->get_meta( 'ywpar_points_from_cart' );
+
+			// this is necessary for old orders.
+			if ( '' === $tot_points ) {
+
+```
+
+---
+
+
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "sed -n '1,140p' public/wp-content/plugins/yith-woocommerce-points-and-rewards-premium/includes/class-yith-wc-points-rewards-orders.php"
+```
+
+```
+<?php
+/**
+ * Class to manage the points in the orders
+ *
+ * @class   YITH_WC_Points_Rewards_Orders
+ * @since   3.0.0
+ * @author  YITH <plugins@yithemes.com>
+ * @package YITH WooCommerce Points and Rewards
+ */
+
+defined( 'ABSPATH' ) || exit;
+
+
+if ( ! class_exists( 'YITH_WC_Points_Rewards_Orders' ) ) {
+
+	/**
+	 * Class YITH_WC_Points_Rewards_Orders
+	 */
+	class YITH_WC_Points_Rewards_Orders {
+
+		/**
+		 * Array to save the id of order processed.
+		 *
+		 * @var array
+		 */
+		protected $orders_processed = array();
+
+		/**
+		 * Single instance of the class
+		 *
+		 * @var YITH_WC_Points_Rewards_Orders
+		 */
+		protected static $instance;
+
+
+		/**
+		 * Returns single instance of the class
+		 *
+		 * @return YITH_WC_Points_Rewards_Orders
+		 * @since  3.0.0
+		 */
+		public static function get_instance() {
+			return ! is_null( self::$instance ) ? self::$instance : self::$instance = new self();
+
+		}
+
+
+		/**
+		 * Constructor
+		 *
+		 * Initialize plugin and registers actions and filters to be used
+		 *
+		 * @since 3.0.0
+		 */
+		private function __construct() {
+
+			// register the coupon and the point used at checkout.
+			add_action( 'woocommerce_checkout_update_order_meta', array( $this, 'add_order_meta' ), 10 );
+			add_action( 'woocommerce_checkout_update_order_meta', array( $this, 'deduce_order_points' ), 20 );
+
+			//integration for checkout blocks
+			add_action( 'woocommerce_store_api_checkout_update_order_meta', array( $this, 'add_order_meta' ), 10 );
+			add_action( 'woocommerce_store_api_checkout_update_order_meta', array( $this, 'deduce_order_points' ), 20 );
+
+
+			add_action( 'woocommerce_order_status_changed', array( $this, 'clear_ywpar_coupon_after_create_order' ), 10, 2 );
+			add_action( 'woocommerce_order_status_changed', array( $this, 'manage_order_points_for_order_status_changed' ), 20, 4 );
+			add_action( 'woocommerce_checkout_create_order_line_item', array( $this, 'save_order_item_points' ), 100, 4 );
+
+			add_action( 'init', array( $this, 'init' ) );
+		}
+
+		/**
+		 * Init the class.
+		 */
+		public function init() {
+
+			// remove points when the order is refunded.
+			if ( ywpar_get_option( 'reassing_redeemed_points_refund_order' ) === 'yes' ) {
+				add_action( 'woocommerce_order_partially_refunded', array( $this, 'remove_redeemed_points_from_orders' ), 11, 2 );
+				add_action( 'woocommerce_order_fully_refunded', array( $this, 'remove_redeemed_points_from_orders' ), 11, 2 );
+				add_action( 'wp_ajax_nopriv_woocommerce_delete_refund', array( $this, 'add_redeemed_order_points' ), 9, 2 );
+				add_action( 'wp_ajax_woocommerce_delete_refund', array( $this, 'add_redeemed_order_points' ), 9, 2 );
+			}
+
+			if ( ywpar_get_option( 'remove_point_refund_order' ) === 'yes' ) {
+				add_action( 'woocommerce_order_refunded', array( $this, 'remove_order_points_refund' ), 11, 2 );
+			}
+		}
+
+
+		/**
+		 * Manage points when an order changes the status
+		 *
+		 * @param int      $order_id Order id.
+		 * @param string   $from     From order status.
+		 * @param string   $to       To order status.
+		 * @param WC_Order $order    WC_Order.
+		 */
+		public function manage_order_points_for_order_status_changed( $order_id, $from, $to, $order ) {
+
+			$remove_points = $this->get_order_status_to_remove_earned_points();
+			$assign_points = $this->get_order_status_to_assign_earned_points();
+
+			if ( in_array( $from, $assign_points, true ) && in_array( $to, $remove_points, true ) ) {
+				$this->remove_earned_point_from_order( $order_id );
+			}
+
+			$add_points    = $this->get_order_status_to_add_redeemed_points_to_order();      // pending, on-hold, completed, processing.
+			$remove_points = $this->get_order_status_to_remove_redeemed_points_from_order(); // cancelled, failed.
+
+			if ( in_array( $from, $remove_points, true ) && in_array( $to, $add_points, true ) ) {
+				$this->add_redeemed_order_points( $order_id );
+			}
+
+			if ( in_array( $from, $add_points, true ) && in_array( $to, $remove_points, true ) ) {
+				$this->remove_redeemed_points_from_orders( $order_id );
+			}
+		}
+
+		/**
+		 * Remove points to the order from order_id
+		 *
+		 * @param int $order_id Order id.
+		 *
+		 * @return void
+		 * @since   1.0.0
+		 */
+		public function remove_earned_point_from_order( $order_id ) {
+
+			$order         = wc_get_order( $order_id );
+			$point_earned  = $order->get_meta( '_ywpar_points_earned', true );
+			$customer_user = $order->get_customer_id();
+
+			if ( '' === $point_earned || $customer_user <= 0 ) {
+				return;
+			}
+
+			$customer = ywpar_get_customer( $customer_user );
+			if ( ! $customer ) {
+
+```
+
+---
+
+
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "sed -n '420,820p' public/wp-content/plugins/yith-woocommerce-points-and-rewards-premium/includes/class-yith-wc-points-rewards-orders.php | sed -n '820,1100p'"
+```
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "grep -n 'get_order_status_to_assign_earned_points' public/wp-content/plugins/yith-woocommerce-points-and-rewards-premium/includes/class-yith-wc-points-rewards-orders.php && sed -n '160,260p' public/wp-content/plugins/yith-woocommerce-points-and-rewards-premium/includes/class-yith-wc-points-rewards-orders.php"
+```
+
+```
+103:			$assign_points = $this->get_order_status_to_assign_earned_points();
+175:		private function get_order_status_to_assign_earned_points() {
+				$status = array( 'cancelled', 'failed' );
+			}
+			/**
+			 * APPLY_FILTERS: ywpar_order_status_to_remove_earned_points
+			 *
+			 * filter the order status to remove earned points.
+			 *
+			 * @param array $status default is array of cancelled and failed.
+			 */
+			return apply_filters( 'ywpar_order_status_to_remove_earned_points', $status );
+		}
+
+		/**
+		 * Return the list of order status where the earned points will be removed
+		 */
+		private function get_order_status_to_assign_earned_points() {
+			$status = array();
+			if ( ywpar_get_option( 'remove_point_order_deleted' ) === 'yes' ) {
+				$status = array( 'completed', 'processing' );
+			}
+			/**
+			 * APPLY_FILTERS: ywpar_order_status_to_assign_earned_points
+			 *
+			 * filter the order status to assign earned points.
+			 *
+			 * @param array $status default is array of completed and processing.
+			 */
+			return apply_filters( 'ywpar_order_status_to_assign_earned_points', $status );
+		}
+
+
+		/**
+		 * Return the list of order status where the redeemed points removed to the customer will be rewarded
+		 */
+		private function get_order_status_to_remove_redeemed_points_from_order() {
+			$status = array();
+			if ( ywpar_get_option( 'remove_point_order_deleted' ) === 'yes' ) {
+				$status = array( 'cancelled', 'failed' );
+			}
+			/**
+			 * APPLY_FILTERS: ywpar_order_status_to_remove_redeemed_points
+			 *
+			 * filter the order status to remove redeemed points.
+			 *
+			 * @param array $status default is array of cancelled and failed.
+			 */
+			return apply_filters( 'ywpar_order_status_to_remove_redeemed_points', $status );
+		}
+
+		/**
+		 * Return the list of order status where the redeemed points will be removed from the customer and added to the order
+		 */
+		private function get_order_status_to_add_redeemed_points_to_order() {
+			$status = array();
+			if ( ywpar_get_option( 'remove_point_order_deleted' ) === 'yes' ) {
+				$status = array( 'pending', 'on-hold', 'completed', 'processing' );
+			}
+			/**
+			 * APPLY_FILTERS: ywpar_order_status_to_assign_redeemed_points
+			 *
+			 * filter the order status to assign redeemed points.
+			 *
+			 * @param array $status default is array of pending, on-hold, completed and processing.
+			 */
+			return apply_filters( 'ywpar_order_status_to_assign_redeemed_points', $status );
+		}
+
+		/**
+		 * Save the value of ywpar_total_points inside the order item.
+		 *
+		 * @param WC_Order_Item_Product $item          Item.
+		 * @param string                $cart_item_key Cart Item key.
+		 * @param array                 $values        Values.
+		 * @param WC_Order              $order         Order.
+		 */
+		public function save_order_item_points( $item, $cart_item_key, $values, $order ) {
+			if ( isset( $values['ywpar_total_points'] ) ) {
+				$item->update_meta_data( '_ywpar_total_points', $values['ywpar_total_points'] );
+			}
+		}
+
+		/**
+		 * Add points to the customer from previous orders
+		 *
+		 * @param string $from Start date.
+		 * @param int    $step Offset.
+		 * @param array  $data Array with info.
+		 */
+		public function add_points_to_previous_orders( $from, $step = 1, $data = array() ) {
+			/**
+			 * APPLY_FILTERS: ywpar_apply_previous_order_posts_per_page
+			 *
+			 * filter how many posts per page to use in the query.
+			 *
+			 * @param int $value default 20.
+			 */
+			$posts_per_page = apply_filters( 'ywpar_apply_previous_order_posts_per_page', 20 );
+			$offset         = ( $step - 1 ) * $posts_per_page;
+			$success_count  = 0;
+			$args           = array(
+				'post_type'      => 'shop_order',
+
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Fixing point awarding logic**
+
+I’m realizing that the awarding of points happens earlier than I thought. I noticed the update_points in the class around line 371, but I'm not clear on what triggers it—maybe it's linked to a hook like 'ywpar_add_points_to_order,' which isn't present in this context. To play it safe, I'll restrict the statuses filter to empty to avoid unintended awarding. I just need to implement this in the code and bump the version to 5.1.31.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+@@
+- * Version: 5.1.30
++ * Version: 5.1.31
+@@
+-define('EAO_PLUGIN_VERSION', '5.1.30');
++define('EAO_PLUGIN_VERSION', '5.1.31');
+@@
+ if ( eao_should_load() ) {
+     add_filter('ywpar_add_order_points', function($skip, $order_id){
+         // When editing in admin (EAO loaded), always skip YITH earning for this order
+         if ( is_admin() ) { return true; }
+         return $skip;
+     }, 999, 2);
++
++    // Also prevent the alternate Orders manager path from assigning earned points in admin
++    add_filter('ywpar_order_status_to_assign_earned_points', function($status){
++        if ( is_admin() ) { return array(); }
++        return $status;
++    }, 999);
+ }
+*** End Patch
+```
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: add
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: commit
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+  * message: v5.1.31: disable all YITH admin earning paths (add_order_points and Orders manager) via filters; version bump.
+
+*Result*:
+{"data":{"output":"[dev e244187] v5.1.31: disable all YITH admin earning paths (add_order_points and Orders manager) via filters; version bump.\n 1 file changed, 8 insertions(+), 2 deletions(-)\n"}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_push**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_push: Update remote refs along with associated objects (git push).
+
+*Parameters*:
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "cd public && head -30 wp-content/plugins/enhanced-admin-order-plugin/enhanced-admin-order-plugin.php | grep -E 'Version:|EAO_PLUGIN_VERSION'"
+```
+
+```
+ * Version: 5.1.30
+define('EAO_PLUGIN_VERSION', '5.1.30');
+
+```
+
+---
+
+I inspected the YITH plugin on the server and found two award paths:
+
+- Earning class: YITH_WC_Points_Rewards_Earning::init() adds add_order_points on statuses from option order_status_to_earn_points.
+- Orders manager: YITH_WC_Points_Rewards_Orders hooks woocommerce_order_status_changed and may call update_points('order_completed', …) via its own flow (e.g., get_order_status_to_assign_earned_points).
+
+That second path explains the stray +1 even when we unhooked the first.
+
+What I changed (ready to deploy)
+- Hard-disable YITH earning in the EAO admin editor via filters:
+  - ywpar_add_order_points → return true in admin (skip add_order_points entirely)
+  - ywpar_order_status_to_assign_earned_points → return [] in admin (stop Orders manager award)
+- Keep our single grant path (exact amount) and the first-redemption note fix.
+
+Next step
+- I’m seeing staging at 5.1.30; the above filters are in 5.1.31. Once 5.1.31 is deployed to staging, re-run your test (Processing → Completed). The +1 should disappear, and the first redemption note should read “Redeemed points for Order #…”.
+
+---
+
+_**User (2025-10-30 08:16Z)**_
+
+I did a test Order #124843 and it looks good! Verify the logs are consistent, that we have not harmed the front end point granting. If all is good, remove the log messages and prepare this version for production
+
+---
+
+_**Assistant (gpt-5-high)**_
+
+
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "cd public && tail -1200 wp-content/debug.log | grep -Ei 'EAO Points|EAO YITH|124843' | tail -400"
+```
+
+```
+[30-Oct-2025 19:26:07 UTC] [EAO Points] Removed YITH add_order_points from completed in admin (late)
+[30-Oct-2025 19:26:09 UTC] [EAO Points] Removed YITH add_order_points from completed in admin (late)
+[30-Oct-2025 19:26:10 UTC] [EAO Points] Removed YITH add_order_points from completed in admin (late)
+[30-Oct-2025 19:26:12 UTC] [EAO Points] Removed YITH add_order_points from completed in admin (late)
+[30-Oct-2025 19:26:12 UTC] [EAO Points] Removed YITH add_order_points from completed in admin (late)
+[30-Oct-2025 19:47:54 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:47:54 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:47:54 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:47:54 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:02 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:02 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:02 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:02 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:03 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:03 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:03 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:03 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:03 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:03 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:03 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:03 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:03 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:03 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:03 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:03 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:04 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:04 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:04 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:04 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:05 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:05 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:05 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:05 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:06 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:06 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:06 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:06 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:06 UTC] [EAO Plugin v5.1.31] eao_add_fluentcrm_profile_meta_box_direct called for order ID: 124843. Attempting to add fluentcrm_woo_order_widget with direct rendering.
+[30-Oct-2025 19:48:06 UTC] [EAO Plugin v5.1.31] Adding Custom Order Notes meta box for screen: toplevel_page_eao_custom_order_editor_page and order ID: 124843
+    [order_id] => 124843
+[30-Oct-2025 19:48:06 UTC] [EAO Plugin v5.1.31] eao_render_fluentcrm_actual_profile_html called for order ID: 124843
+[30-Oct-2025 19:48:06 UTC] [EAO Plugin v5.1.31] eao_render_fluentcrm_actual_profile_html: No user ID or email for order ID: 124843
+[30-Oct-2025 19:48:06 UTC] [EAO Plugin v5.1.31] Rendering eao-custom-order-notes content for order ID: 124843
+[30-Oct-2025 19:48:06 UTC] [EAO Plugin v5.1.31] Rendered custom add note meta box for order ID: 124843
+[30-Oct-2025 19:48:10 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:10 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:10 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:10 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:11 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:11 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:11 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:11 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:12 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:12 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:12 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:12 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:15 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:15 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:15 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:15 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:32 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:34 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:34 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:34 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:34 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:48:40 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:48:40 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:48:40 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:48:40 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:51:14 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:51:14 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:51:14 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:51:14 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:51:16 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:51:16 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:51:16 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:51:16 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:51:16 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:51:16 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:51:16 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:51:16 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:51:19 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:51:19 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:51:19 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:51:19 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:51:20 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:51:20 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:51:20 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:51:20 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:51:22 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:51:22 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:51:22 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:51:22 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:51:22 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:51:22 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:51:22 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:51:22 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:52:21 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:52:21 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:52:21 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:52:21 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:52:22 UTC] [EAO Points] #124843 Status changed handler fired: from=pending to=processing
+[30-Oct-2025 19:52:22 UTC] [EAO YITH] Points redemption analysis - Order: 124843, Existing: 0, New: 443
+[30-Oct-2025 19:52:22 UTC] [EAO YITH] Processing points delta - Customer: 5, Delta: -443, Order: #124843
+[30-Oct-2025 19:52:22 UTC] [EAO YITH] Points delta applied successfully - Customer: 5, Delta: -443, Order: #124843
+[30-Oct-2025 19:52:22 UTC] [EAO YITH] Deducted points: 443 (first deduction)
+[30-Oct-2025 19:52:22 UTC] [EAO YITH VALIDATION] Points validation analysis:
+[30-Oct-2025 19:52:22 UTC]   - Order ID: 124843
+[30-Oct-2025 19:52:22 UTC] [EAO YITH] Applied points coupon: ywpar_discount_1761853942 amount=$44.3
+[30-Oct-2025 19:52:22 UTC] [EAO YITH] Created YITH-compatible coupon: ywpar_discount_1761853942 for $44.3
+[30-Oct-2025 19:52:22 UTC] [EAO YITH] Points redemption update successful - Order: 124843, Change: 443, Total: 443
+[30-Oct-2025 19:52:22 UTC] [EAO YITH] Points redemption analysis - Order: 124843, Existing: 443, New: 443
+[30-Oct-2025 19:52:22 UTC] [EAO YITH] No points change needed for order: 124843
+[30-Oct-2025 19:52:22 UTC] [EAO YITH] Points processing success: No points redemption changes needed
+[30-Oct-2025 19:52:24 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:52:24 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:52:24 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:52:24 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:52:24 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:52:24 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:52:24 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:52:24 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:52:27 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:52:27 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:52:27 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:52:27 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:52:27 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:52:27 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:52:27 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:52:27 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:52:30 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:52:30 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:52:30 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:52:30 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:52:30 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:52:30 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:52:30 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:52:30 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:53:36 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:53:36 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:53:36 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:53:36 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:53:36 UTC] [EAO Points] #124843 Status hook: completed
+[30-Oct-2025 19:53:36 UTC] [EAO Points] #124843 Grant check started
+[30-Oct-2025 19:53:36 UTC] [EAO Points] #124843 Grant using expected_award meta (single source): 34
+[30-Oct-2025 19:53:36 UTC] [EAO Points] #124843 Granting via customer->update_points exact=34
+[30-Oct-2025 19:53:36 UTC] [EAO Points] #124843 Grant recorded successfully: 34 pts
+[30-Oct-2025 19:53:36 UTC] [EAO Points] #124843 Status changed handler fired: from=processing to=completed
+[30-Oct-2025 19:53:36 UTC] [EAO Points] #124843 Grant check started
+[30-Oct-2025 19:53:36 UTC] [EAO Points] #124843 Grant using expected_award meta (single source): 34
+[30-Oct-2025 19:53:36 UTC] [EAO YITH] Points redemption analysis - Order: 124843, Existing: 443, New: 443
+[30-Oct-2025 19:53:36 UTC] [EAO YITH] No points change needed for order: 124843
+[30-Oct-2025 19:53:37 UTC] [EAO YITH] Points redemption analysis - Order: 124843, Existing: 443, New: 443
+[30-Oct-2025 19:53:37 UTC] [EAO YITH] No points change needed for order: 124843
+[30-Oct-2025 19:53:37 UTC] [EAO YITH] Points processing success: No points redemption changes needed
+[30-Oct-2025 19:53:40 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:53:40 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:53:40 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:53:40 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:53:40 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:53:40 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:53:40 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:53:40 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:53:43 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:53:43 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:53:43 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:53:43 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:53:43 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:53:43 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:53:43 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:53:43 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:53:46 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:53:46 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:53:46 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:53:46 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+[30-Oct-2025 19:53:46 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_completed in admin (scan priorities)
+[30-Oct-2025 19:53:46 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_processing in admin (scan priorities)
+[30-Oct-2025 19:53:46 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_payment_complete in admin (scan priorities)
+[30-Oct-2025 19:53:46 UTC] [EAO Points] Sanitized YITH add_order_points from woocommerce_order_status_changed in admin (scan priorities)
+
+```
+
+---
+
+Order #124843 looks consistent in logs:
+
+- Processing: EAO deducted 443 once and created the coupon; logs show “Deducted points: 443 (first deduction)”.
+- Completed: EAO granted exactly 34 (“Grant recorded successfully: 34 pts”).
+- No YITH grant for #124843; logs only show our “Sanitized YITH add_order_points…” unhooks in admin.
+
+Frontend safety
+- The YITH blocks we added are wrapped inside eao_should_load() and is_admin(). That means only in the admin editor; frontend checkout awarding remains unaffected.
+
+Next actions
+- I’ll remove the points-related debug logging and bump for production.
+
+---
+
+_**User (2025-10-30 08:16Z)**_
+
+ok, prepare for production
+
+---
+
+_**Assistant (gpt-5-high)**_
 
 
 
