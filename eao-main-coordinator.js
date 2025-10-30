@@ -1355,6 +1355,19 @@ window.EAO.MainCoordinator = {
             }
             } else if (statusForDiscount === 'processing' || statusForDiscount === 'completed' || statusForDiscount === 'shipped') {
                 // Paid orders: keep existing display logic handled below
+            } else {
+                // Unpaid order with 0 available points: still show the slider (max=0) so UI is consistent
+                const currentPoints = 0;
+                const maxPoints = this.calculateMaxPoints(0); // will be 0 when no balance
+                const labelWithInput = `Points Discount (<input type="number" id="eao_points_to_redeem_inline" name="eao_points_to_redeem" class="eao-points-input eao-points-input-inline" min="0" max="${maxPoints}" value="${currentPoints}" step="1"> points):`;
+                const displayAmount = eaoFormatPrice(0);
+                summaryHtml += this.createSummaryRowWithControl(
+                    labelWithInput,
+                    displayAmount,
+                    this.createInlinePointsSlider(currentPoints),
+                    true,
+                    'eao-summary-points-discount'
+                );
             }
         } else if (hasOrderCustomer) {
 

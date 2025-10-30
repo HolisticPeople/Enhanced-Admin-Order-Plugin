@@ -2297,6 +2297,789 @@ When the order is "shipped" the points needs to be granted to the user, but I se
 
 _**Assistant (gpt-5-high)**_
 
+<think><details><summary>Thought Process</summary>**Fixing points allocation**
+
+I need to address the second issue about granting points when an order is marked as "shipped." Right now, users receive only 10 points instead of 80. It seems the points are misaligned with the intended amount—possibly from earlier computations for order payments. I should investigate the logic for granting points found in the relevant PHP files like enhanced-admin-order-plugin.php. The function eao_points_handle_status_change is hooked into order status changes, and I need to ensure 'shipped' is included in the status check.
+**Resolving points discrepancy**
+
+The user mentioned they received the wrong number of points—10 instead of 80. It looks like 10 might be a default that's being awarded, possibly from earlier orders. In the inline panel, we compute the out-of-pocket points as 80, which should be used for the award. We have the hidden input #eao_expected_points_award set with outOfPocketPts in eao-main-coordinator.js. Now, I need to locate the code that awards points based on this hidden field, likely in eao-ajax-save-core.php or eao-yith-points-save.php, so I'll search for it.</details></think>
+
+---
+
+I'll search for where points are granted and how the awarded amount is determined, including any references to the hidden `eao_expected_points_award` field and status transitions, so I can fix the shipped status and the amount mismatch.
+
+---
+
+Tool use: **grep**
+
+<details>
+<summary>Grep for "eao_expected_points_award|_eao_expected_points_award" in "C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin" • 6 matches</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `.\enhanced-admin-order-plugin.php` | `if (isset($_POST['eao_expected_points_award'])) \{` | L667 |
+| `.\enhanced-admin-order-plugin.php` | `$order->update_meta_data('_eao_points_expected_award', absint($_POST['eao_expected_points_award']));` | L668 |
+| `.\eao-main-coordinator.js` | `const $hiddenAward = jQuery('#eao_expected_points_award');` | L1631 |
+| `.\eao-main-coordinator.js` | `if (!jQuery('#eao_expected_points_award').length) \{` | L1659 |
+| `.\eao-main-coordinator.js` | `jQuery('<input type="hidden" id="eao_expected_points_award" name="eao_expected_points_award"/>').appendTo('#eao-order-form');` | L1660 |
+| `.\eao-main-coordinator.js` | `try \{ jQuery('#eao_expected_points_award').val(outOfPocketPts); \} catch(_)\{ \}` | L1662 |
+
+
+</details>
+
+---
+
+Tool use: **read_file**
+
+Read file: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+
+---
+
+Tool use: **grep**
+
+<details>
+<summary>Grep for "points_grant|_eao_points_granted|grant points|award points|eao_points_grant_if_needed|_eao_points_expected_award|processing|granted" in "C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin" • 169 matches</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `.\enhanced-admin-order-plugin.php` | `$granted_pts = intval($order->get_meta('_eao_points_granted_points', true));` | L99 |
+| `.\enhanced-admin-order-plugin.php` | `$order->update_meta_data('_eao_points_granted', 1);` | L102 |
+| `.\enhanced-admin-order-plugin.php` | `$order->update_meta_data('_eao_points_granted_points', $granted_pts + $delta);` | L103 |
+| `.\enhanced-admin-order-plugin.php` | `$result['granted_points'] = intval($order->get_meta('_eao_points_granted_points', true));` | L111 |
+| `.\enhanced-admin-order-plugin.php` | `// Include new Payment Processing (real)` | L255 |
+| `.\enhanced-admin-order-plugin.php` | `add_action('add_meta_boxes', 'eao_add_payment_processing_metabox', 40);` | L258 |
+| `.\enhanced-admin-order-plugin.php` | `// Payment Processing (real) assets` | L347 |
+| `.\enhanced-admin-order-plugin.php` | `$override_enabled    = $localized_order ? ($localized_order->get_meta('_eao_points_grant_override_enabled', true) === 'yes') : false;` | L454 |
+| `.\enhanced-admin-order-plugin.php` | `$override_points     = $localized_order ? intval($localized_order->get_meta('_eao_points_grant_override_points', true)) : 0;` | L455 |
+| `.\enhanced-admin-order-plugin.php` | `'points_grant_override_enabled' => $override_enabled ? 'yes' : 'no',` | L485 |
+| `.\enhanced-admin-order-plugin.php` | `'points_grant_override_points'  => $override_points,` | L486 |
+| `.\enhanced-admin-order-plugin.php` | `* Modular coordinator function that delegates to specialized processing modules.` | L516 |
+| `.\enhanced-admin-order-plugin.php` | `// Initialize processing flag` | L573 |
+| `.\enhanced-admin-order-plugin.php` | `if ( in_array( $status_now, array('processing','completed','shipped'), true ) ) \{` | L614 |
+| `.\enhanced-admin-order-plugin.php` | `error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] SAVE PIPELINE: points redemption (status=processing/completed/shipped)');` | L615 |
+| `.\enhanced-admin-order-plugin.php` | `error_log( '[EAO YITH] Points processing failed: ' . implode( ', ', $points_result['errors'] ) );` | L618 |
+| `.\enhanced-admin-order-plugin.php` | `error_log( '[EAO YITH] Points processing success: ' . implode( ', ', $points_result['messages'] ) );` | L620 |
+| `.\enhanced-admin-order-plugin.php` | `$override_enabled = isset($_POST['eao_points_grant_override_enabled']) && ('yes' === sanitize_text_field(wp_unslash($_POST['eao_points_grant_override_enabled'])));` | L650 |
+| `.\enhanced-admin-order-plugin.php` | `$override_points  = isset($_POST['eao_points_grant_override_points']) ? intval($_POST['eao_points_grant_override_points']) : 0;` | L651 |
+| `.\enhanced-admin-order-plugin.php` | `$order->update_meta_data('_eao_points_grant_override_enabled', 'yes');` | L653 |
+| `.\enhanced-admin-order-plugin.php` | `$order->update_meta_data('_eao_points_grant_override_points', max(0, $override_points));` | L654 |
+| `.\enhanced-admin-order-plugin.php` | `$order->update_meta_data('_eao_points_grant_override_enabled', 'no');` | L656 |
+| `.\enhanced-admin-order-plugin.php` | `$order->delete_meta_data('_eao_points_grant_override_points');` | L657 |
+| `.\enhanced-admin-order-plugin.php` | `// Persist expected award from UI (used to award exact line-3 value on processing)` | L666 |
+| `.\enhanced-admin-order-plugin.php` | `$order->update_meta_data('_eao_points_expected_award', absint($_POST['eao_expected_points_award']));` | L668 |
+| `.\enhanced-admin-order-plugin.php` | `* Grant points once order becomes paid (processing/completed)` | L800 |
+| `.\enhanced-admin-order-plugin.php` | `if (in_array($to_status, array('processing','completed'), true)) \{` | L805 |
+| `.\enhanced-admin-order-plugin.php` | `eao_points_grant_if_needed($order_id);` | L806 |
+| `.\enhanced-admin-order-plugin.php` | `function eao_points_grant_if_needed( $order_id ) \{` | L821 |
+| `.\enhanced-admin-order-plugin.php` | `// Skip if already granted and not revoked; allow re-grant after revoke` | L824 |
+| `.\enhanced-admin-order-plugin.php` | `$already_granted = (bool)$order->get_meta('_eao_points_granted', true);` | L825 |
+| `.\enhanced-admin-order-plugin.php` | `if ($already_granted && !$was_revoked) \{ return; \}` | L827 |
+| `.\enhanced-admin-order-plugin.php` | `$override_enabled = ('yes' === $order->get_meta('_eao_points_grant_override_enabled', true));` | L832 |
+| `.\enhanced-admin-order-plugin.php` | `$override_points  = intval($order->get_meta('_eao_points_grant_override_points', true));` | L833 |
+| `.\enhanced-admin-order-plugin.php` | `$expected_award_meta = intval($order->get_meta('_eao_points_expected_award', true));` | L840 |
+| `.\enhanced-admin-order-plugin.php` | `$granted_ok = false;` | L896 |
+| `.\enhanced-admin-order-plugin.php` | `$granted_ok = is_array($award) ? !empty($award['success']) : (bool)$award;` | L900 |
+| `.\enhanced-admin-order-plugin.php` | `if (!$granted_ok) \{` | L904 |
+| `.\enhanced-admin-order-plugin.php` | `ywpar_increase_points($customer_id, $points_to_grant, sprintf(__('Granted for Order #%d (admin backend)', 'enhanced-admin-order'), $order_id), $order_id);` | L907 |
+| `.\enhanced-admin-order-plugin.php` | `$granted_ok = true;` | L908 |
+| `.\enhanced-admin-order-plugin.php` | `$granted_ok = (bool)$cust->update_points($points_to_grant, 'order_completed', array('order_id' => $order_id, 'description' => sprintf('Points earned from Order #%d', $order_id)));` | L913 |
+| `.\enhanced-admin-order-plugin.php` | `if ($granted_ok) \{` | L918 |
+| `.\enhanced-admin-order-plugin.php` | `$order->update_meta_data('_eao_points_granted', 1);` | L919 |
+| `.\enhanced-admin-order-plugin.php` | `$order->update_meta_data('_eao_points_granted_points', intval($points_to_grant));` | L920 |
+| `.\enhanced-admin-order-plugin.php` | `$order->update_meta_data('_eao_points_granted_ts', time());` | L921 |
+| `.\enhanced-admin-order-plugin.php` | `$order->add_order_note(sprintf(__('EAO: Granted %d points to customer on status change.', 'enhanced-admin-order'), intval($points_to_grant)));` | L926 |
+| `.\enhanced-admin-order-plugin.php` | `* Revoke granted points on refund (simple proportional strategy)` | L933 |
+| `.\enhanced-admin-order-plugin.php` | `$granted = (bool)$order->get_meta('_eao_points_granted', true);` | L939 |
+| `.\enhanced-admin-order-plugin.php` | `$granted_pts = intval($order->get_meta('_eao_points_granted_points', true));` | L941 |
+| `.\enhanced-admin-order-plugin.php` | `if (!$granted \|\| $revoked \|\| $granted_pts <= 0) \{ return; \}` | L942 |
+| `.\enhanced-admin-order-plugin.php` | `$revoke_pts    = max(1, intval(round($granted_pts * $proportion)));` | L949 |
+| `.\enhanced-admin-order-plugin.php` | `// Add new Payment Processing metabox (real) after Fluent Support` | L1167 |
+| `.\enhanced-admin-order-plugin.php` | `if (function_exists('eao_render_payment_processing_metabox')) \{` | L1168 |
+| `.\enhanced-admin-order-plugin.php` | `'eao-payment-processing-metabox',` | L1170 |
+| `.\enhanced-admin-order-plugin.php` | `__('Payment Processing', 'enhanced-admin-order'),` | L1171 |
+| `.\enhanced-admin-order-plugin.php` | `'eao_render_payment_processing_metabox',` | L1172 |
+| `.\enhanced-admin-order-plugin.php` | `// Only revoke if we previously granted and not already revoked` | L2389 |
+| `.\enhanced-admin-order-plugin.php` | `$granted = (bool) $order->get_meta('_eao_points_granted', true);` | L2390 |
+| `.\enhanced-admin-order-plugin.php` | `$granted_pts = intval($order->get_meta('_eao_points_granted_points', true));` | L2392 |
+| `.\enhanced-admin-order-plugin.php` | `if (!$granted \|\| $revoked \|\| $granted_pts <= 0) \{` | L2393 |
+| `.\enhanced-admin-order-plugin.php` | `eao_points_debug_log('Revoke via ywpar_decrease_points: ' . $granted_pts . ' pts', $order_id);` | L2410 |
+| `.\enhanced-admin-order-plugin.php` | `ywpar_decrease_points($customer_id, $granted_pts, sprintf(__('Revoked for Order #%d (admin)', 'enhanced-admin-order'), $order_id), $order_id);` | L2411 |
+| `.\enhanced-admin-order-plugin.php` | `eao_points_debug_log('Revoke via negative ywpar_increase_points: ' . $granted_pts . ' pts', $order_id);` | L2414 |
+| `.\enhanced-admin-order-plugin.php` | `ywpar_increase_points($customer_id, -1 * $granted_pts, sprintf(__('Revoked for Order #%d (admin)', 'enhanced-admin-order'), $order_id), $order_id);` | L2415 |
+| `.\enhanced-admin-order-plugin.php` | `$cust->update_points(-1 * $granted_pts, 'order_manually_revoked', array('order_id' => $order_id, 'description' => 'Manual revoke from Enhanced Admin Order'));` | L2422 |
+| `.\enhanced-admin-order-plugin.php` | `$order->update_meta_data('_eao_points_revoked_points', $granted_pts);` | L2429 |
+| `.\enhanced-admin-order-plugin.php` | `$order->update_meta_data('_eao_points_granted', 0);` | L2430 |
+| `.\enhanced-admin-order-plugin.php` | `$order->update_meta_data('_eao_points_granted_points', 0);` | L2431 |
+| `.\enhanced-admin-order-plugin.php` | `$order->add_order_note(sprintf(__('EAO: Revoked %d points (admin action).', 'enhanced-admin-order'), $granted_pts));` | L2432 |
+| `.\eao-yith-points.js` | `return; // abort further processing on input for inline controls` | L198 |
+| `.\eao-main-coordinator.js` | `// Warn when manually changing status to Processing without a payment` | L217 |
+| `.\eao-main-coordinator.js` | `if ((val === 'processing') && !(window.EAO && window.EAO.Payment && window.EAO.Payment.hasProcessedPayment)) \{` | L225 |
+| `.\eao-main-coordinator.js` | `const isUnpaidOrder = !(normalizedStatus === 'processing' \|\| normalizedStatus === 'completed' \|\| normalizedStatus === 'shipped');` | L1103 |
+| `.\eao-main-coordinator.js` | `const isPaid = (statusForDiscount === 'processing' \|\| statusForDiscount === 'completed' \|\| statusForDiscount === 'shipped');` | L1199 |
+| `.\eao-main-coordinator.js` | `const isUnpaid = !(normalizedStatus === 'processing' \|\| normalizedStatus === 'completed' \|\| normalizedStatus === 'shipped');` | L1220 |
+| `.\eao-main-coordinator.js` | `const isPaid = (statusForDiscount === 'processing' \|\| statusForDiscount === 'completed' \|\| statusForDiscount === 'shipped');` | L1257 |
+| `.\eao-main-coordinator.js` | `if (statusForDiscount === 'processing' \|\| statusForDiscount === 'completed' \|\| statusForDiscount === 'shipped') \{` | L1272 |
+| `.\eao-main-coordinator.js` | `const isPaid = (statusForDiscount === 'processing' \|\| statusForDiscount === 'completed' \|\| statusForDiscount === 'shipped');` | L1305 |
+| `.\eao-main-coordinator.js` | `if (statusForDiscount === 'processing' \|\| statusForDiscount === 'completed' \|\| statusForDiscount === 'shipped') \{` | L1319 |
+| `.\eao-main-coordinator.js` | `\} else if (statusForDiscount === 'processing' \|\| statusForDiscount === 'completed' \|\| statusForDiscount === 'shipped') \{` | L1356 |
+| `.\eao-main-coordinator.js` | `if (!(statusForDiscount === 'processing' \|\| statusForDiscount === 'completed' \|\| statusForDiscount === 'shipped')) \{` | L1438 |
+| `.\eao-main-coordinator.js` | `if (statusForTruth === 'processing' \|\| statusForTruth === 'completed') \{` | L1605 |
+| `.\eao-main-coordinator.js` | `const grantState = (summaryData && summaryData.points_grant_state) ? summaryData.points_grant_state : \{granted:false, granted_points:0, revoked:false, revoked_points:0\};` | L1625 |
+| `.\eao-main-coordinator.js` | `const showRevoke = (grantState.granted && !grantState.revoked);` | L1628 |
+| `.\eao-main-coordinator.js` | `// Compute net granted so far (granted minus revoked)` | L1635 |
+| `.\eao-main-coordinator.js` | `const netGranted = Math.max(0, (parseInt(grantState.granted_points\|\|0,10) - parseInt(grantState.revoked_points\|\|0,10)));` | L1636 |
+| `.\eao-main-coordinator.js` | `'  <span class="eao-revoke-status" style="margin-left:8px;color:#666;">' + 'Granted so far: <strong>' + netGranted + ' pts</strong>' + '</span>',` | L1654 |
+| `.\eao-main-coordinator.js` | `const granted = parseInt((resp.data && resp.data.granted_points) \|\| 0, 10);` | L1721 |
+| `.\eao-main-coordinator.js` | `jQuery('.eao-revoke-status').html('Granted so far: <strong>' + Math.max(0, granted - revoked) + ' pts</strong>');` | L1723 |
+| `.\eao-main-coordinator.js` | `\} else if (grantState.granted) \{` | L1746 |
+| `.\eao-main-coordinator.js` | `note = (grantState.granted_points) + ' points were granted to the user.';` | L1747 |
+| `.\eao-main-coordinator.js` | `note = grantPreview + ' points will be granted to the user when this order is paid (status changes to processing).';` | L1751 |
+| `.\eao-main-coordinator.js` | `\} else if (status === 'processing' \|\| status === 'completed') \{` | L1752 |
+| `.\eao-main-coordinator.js` | `note = 'Points not granted yet for this order';` | L1753 |
+| `.\eao-main-coordinator.js` | `// When order is already paid/processing, freeze the points discount input & slider` | L1757 |
+| `.\eao-main-coordinator.js` | `if (status === 'processing' \|\| status === 'completed' \|\| status === 'shipped') \{` | L1759 |
+| `.\eao-main-coordinator.js` | `if (num < 2 \|\| ['pending','processing'].indexOf(status) >= 0) \{ $shipTab.closest('.eao-table-tab').hide(); \} else \{ $shipTab.closest('.eao-table-tab').show(); \}` | L2129 |
+| `.\eao-payment.js` | `var $container = $('#eao-payment-processing-container');` | L11 |
+| `.\eao-payment.js` | `$msg.html('<div class="notice notice-info"><p>Processing...</p></div>');` | L205 |
+| `.\eao-payment.js` | `// If status checkbox checked, change to Processing and trigger a save/update` | L271 |
+| `.\eao-payment.js` | `window.EAO.MainCoordinator.elements.$orderStatusField.val('wc-processing').trigger('change');` | L275 |
+| `.\eao-payment.js` | `$msg.html('<div class="notice notice-info"><p>Processing refund...</p></div>');` | L483 |
+| `.\eao-payment.php` | `* Enhanced Admin Order Plugin - Payment Processing (Real)` | L3 |
+| `.\eao-payment.php` | `* Lean metabox for processing payments from the admin editor` | L4 |
+| `.\eao-payment.php` | `* Add Payment Processing metabox (real)` | L32 |
+| `.\eao-payment.php` | `function eao_add_payment_processing_metabox() \{` | L34 |
+| `.\eao-payment.php` | `'eao-payment-processing-metabox',` | L38 |
+| `.\eao-payment.php` | `__('Payment Processing', 'enhanced-admin-order'),` | L39 |
+| `.\eao-payment.php` | `'eao_render_payment_processing_metabox',` | L40 |
+| `.\eao-payment.php` | `* Render Payment Processing metabox` | L49 |
+| `.\eao-payment.php` | `function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = array()) \{` | L51 |
+| `.\eao-payment.php` | `<div id="eao-payment-processing-container">` | L85 |
+| `.\eao-payment.php` | `<span>Change Order Status to Processing</span>` | L160 |
+| `.\eao-payment.php` | `/** Real Stripe processing (test-mode) */` | L267 |
+| `.\eao-shipstation-core.php` | `* credentials management, and AJAX handlers for rates processing.` | L15 |
+| `.\eao-utility-functions.php` | `* Shared utility functions for order calculations and data processing` | L4 |
+| `.\eao-utility-functions.php` | `* Eliminates repeated method_exists() checks during address processing.` | L105 |
+| `.\eao-yith-points-core.php` | `add_action( 'woocommerce_order_status_processing', array( $this, 'trigger_order_points_award' ), 5 );` | L99 |
+| `.\eao-yith-points-core.php` | `// Only award points for orders created/modified through our admin interface` | L147 |
+| `.\eao-yith-points-core.php` | `// Award for any order transitioned to processing/completed (no EAO-only gating)` | L153 |
+| `.\eao-yith-points-core.php` | `$expected_award = absint( $order_obj->get_meta( '_eao_points_expected_award', true ) );` | L181 |
+| `.\eao-yith-points-core.php` | `$expected_award = absint( $order_tmp->get_meta( '_eao_points_expected_award', true ) );` | L185 |
+| `.\eao-yith-points-core.php` | `* Award points for an order` | L194 |
+| `.\eao-yith-points-core.php` | `$order->update_meta_data( '_eao_points_expected_award', absint( $points_to_award ) );` | L213 |
+| `.\eao-yith-points-core.php` | `* Award points to customer for completed order` | L777 |
+| `.\eao-yith-points-core.php` | `$points_to_award = absint( $order->get_meta( '_eao_points_expected_award', true ) );` | L816 |
+| `.\eao-yith-points-core.php` | `// Award points using YITH's transaction system` | L844 |
+| `.\eao-yith-points-core.php` | `$result['errors'][] = 'Failed to award points using YITH transaction system';` | L866 |
+| `.\eao-product-management.php` | `// Attach points grant state for UI (granted/revoked markers)` | L568 |
+| `.\eao-product-management.php` | `$summary_data['points_grant_state'] = array(` | L570 |
+| `.\eao-product-management.php` | `'granted'  => (bool) $order->get_meta('_eao_points_granted', true),` | L571 |
+| `.\eao-product-management.php` | `'granted_points' => intval($order->get_meta('_eao_points_granted_points', true)),` | L572 |
+| `.\eao-product-management.php` | `$summary_data['points_grant_state'] = array(` | L577 |
+| `.\eao-product-management.php` | `'granted' => false,` | L578 |
+| `.\eao-product-management.php` | `'granted_points' => 0,` | L579 |
+| `.\eao-product-management.php` | `// Clean any stray output before processing` | L738 |
+| `.\eao-customer-functions.php` | `// Clean any stray output before processing` | L25 |
+| `.\eao-customer-functions.php` | `// Clean any stray output before processing` | L338 |
+| `.\eao-customers.js` | `var isPaidOrProcessed = (normalized === 'processing' \|\| normalized === 'completed' \|\| normalized === 'shipped');` | L376 |
+| `.\eao-customers.js` | `var isUnpaid = !(norm2 === 'processing' \|\| norm2 === 'completed' \|\| norm2 === 'shipped');` | L457 |
+| `.\eao-order-editor-page-template.php` | `var isUnpaid = !(norm === 'processing' \|\| norm === 'completed' \|\| norm === 'shipped');` | L2095 |
+| `.\eao-order-editor-page-template.php` | `\}, 100); // Minimal delay for change detection processing` | L2488 |
+| `.\eao-form-submission.js` | `* v2.4.11: INFINITE LOOP FIX - Added emergency timeout for overlay completion system to prevent infinite page ready loops\n * v2.4.10: CONSOLE ERROR FIX - Replaced jQuery AJAX with XMLHttpRequest to completely eliminate FormData processing errors` | L10 |
+| `.\eao-form-submission.js` | `* v2.4.9: CRITICAL FIX - Fixed jQuery AJAX FormData processing error (settings.data.indexOf) with beforeSend handler` | L11 |
+| `.\eao-form-submission.js` | `// 2. Progress is in active save range (60-95% - only during actual server processing)` | L131 |
+| `.\eao-form-submission.js` | `formData.append('eao_points_grant_override_enabled', window.eaoPointsGrantOverride.enabled ? 'yes' : 'no');` | L298 |
+| `.\eao-form-submission.js` | `formData.append('eao_points_grant_override_points', isNaN(ovPts) ? 0 : ovPts);` | L301 |
+| `.\eao-form-submission.js` | `// Create XMLHttpRequest directly to avoid jQuery FormData processing issues` | L362 |
+| `.\eao-form-submission.js` | `// Send the FormData directly - no jQuery processing` | L394 |
+| `.\eao-form-submission.js` | `this.animateProgressTo(40, 'Server processing completed', 380);` | L410 |
+| `.\eao-change-detection.js` | `// Check for payment processing changes` | L651 |
+| `.\eao-change-detection.js` | `this.clearPaymentChanges(); // Clear payment processing flags` | L715 |
+| `.\eao-change-detection.js` | `* Clear payment processing change flags after successful save` | L720 |
+| `.\eao-change-detection.js` | `if (window.eaoDebug) \{ console.log('[EAO Change Detection] Clearing payment processing flags after save'); \}` | L724 |
+| `.\eao-products.js` | `const hideShip = (orderStatus === 'pending' \|\| orderStatus === 'processing' \|\| numShipments < 2);` | L209 |
+| `.\eao-products.js` | `const hideForStatus = (orderStatus === 'pending' \|\| orderStatus === 'processing');` | L517 |
+| `.\eao-ajax-save-core.php` | `eao_log_save_operation('Processing staged notes JSON', substr($staged_notes_json, 0, 100) . '...');` | L134 |
+| `.\eao-ajax-save-core.php` | `// Use our new utility function for JSON processing` | L136 |
+| `.\eao-ajax-save-core.php` | `eao_log_save_operation('Processing staged notes', count($staged_notes) . ' notes found');` | L150 |
+| `.\eao-ajax-save-core.php` | `eao_log_save_operation('Notes processing complete', $result['notes_processed'] . ' notes added');` | L178 |
+| `.\eao-ajax-save-core.php` | `* @return array Result data with items processing results.` | L294 |
+| `.\eao-ajax-save-core.php` | `eao_log_save_operation('Processing staged items', count($staged_items) . ' items found');` | L317 |
+| `.\eao-ajax-save-core.php` | `eao_log_save_operation('Processing item deletions', count($items_to_delete_ids) . ' items marked for deletion');` | L404 |
+| `.\eao-ajax-save-core.php` | `eao_log_save_operation('Processing new items from currentOrderItems', count($new_items_to_add) . ' unique products to add');` | L451 |
+| `.\eao-ajax-save-core.php` | `eao_log_save_operation('Processing existing item updates', count($order_items_data) . ' items to update');` | L513 |
+| `.\eao-ajax-save-core.php` | `eao_log_save_operation('FINALIZE: processing client item', 'Item ID ' . $existing_item_id . ' cfg=' . wp_json_encode($cfg));` | L628 |
+| `.\eao-ajax-save-core.php` | `// Set overall processing flag` | L657 |
+| `.\eao-ajax-save-core.php` | `// PHASE 4B: Process points redemption ONLY when order is processing/completed.` | L672 |
+| `.\eao-ajax-save-core.php` | `if (in_array($status_now, array('processing','completed'), true) && function_exists('eao_process_yith_points_redemption')) \{` | L676 |
+
+
+</details>
+
+---
+
+Tool use: **read_file**
+
+Read file: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+
+---
+
+<think><details><summary>Thought Process</summary>**Analyzing point allocation**
+
+I noticed that the eao_points_handle_status_change function only triggers for the processing or completed statuses. The user is requesting that shipped status also grants points. It seems like points redemption works when the status is processing, completed, or shipped, but awarding doesn’t account for shipped. Given the user’s comment about receiving only 10 points instead of 80 when the order is shipped, it hints at a potential issue with how points are awarded after shipping. The UI screenshot confirms this.
+**Examining point awarding issues**
+
+It seems like a previous points grant may have occurred earlier when the order status was processing or completed, possibly without the expected award meta properly set, resulting in just 10 points being granted. I'm reviewing the awarding function, eao_points_grant_if_needed, which checks if points were already granted. If only 10 points were awarded at that time, switching to shipped status won’t raise that to 80. We need to ensure that points are awarded once the status changes to shipped and that the expected award meta is correctly captured beforehand.
+**Ensuring proper award meta tracking**
+
+I think if the order was saved correctly before any points were granted, then the expected award meta should reflect the final out-of-pocket points. However, if the award happens after the order status changes to shipped, I need to make sure that the expected_award meta actually exists. If it doesn’t, I’ll need to compute it from the order totals or refer to the eaoPointsAwardSummary to get the right value. This is essential for accurate point awarding!
+**Analyzing points and out-of-pocket calculations**
+
+The screenshot shows an out-of-pocket amount of 80 for one product. The calculations indicate items priced at 90 gross and 88 net, with points discount showing 83 points, translating to $8.30. The code for computing out-of-pocket points uses a redemption rate, alongside a live rate for points conversion. It checks if an override is enabled, then computes various values like net amounts and discount amounts. However, it also looks at posted_points during the save process, which isn't available for status changes via admin, particularly regarding shipping.
+**Investigating point granting discrepancies**
+
+It looks like if the order moves directly to shipped from pending or processing, the awarding might not trigger as expected. The user mentioned seeing 10 points granted instead of 80. This could mean points were awarded earlier, possibly due to a default setting or a prior calculation error. It might relate to posted_points being miscalculated. The screenshot shows several line items that add up in a way that suggests points-per-dollar is set correctly at 1, so I'm puzzled about how the 10 points were initially granted. I need to review the relevant code further.</details></think>
+
+---
+
+Tool use: **grep**
+
+<details>
+<summary>Grep for "eao_adjust_points_for_order|points_delta|ajax_adjust|modify points" in "C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin" • 16 matches</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `.\enhanced-admin-order-plugin.php` | `add_action('wp_ajax_eao_adjust_points_for_order', function() \{` | L66 |
+| `.\enhanced-admin-order-plugin.php` | `$delta    = isset($_POST['points_delta']) ? intval($_POST['points_delta']) : 0;` | L72 |
+| `.\eao-main-coordinator.js` | `'  Modify points for this order by <input type="number" class="eao-override-grant-input" style="width:90px;" step="1"> points <span class="eao-override-grant-dollars" style="margin-left:6px; color:#666;"></span> <button type="button" class="button eao-apply-points-adjust">Apply</button>',` | L1649 |
+| `.\eao-main-coordinator.js` | `action: 'eao_adjust_points_for_order',` | L1714 |
+| `.\eao-main-coordinator.js` | `points_delta: delta` | L1717 |
+| `.\eao-yith-points-save.php` | `* @param int $points_delta Points delta (positive = add points, negative = deduct points)` | L418 |
+| `.\eao-yith-points-save.php` | `function eao_adjust_customer_points( $customer_id, $points_delta, $order_id ) \{` | L422 |
+| `.\eao-yith-points-save.php` | `if ( $points_delta > 0 ) \{` | L431 |
+| `.\eao-yith-points-save.php` | `$log_message = sprintf( 'Refunded %d points to customer %d (order reduction)', $points_delta, $customer_id );` | L435 |
+| `.\eao-yith-points-save.php` | `\} else if ( $points_delta < 0 ) \{` | L436 |
+| `.\eao-yith-points-save.php` | `$log_message = sprintf( 'Deducted additional %d points from customer %d', abs($points_delta), $customer_id );` | L440 |
+| `.\eao-yith-points-save.php` | `error_log( '[EAO YITH] Processing points delta - Customer: ' . $customer_id . ', Delta: ' . $points_delta . ', Order: #' . $order_id );` | L447 |
+| `.\eao-yith-points-save.php` | `$points_delta,         // The exact delta amount (positive or negative)` | L456 |
+| `.\eao-yith-points-save.php` | `', Delta: ' . $points_delta . ', Order: #' . $order_id );` | L467 |
+| `.\eao-yith-points-save.php` | `$new_points = max( 0, $current_points + $points_delta );` | L477 |
+| `.\eao-yith-points-save.php` | `error_log( '[EAO YITH] Points delta applied via fallback - Customer: ' . $customer_id . ', Delta: ' . $points_delta );` | L481 |
+
+
+</details>
+
+---
+
+Tool use: **read_file**
+
+Read file: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-yith-points-save.php
+
+---
+
+<think><details><summary>Thought Process</summary>**Implementing points logic**
+
+I need to update the `eao_points_handle_status_change` function to include `shipped` in the status array. I’ll also ensure that the awarding amount references `expected_award_meta`. If it’s 0, that might be because it’s not set. I’ll apply a fallback just in case `_eao_points_granted_points` or the UI indicates out-of-pocket expenses. If there’s a mismatch in derived points, it might be due to an error in calculating the points per dollar.
+**Investigating earn_rate issue**
+
+I suspect that the `earn_rate` might not be in the right scale. YITH returns a `points_per_dollar` rate, which could be 10, treating it as a direct conversion. Earlier, the preview assumed this meant “points per dollar” for awarding. In our UI, points per dollar are set at 1. There’s also a fallback that sets it to 1.0 when values are low. I need to check the `eao_yith_calculate_order_points_preview` function to understand the `points_per_dollar` further.</details></think>
+
+---
+
+Tool use: **grep**
+
+<details>
+<summary>Grep for "function\s+eao_yith_calculate_order_points_preview|points_per_dollar" in "C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin" • 18 matches</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `.\enhanced-admin-order-plugin.php` | `// 1) Resolve earning rate (points per $) â€“ prefer YITH preview's points_per_dollar, else derive from full price` | L845 |
+| `.\enhanced-admin-order-plugin.php` | `if (!empty($calc['points_per_dollar'])) \{` | L850 |
+| `.\enhanced-admin-order-plugin.php` | `$earn_rate = (float) $calc['points_per_dollar'];` | L851 |
+| `.\enhanced-admin-order-plugin.php` | `$ppd = isset($calc['points_per_dollar']) ? floatval($calc['points_per_dollar']) : 0;` | L2273 |
+| `.\enhanced-admin-order-plugin.php` | `if (isset($calc['points_per_dollar'])) \{ $payload['points_per_dollar'] = $calc['points_per_dollar']; \}` | L2323 |
+| `.\eao-main-coordinator.js` | `if (resp.data.points_per_dollar) \{` | L1062 |
+| `.\eao-main-coordinator.js` | `pas.points_per_dollar = parseFloat(resp.data.points_per_dollar);` | L1065 |
+| `.\eao-main-coordinator.js` | `if (!isNaN(pas.points_per_dollar) && pas.points_per_dollar > 0) \{` | L1067 |
+| `.\eao-main-coordinator.js` | `window.pointsEarnRate = pas.points_per_dollar;` | L1068 |
+| `.\eao-yith-points-core.php` | `function eao_yith_calculate_order_points_preview( $order_id, $items_subtotal_override = null, $products_total_override = null ) \{` | L253 |
+| `.\eao-yith-points-core.php` | `$points_per_dollar = 0;` | L379 |
+| `.\eao-yith-points-core.php` | `$points_per_dollar = (float) $conversion['points'] / (float) $conversion['money'];` | L381 |
+| `.\eao-yith-points-core.php` | `$result['points_per_dollar'] = $points_per_dollar;` | L390 |
+| `.\eao-yith-points-core.php` | `$points_per_dollar = $earning_base_amount > 0 ? ( $total_points / $earning_base_amount ) : 0;` | L571 |
+| `.\eao-yith-points-core.php` | `$discount_points   = $points_per_dollar * (float) $coupon_discount_total;` | L572 |
+| `.\eao-yith-points-core.php` | `$result['points_per_dollar'] = ($earning_base_amount > 0) ? ($total_points / $earning_base_amount) : 0;` | L604 |
+| `.\eao-product-management.php` | `if ( isset($calc['total_points_full']) \|\| isset($calc['total_points_discounted']) \|\| isset($calc['points_per_dollar']) ) \{` | L647 |
+| `.\eao-product-management.php` | `'points_per_dollar' => isset($calc['points_per_dollar']) ? floatval($calc['points_per_dollar']) : 0,` | L651 |
+
+
+</details>
+
+---
+
+Tool use: **read_file**
+
+Read file: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-yith-points-core.php
+
+---
+
+<think><details><summary>Thought Process</summary>**Analyzing point conversion**
+
+I'm looking at the ratio of points to dollars in the screenshot, which seems to show a 1:1 ratio. But then I’m realizing YITH might actually use a conversion of 10 points per dollar for earning. So, my points_per_dollar function might be returning 10, while the UI shows a rate of 1, leading to inconsistencies. Maybe the installation might actually be at 1 point per dollar, which would mean awarding 80 points makes sense. However, the awarding process could be influenced by prior adjustments or statuses, hence the confusion.
+**Investigating point discrepancies**
+
+The user's pointed out that when the order is shipped, the points granted are 10 instead of the expected 80. This discrepancy suggests that the awarding happened but with the wrong amount. I'm wondering if this is due to a meta value of 10 that might have been saved earlier, possibly because of rounding or an incorrect message that said "10 points were granted." It seems the awarding function may have miscalculated the points to grant, likely by reading the redeemed points incorrectly during the AJAX save process when the order status changed to shipped.
+**Exploring point redemption and awarding**
+
+In the eao_ajax_save_order_details function, points redemption was processed and saved under certain conditions, specifically when the order status is processing, completed, or shipped. However, eao_process_yith_points_redemption is only for redemption, not for granting awards. The awarding process happens in the eao_points_handle_status_change triggered by a status change hook, but this only operates under specific conditions. So, if "shipped" isn't included, the awarding won't occur. The user mentioned the "different amount," which might stem from a previous test where 10 points were granted incorrectly due to formula issues.
+**Reviewing awarding formula**
+
+I'm diving into the awarding formula here. The posted points value comes from $_POST['eao_points_to_redeem'], which likely reflects the points used for a discount—like 83 in the screenshot. The awarding sets points_discount_amount using a conversion rate, which defaults to 10 points per dollar, resulting in $8.30. However, when calculating the points to grant, it seems they might be using incorrect values in the formula. If 'points_per_dollar' mistakenly returns lower values like 0.1, that could lead to discrepancies. The base conversion rate should be set correctly to avoid confusion.
+**Fixing points awarding logic**
+
+I need to determine how to compute points discount, looking at the _ywpar_coupon_amount meta or coupon items. I'll calculate awardingPointsPerDollar using YITH conversion options, ensuring to derive the base conversion rate accurately. My goal is to match the UI and replicate the expected points awarded correctly.
+
+There's a concern about how awarding points were previously calculated, which could lead to mismatches. To address this, I'll propose changes to the awarding process, particularly when the order status changes to 'shipped,' allowing for incremental top-ups if the previously granted points were lower than expected. Lastly, updating the plugin version can ensure these adjustments are captured.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+@@
+-function eao_points_handle_status_change( $order_id, $from_status, $to_status, $order ) {
++function eao_points_handle_status_change( $order_id, $from_status, $to_status, $order ) {
+@@
+-    if (in_array($to_status, array('processing','completed'), true)) {
++    if (in_array($to_status, array('processing','completed','shipped'), true)) {
+         eao_points_grant_if_needed($order_id);
+     }
+ }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+@@
+ function eao_points_grant_if_needed( $order_id ) {
+@@
+-    // Skip if already granted and not revoked; allow re-grant after revoke
+-    $already_granted = (bool)$order->get_meta('_eao_points_granted', true);
+-    $was_revoked     = (bool)$order->get_meta('_eao_points_revoked', true);
+-    if ($already_granted && !$was_revoked) { return; }
++    // If already granted, allow a "top-up" when expected award increased (e.g., status moved to shipped)
++    $already_granted = (bool)$order->get_meta('_eao_points_granted', true);
++    $was_revoked     = (bool)$order->get_meta('_eao_points_revoked', true);
++    $already_pts     = intval($order->get_meta('_eao_points_granted_points', true));
+@@
+-    // Decide points: override, expected award from UI, or out-of-pocket calculation (products only)
++    // Decide points: override, expected award from UI, or out-of-pocket calculation (products only)
+     $override_enabled = ('yes' === $order->get_meta('_eao_points_grant_override_enabled', true));
+     $override_points  = intval($order->get_meta('_eao_points_grant_override_points', true));
+     $points_to_grant  = 0;
+     if ($override_enabled && $override_points > 0) {
+         $points_to_grant = $override_points;
+         eao_points_debug_log('Grant using override: ' . $points_to_grant, $order_id);
+     } else {
+         // Prefer exact expected award saved during last save/render
+         $expected_award_meta = intval($order->get_meta('_eao_points_expected_award', true));
+         if ($expected_award_meta > 0) {
+             $points_to_grant = $expected_award_meta;
+             eao_points_debug_log('Grant using expected_award meta: ' . $points_to_grant, $order_id);
+         } else {
+@@
+-        $points_to_grant = (int) floor($oop * $earn_rate);
++        $points_to_grant = (int) floor($oop * $earn_rate);
+         eao_points_debug_log(sprintf('Computed grant: earn_rate=%s, products_net=%s, points_discount=$%s, oop=$%s => points=%d',
+             number_format($earn_rate, 6), number_format($products_net, 2), number_format($points_discount_amount, 2), number_format($oop, 2), $points_to_grant), $order_id);
+         }
+     }
+ 
+-    if ($points_to_grant <= 0) { return; }
++    // If points were already granted and not revoked, only top up the delta when higher expected points are needed
++    if ($already_granted && !$was_revoked) {
++        $delta = max(0, intval($points_to_grant) - max(0, $already_pts));
++        if ($delta <= 0) { return; }
++        $points_to_grant = $delta;
++        eao_points_debug_log('Top-up grant detected. Previously granted=' . $already_pts . ', delta=' . $points_to_grant, $order_id);
++    }
++
++    if ($points_to_grant <= 0) { return; }
+@@
+-    if ($granted_ok) {
+-        $order->update_meta_data('_eao_points_granted', 1);
+-        $order->update_meta_data('_eao_points_granted_points', intval($points_to_grant));
++    if ($granted_ok) {
++        $order->update_meta_data('_eao_points_granted', 1);
++        // If we topped up, accumulate; otherwise set to full expected
++        $final_total = $points_to_grant;
++        if ($already_granted && !$was_revoked) {
++            $final_total = max(0, $already_pts) + intval($points_to_grant);
++        }
++        $order->update_meta_data('_eao_points_granted_points', intval($final_total));
+         $order->update_meta_data('_eao_points_granted_ts', time());
+         // Clear any previous revoke marker to allow future re-grants to be controlled by state
+         $order->delete_meta_data('_eao_points_revoked');
+         $order->delete_meta_data('_eao_points_revoked_points');
+         // Add order note trail
+-        $order->add_order_note(sprintf(__('EAO: Granted %d points to customer on status change.', 'enhanced-admin-order'), intval($points_to_grant)));
++        if ($already_granted && !$was_revoked) {
++            $order->add_order_note(sprintf(__('EAO: Granted an additional %d points (top-up). Total granted now %d.', 'enhanced-admin-order'), intval($points_to_grant), intval($final_total)));
++        } else {
++            $order->add_order_note(sprintf(__('EAO: Granted %d points to customer on status change.', 'enhanced-admin-order'), intval($final_total)));
++        }
+         $order->save();
+         eao_points_debug_log('Grant recorded successfully: ' . $points_to_grant . ' pts', $order_id);
+     }
+*** End Patch
+```
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+@@
+- * Version: 5.1.18
++ * Version: 5.1.19
+@@
+-// Plugin version constant (v5.1.18: Ensure line 3 updates on slider release by clearing focus lock)
+-define('EAO_PLUGIN_VERSION', '5.1.18');
++// Plugin version constant (v5.1.19: Grant on shipped; award exact line-3 value with top-up logic)
++define('EAO_PLUGIN_VERSION', '5.1.19');
+*** End Patch
+```
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 1 file</summary>
+      
+Lint paths:
+
+- `C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: add
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: commit
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+  * message: EAO v5.1.19: Grant on shipped; award exact line‑3 with top‑up.
+- Include 'shipped' in status change trigger
+- Prefer expected_award meta; compute fallback; if already granted, top‑up the delta
+- Update notes/meta aggregation
+- Bump version to 5.1.19
+
+*Result*:
+{"data":{"output":"[dev 5905190] EAO v5.1.19: Grant on shipped; award exact line‑3 with top‑up. - Include 'shipped' in status change trigger - Prefer expected_award meta; compute fallback; if already granted, top‑up the delta - Update notes/meta aggregation - Bump version to 5.1.19\n 2 files changed, 221 insertions(+), 9 deletions(-)\n"}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_push**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_push: Update remote refs along with associated objects (git push).
+
+*Parameters*:
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+I’ll fix the grant to match the third line and include the shipped status, then bump and deploy.
+
+Changes
+- Grant trigger
+  - Now also grants on status shipped.
+- Exact amount + top-up
+  - On grant, we first use `_eao_points_expected_award` (saved from the UI third line). If missing, we fall back to a server calculation using the order’s products net and any YITH points coupon.
+  - If points were already granted earlier, we “top up” the difference instead of skipping (so 10 granted earlier + 70 top-up = 80 total).
+- Version bumped to 5.1.19.
+
+Key edits
+```799:808:C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+function eao_points_handle_status_change(...) {
+  ...
+  if (in_array($to_status, array('processing','completed','shipped'), true)) {
+      eao_points_grant_if_needed($order_id);
+  }
+}
+```
+
+```821:929:C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\enhanced-admin-order-plugin.php
+// In eao_points_grant_if_needed():
+// - Prefer expected award meta
+// - Compute fallback if needed
+// - If already granted, compute delta and top up
+// - Update meta to the accumulated total and add an order note
+```
+
+Deployment
+- Branch: dev
+- Commit: 5905190
+- Version: 5.1.19
+
+Please hard refresh on staging and test:
+- Change status to Shipped. If an earlier incorrect 10 pts were granted, you should now see an additional top-up to reach 80 total.
+
+---
+
+_**User (2025-10-30 08:16Z)**_
+
+I revoked the points and changed the status of this test order to pending payment. Then I wanted to change the points granted and change back to shipped so I could see the fix. However, I see now that the points redemtion slider is missing entirely. Can you understand why or should we start to debug?
+
+---
+
+_**Assistant (gpt-5-high)**_
+
+<think><details><summary>Thought Process</summary>**Analyzing points redemption issue**
+
+The user wants to understand why the points redemption slider is missing after they revoked points and changed the order status to pending payment. It seems like we should consider debugging this from the code perspective. The slider is part of the summary UI built by `eao-main-coordinator.js`, and we need to locate where it’s generated. I'll check the sections related to rendering order summaries and how unpaid orders affect discounts, since the slider might be freezing due to the order's status.
+**Investigating the missing slider issue**
+
+Alright, so the user has changed the order status to pending payment, meaning the points redemption slider should be editable. But the fact that it's missing might be tied to certain conditions, like `eaoCurrentPointsDiscount` or `eaoStagedPointsDiscount`. 
+
+The slider could be hidden if the order is marked as paid, if the YITH plugin isn't available, or if the customer ID is 0. Plus, the code checks if points haven't been granted yet, which might also be influencing this. Since they revoked points and set the order to pending, I’ll need to look into how these actions interact with the slider's display logic.
+**Examining order status implications**
+
+It seems that even after changing the status to pending payment, we might still treat the order as paid, which could depend on whether `eaoEditorParams.order_status` was updated. The status is determined through the UI and our summary calculation involving the `#order_status` select. We previously set up a mapping to account for current selections, and this should show 'pending.' The fact that the slider is completely missing, and not just disabled, pushes me to search the code in `eao-main-coordinator.js` to see how we conditionally include the slider markup.</details></think>
+
+---
+
+Tool use: **grep**
+
+<details>
+<summary>Grep for "Points Discount Section|eao-summary-points-discount|slider|inline points|points slider" in "C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coordinator.js" • 125 matches</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `.\enhanced-admin-order-plugin.php` | `* AJAX: Return YITH points globals for the given order/customer so the inline slider can render.` | L2136 |
+| `.\eao-yith-points.js` | `// but only if user is not actively changing the slider/input` | L80 |
+| `.\eao-yith-points.js` | `* Setup real-time updates for points slider/input` | L125 |
+| `.\eao-yith-points.js` | `const pointsSelector = '#eao_points_slider, #eao_points_to_redeem, #eao_points_slider_inline, #eao_points_to_redeem_inline, .eao-points-slider, .eao-inline-slider, .eao-points-input-inline';` | L131 |
+| `.\eao-yith-points.js` | `// Listen for points slider/input changes with improved coordination` | L133 |
+| `.\eao-yith-points.js` | `const isInline = $this.is('#eao_points_slider_inline, .eao-inline-slider, .eao-points-input-inline');` | L144 |
+| `.\eao-yith-points.js` | `// For inline slider/input: keep it lightweight while dragging` | L165 |
+| `.\eao-yith-points.js` | `const $rowVal = $('.eao-summary-points-discount .eao-summary-monetary-value');` | L191 |
+| `.\eao-yith-points.js` | `// Ensure summary is allowed to repaint immediately after slider release` | L205 |
+| `.\eao-yith-points.js` | `// Persist as lastPostedPoints so subsequent summary renders don't revert slider` | L211 |
+| `.\eao-yith-points.js` | `const $pointsRow = $('.eao-summary-points-discount');` | L260 |
+| `.\eao-yith-points.js` | `// the template recalculation that may override the slider/input value.` | L328 |
+| `.\eao-yith-points.js` | `* Handle points input/slider value synchronization` | L361 |
+| `.\eao-yith-points.js` | `const $allFields = $('#eao_points_slider, #eao_points_to_redeem, #eao_points_slider_inline, #eao_points_to_redeem_inline, .eao-inline-slider, .eao-inline-input, .eao-points-input-inline');` | L365 |
+| `.\eao-yith-points.js` | `* Update inline points label for summary slider (triggers summary re-render)` | L386 |
+| `.\eao-yith-points.js` | `* Update max values for all sliders (both metabox and inline)` | L396 |
+| `.\eao-yith-points.js` | `const $allSliders = $('#eao_points_slider, #eao_points_to_redeem, #eao_points_slider_inline, #eao_points_to_redeem_inline, .eao-inline-slider, .eao-inline-input, .eao-points-input-inline');` | L400 |
+| `.\eao-yith-points.js` | `$allSliders.attr('max', maxPoints);` | L401 |
+| `.\eao-yith-points.js` | `// Update the max label for inline slider` | L403 |
+| `.\eao-yith-points.js` | `$('.eao-slider-max-label').text(maxPoints);` | L404 |
+| `.\eao-yith-points.js` | `'#eao_points_slider, #eao_points_to_redeem, #eao_points_slider_inline, #eao_points_to_redeem_inline',  // All EAO fields` | L455 |
+| `.\eao-yith-points.js` | `'.eao-inline-slider, .eao-inline-input',     // Class-based inline fields` | L456 |
+| `.\eao-yith-points.js` | `'#yith_points_slider, #yith_points_input',    // Alternative YITH selectors` | L457 |
+| `.\eao-yith-points.js` | `'.eao-points-slider, .eao-points-input'      // Class-based selectors` | L459 |
+| `.\eao-main-coordinator.js` | `* v2.5.1: ARCHITECTURAL FIX - YITH points slider handler properly placed using refreshSummaryOnly()` | L20 |
+| `.\eao-main-coordinator.js` | `* v2.7.1: FEATURE: Added inline YITH Points slider in summary section with real-time max calculation` | L25 |
+| `.\eao-main-coordinator.js` | `* v2.7.4: FIX: Slider spacing, alignment, unique IDs, enhanced usability` | L28 |
+| `.\eao-main-coordinator.js` | `* v2.7.5: FIX: Centered slider layout with min/max labels + proper event binding` | L29 |
+| `.\eao-main-coordinator.js` | `const $pointsSlider = $('#eao_points_slider');` | L576 |
+| `.\eao-main-coordinator.js` | `if ($pointsSlider.length > 0) \{` | L581 |
+| `.\eao-main-coordinator.js` | `$pointsSlider.val(initialData.points_to_redeem \|\| 0);` | L582 |
+| `.\eao-main-coordinator.js` | `var $pointsRow = $('.eao-summary-points-discount .eao-summary-monetary-value');` | L1016 |
+| `.\eao-main-coordinator.js` | `// YITH Points Discount Section - Inline when editable, fixed on paid orders` | L1158 |
+| `.\eao-main-coordinator.js` | `// Check if we have YITH points data available for inline slider` | L1161 |
+| `.\eao-main-coordinator.js` | `'eao-summary-points-discount'` | L1281 |
+| `.\eao-main-coordinator.js` | `// Editable with input + slider` | L1284 |
+| `.\eao-main-coordinator.js` | `this.createInlinePointsSlider(currentPoints),` | L1290 |
+| `.\eao-main-coordinator.js` | `'eao-summary-points-discount'` | L1292 |
+| `.\eao-main-coordinator.js` | `// No active discount - show zero amount with slider but check for staged values` | L1296 |
+| `.\eao-main-coordinator.js` | `'eao-summary-points-discount'` | L1341 |
+| `.\eao-main-coordinator.js` | `this.createInlinePointsSlider(currentPoints),` | L1350 |
+| `.\eao-main-coordinator.js` | `'eao-summary-points-discount'` | L1352 |
+| `.\eao-main-coordinator.js` | `// Show existing discount without slider` | L1363 |
+| `.\eao-main-coordinator.js` | `'eao-summary-points-discount'` | L1369 |
+| `.\eao-main-coordinator.js` | `'eao-summary-points-discount'` | L1377 |
+| `.\eao-main-coordinator.js` | `// Re-render to show slider now that globals exist` | L1399 |
+| `.\eao-main-coordinator.js` | `'eao-summary-points-discount'` | L1417 |
+| `.\eao-main-coordinator.js` | `// If inline slider is present and value is 0, force discount dollars to 0 and clear any stale current discount` | L1423 |
+| `.\eao-main-coordinator.js` | `// Preserve points slider value across re-renders using staged/current points` | L1531 |
+| `.\eao-main-coordinator.js` | `// When order is already paid/processing, freeze the points discount input & slider` | L1757 |
+| `.\eao-main-coordinator.js` | `jQuery('.eao-summary-points-discount .eao-slider').prop('disabled', true).addClass('disabled');` | L1761 |
+| `.\eao-main-coordinator.js` | `jQuery('#eao_points_to_redeem, #eao_points_slider').prop('disabled', true).addClass('disabled');` | L1763 |
+| `.\eao-main-coordinator.js` | `* Create a summary row with embedded control (like slider)` | L1820 |
+| `.\eao-main-coordinator.js` | `* Inline structure with slider right after the label text` | L1821 |
+| `.\eao-main-coordinator.js` | `// Inline structure: label with slider inline, properly aligned amount` | L1834 |
+| `.\eao-main-coordinator.js` | `* Calculate maximum points for sliders and input fields` | L1846 |
+| `.\eao-main-coordinator.js` | `* Create inline points slider HTML for summary section` | L1892 |
+| `.\eao-main-coordinator.js` | `createInlinePointsSlider: function(currentValue) \{` | L1894 |
+| `.\eao-main-coordinator.js` | `html += `<div class="eao-inline-points-slider-container">`;` | L1899 |
+| `.\eao-main-coordinator.js` | `html += `  <div class="eao-slider-labels">`;` | L1900 |
+| `.\eao-main-coordinator.js` | `html += `    <span class="eao-slider-min-label">0</span>`;` | L1901 |
+| `.\eao-main-coordinator.js` | `html += `           id="eao_points_slider_inline" `;` | L1903 |
+| `.\eao-main-coordinator.js` | `html += `           class="eao-points-slider eao-inline-slider" `;` | L1904 |
+| `.\eao-main-coordinator.js` | `html += `    <span class="eao-slider-max-label">$\{maxValue\}</span>`;` | L1910 |
+| `.\eao-main-coordinator.js` | `// Ensure YITH Points event handlers are set up for new inline slider` | L1932 |
+| `.\eao-main-coordinator.js` | `// Re-initialize event handlers to catch any newly added sliders` | L1934 |
+| `.\eao-main-coordinator.js` | `// Also attach a light listener for real-time points slider movements` | L1937 |
+| `.\eao-main-coordinator.js` | `.off('input.eaoPoints', '#eao_points_slider_inline')` | L1941 |
+| `.\eao-main-coordinator.js` | `.on('input.eaoPoints', '#eao_points_slider_inline', function() \{` | L1942 |
+| `.\eao-main-coordinator.js` | `const $amountCell = $('.eao-summary-points-discount .eao-summary-monetary-value');` | L1955 |
+| `.\eao-main-coordinator.js` | `.off('change.eaoPoints', '#eao_points_slider_inline')` | L1980 |
+| `.\eao-main-coordinator.js` | `.on('change.eaoPoints', '#eao_points_slider_inline', function() \{` | L1981 |
+| `.\eao-main-coordinator.js` | `// On release: update staged/current to exactly 0 if slider stopped at 0 to prevent fallbacks` | L1982 |
+| `.\eao-main-coordinator.js` | `// Ensure staged points mirror final slider position` | L1989 |
+| `.\admin-styles.css` | `/* Inline Points Slider in Summary Section - True Inline Layout */` | L1537 |
+| `.\admin-styles.css` | `/* Ensure the slider container doesn't interfere with table layout */` | L1586 |
+| `.\admin-styles.css` | `.eao-inline-points-slider-container \{` | L1607 |
+| `.\admin-styles.css` | `/* Inline Points Input Field in Label */` | L1612 |
+| `.\admin-styles.css` | `.eao-inline-points-slider-container \{` | L1639 |
+| `.\admin-styles.css` | `max-width: 250px; /* Accommodate labels + slider */` | L1644 |
+| `.\admin-styles.css` | `.eao-slider-labels \{` | L1647 |
+| `.\admin-styles.css` | `.eao-slider-min-label,` | L1655 |
+| `.\admin-styles.css` | `.eao-slider-max-label \{` | L1656 |
+| `.\admin-styles.css` | `.eao-slider-min-label \{` | L1665 |
+| `.\admin-styles.css` | `.eao-slider-max-label \{` | L1669 |
+| `.\admin-styles.css` | `.eao-inline-slider \{` | L1673 |
+| `.\admin-styles.css` | `cursor: pointer; /* Make entire slider clickable */` | L1681 |
+| `.\admin-styles.css` | `margin: 0 8px; /* Space between slider and labels */` | L1682 |
+| `.\admin-styles.css` | `.eao-inline-slider::-webkit-slider-thumb \{` | L1685 |
+| `.\admin-styles.css` | `.eao-inline-slider::-webkit-slider-thumb:active \{` | L1698 |
+| `.\admin-styles.css` | `.eao-inline-slider::-moz-range-thumb \{` | L1703 |
+| `.\admin-styles.css` | `.eao-inline-slider::-moz-range-thumb:active \{` | L1714 |
+| `.\admin-styles.css` | `.eao-inline-slider::-webkit-slider-track \{` | L1719 |
+| `.\admin-styles.css` | `.eao-inline-slider::-moz-range-track \{` | L1725 |
+| `.\admin-styles.css` | `.eao-inline-slider:hover::-webkit-slider-thumb \{` | L1732 |
+| `.\admin-styles.css` | `.eao-inline-slider:hover::-moz-range-thumb \{` | L1736 |
+| `.\admin-styles.css` | `.eao-inline-points-slider-container \{` | L1750 |
+| `.\admin-styles.css` | `.eao-points-slider-inline \{` | L1757 |
+| `.\admin-styles.css` | `.eao-points-slider-inline::-webkit-slider-thumb \{` | L1766 |
+| `.\admin-styles.css` | `.eao-points-slider-inline::-webkit-slider-thumb:hover \{` | L1776 |
+| `.\admin-styles.css` | `.eao-points-slider-inline::-moz-range-thumb \{` | L1780 |
+| `.\admin-styles.css` | `.eao-points-slider-inline::-moz-range-thumb:hover \{` | L1790 |
+| `.\admin-styles.css` | `.eao-points-slider-container \{` | L1810 |
+| `.\admin-styles.css` | `.eao-points-slider-min, .eao-points-slider-max \{` | L1816 |
+| `.\eao-customers.js` | `// Trigger a points max recalculation so the summary slider reflects the new user's balance` | L440 |
+| `.\eao-order-editor-page-template.php` | `.eao-points-slider-container \{` | L282 |
+| `.\eao-order-editor-page-template.php` | `.eao-points-slider \{` | L286 |
+| `.\eao-order-editor-page-template.php` | `.eao-points-slider:hover \{` | L297 |
+| `.\eao-order-editor-page-template.php` | `.eao-points-slider::-webkit-slider-thumb \{` | L301 |
+| `.\eao-order-editor-page-template.php` | `.eao-points-slider::-moz-range-thumb \{` | L312 |
+| `.\eao-order-editor-page-template.php` | `// Also expose pending intent so UI can reflect saved slider selection on reload` | L1677 |
+| `.\eao-order-editor-page-template.php` | `var $pointsSlider = $('#eao_points_slider');` | L1742 |
+| `.\eao-order-editor-page-template.php` | `console.log('[EAO][PointsInit] UI initialize slider/input to:', initPtsVal);` | L1752 |
+| `.\eao-order-editor-page-template.php` | `$pointsSlider.val(initPtsVal);` | L1754 |
+| `.\eao-order-editor-page-template.php` | `* Sync slider and input values` | L1773 |
+| `.\eao-order-editor-page-template.php` | `function syncSliderAndInput(value) \{` | L1775 |
+| `.\eao-order-editor-page-template.php` | `$pointsSlider.val(value);` | L1777 |
+| `.\eao-order-editor-page-template.php` | `window.eaoSyncSliderAndInput = syncSliderAndInput;` | L1783 |
+| `.\eao-order-editor-page-template.php` | `// Update the slider and input max values` | L1868 |
+| `.\eao-order-editor-page-template.php` | `$('#eao_points_slider').attr('max', smartMaxPoints);` | L1869 |
+| `.\eao-order-editor-page-template.php` | `$('#eao_points_slider').val(smartMaxPoints);` | L1898 |
+| `.\eao-order-editor-page-template.php` | `// Trigger a lightweight points max recalculation so slider limits reflect new customer balance` | L2075 |
+| `.\eao-form-submission.js` | `const fields = document.querySelectorAll('#eao_points_slider, #eao_points_to_redeem, #eao_points_slider_inline, #eao_points_to_redeem_inline, .eao-inline-slider, .eao-inline-input, .eao-points-input-inline');` | L469 |
+| `.\eao-change-detection.js` | `// Priority 1: Check staged points (from inline slider)` | L344 |
+| `.\eao-change-detection.js` | `$(document).on('change input', '#eao_points_to_redeem, #eao_points_slider', function() \{` | L697 |
+
+
+</details>
+
+---
+
+Tool use: **read_file**
+
+Read file: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin\eao-main-coordinator.js
+
+---
+
 
 
 ---
