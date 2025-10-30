@@ -202,6 +202,8 @@ window.EAO.YithPoints = {
                     self.isUpdating = true;
                     self.synchronizePointsInputs(value, $this.attr('id'));
                     self.isUpdating = false;
+                    // Ensure summary is allowed to repaint immediately after slider release
+                    try { window.eaoInputFocusLock = false; } catch(_) {}
                     const rr = (window.pointsRedeemRate && window.pointsRedeemRate > 0) ? window.pointsRedeemRate : 10;
                     if (!window.eaoStagedPointsDiscount) { window.eaoStagedPointsDiscount = {}; }
                     window.eaoStagedPointsDiscount.points = value;
@@ -215,8 +217,9 @@ window.EAO.YithPoints = {
                     // Trigger a targeted summary-only update so totals change immediately
                     try {
                         if (window.EAO && window.EAO.MainCoordinator) {
-                            const summary = window.EAO.MainCoordinator.calculateUnifiedSummaryData(window.currentOrderItems || []);
-                            window.EAO.MainCoordinator.refreshSummaryOnly(window.currentOrderItems || [], summary);
+                            const items = window.currentOrderItems || [];
+                            const summary = window.EAO.MainCoordinator.calculateUnifiedSummaryData(items);
+                            window.EAO.MainCoordinator.refreshSummaryOnly(items, summary);
                         }
                     } catch(_) {}
                     // Keep a short suppression window so template recalcs won't bounce the value

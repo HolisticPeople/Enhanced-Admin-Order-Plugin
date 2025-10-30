@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.1.17
+ * Version: 5.1.18
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -12,8 +12,8 @@ if (!defined('ABSPATH')) {
     exit; 
 }
 
-// Plugin version constant (v5.1.17: Stabilize points slider by locking summary re-assert during drag)
-define('EAO_PLUGIN_VERSION', '5.1.17');
+// Plugin version constant (v5.1.18: Ensure line 3 updates on slider release by clearing focus lock)
+define('EAO_PLUGIN_VERSION', '5.1.18');
 
 /**
  * Check if we should load EAO functionality
