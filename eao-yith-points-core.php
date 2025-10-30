@@ -94,10 +94,36 @@ class EAO_YITH_Points_Core {
      * Initialize hooks for YITH integration
      */
     private function init_hooks() {
-        // EAO coordinates awarding explicitly via its own status-change handler.
-        // Do not hook native YITH awarding here to avoid double-award and ensure a single source of truth.
+        // EAO coordinates awarding explicitly via its own status-change handler in admin.
+        // Remove YITH native admin hooks for order awarding to avoid double-awards (+1 symptoms),
+        // but do NOT affect frontend checkout behavior.
+        if ( is_admin() ) {
+            // Unhook late as some plugins attach on init/plugins_loaded
+            add_action( 'init', array( $this, 'remove_admin_yith_award_hooks' ), 100 );
+        }
+
         // Keep async endpoint available for any future internal calls.
         add_action( 'eao_award_points_async', array( $this, 'award_order_points' ), 10, 1 );
+    }
+
+    /**
+     * Remove YITH native admin award hooks (late) to prevent double-awards.
+     */
+    public function remove_admin_yith_award_hooks() {
+        try {
+            if ( ! is_admin() ) { return; }
+            if ( class_exists( 'YITH_WC_Points_Rewards_Earning' ) ) {
+                $earning = YITH_WC_Points_Rewards_Earning::get_instance();
+                if ( has_action( 'woocommerce_order_status_completed', array( $earning, 'add_order_points' ) ) ) {
+                    remove_action( 'woocommerce_order_status_completed', array( $earning, 'add_order_points' ), 10 );
+                    error_log('[EAO Points] Removed YITH add_order_points from completed in admin (late)');
+                }
+                if ( has_action( 'woocommerce_order_status_processing', array( $earning, 'add_order_points' ) ) ) {
+                    remove_action( 'woocommerce_order_status_processing', array( $earning, 'add_order_points' ), 10 );
+                    error_log('[EAO Points] Removed YITH add_order_points from processing in admin (late)');
+                }
+            }
+        } catch ( Exception $e ) { /* no-op */ }
     }
     
     /**
