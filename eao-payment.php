@@ -1638,9 +1638,11 @@ function eao_paypal_send_payment_request() {
     if (!isset($created['id'])) { $created['id'] = $inv_id; }
     // Send invoice
     $send_url = 'https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($inv_id) . '/send';
+    $send_headers = $headers; unset($send_headers['Prefer']);
+    error_log('[EAO PayPal] Send attempt invoice=' . $inv_id);
     $send = wp_remote_post($send_url, array(
-        'headers' => $headers,
-        'body'    => wp_json_encode(array()),
+        'headers' => $send_headers,
+        'body'    => wp_json_encode(array('send_to_recipient' => true)),
         'timeout' => 25,
     ));
     if (is_wp_error($send)) {
