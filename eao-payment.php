@@ -27,6 +27,30 @@ add_action('wp_ajax_eao_payment_store_summary_snapshot', 'eao_payment_store_summ
 // Stripe invoice: send/void
 add_action('wp_ajax_eao_stripe_send_payment_request', 'eao_stripe_send_payment_request');
 add_action('wp_ajax_eao_stripe_void_invoice', 'eao_stripe_void_invoice');
+add_action('wp_ajax_eao_stripe_get_invoice_status', 'eao_stripe_get_invoice_status');
+
+// PayPal invoice: send/void + settings (live only)
+add_action('wp_ajax_eao_paypal_send_payment_request', 'eao_paypal_send_payment_request');
+add_action('wp_ajax_eao_paypal_void_invoice', 'eao_paypal_void_invoice');
+add_action('wp_ajax_eao_paypal_get_invoice_status', 'eao_paypal_get_invoice_status');
+add_action('wp_ajax_eao_payment_paypal_save_settings', 'eao_payment_paypal_save_settings');
+
+// Webhook settings save (Stripe + PayPal)
+add_action('wp_ajax_eao_payment_webhooks_save_settings', 'eao_payment_webhooks_save_settings');
+
+// REST API webhooks
+add_action('rest_api_init', function(){
+    register_rest_route('eao/v1', '/stripe/webhook', array(
+        'methods' => 'POST',
+        'callback' => 'eao_stripe_webhook_handler',
+        'permission_callback' => '__return_true',
+    ));
+    register_rest_route('eao/v1', '/paypal/webhook', array(
+        'methods' => 'POST',
+        'callback' => 'eao_paypal_webhook_handler',
+        'permission_callback' => '__return_true',
+    ));
+});
 
 /**
  * Add Payment Processing metabox (real)
@@ -81,10 +105,16 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
     $existing_invoice_status = (string) $order->get_meta('_eao_stripe_invoice_status', true);
     $has_active_invoice = ($existing_invoice_id !== '' && strtolower($existing_invoice_status) !== 'void');
 
+    $pp_existing_invoice_id = (string) $order->get_meta('_eao_paypal_invoice_id', true);
+    $pp_existing_invoice_status = (string) $order->get_meta('_eao_paypal_invoice_status', true);
+    $pp_has_active_invoice = ($pp_existing_invoice_id !== '' && strtolower($pp_existing_invoice_status) !== 'void');
+
     ?>
     <div id="eao-payment-processing-container">
         <div style="display:flex; gap:16px; align-items:flex-start;">
         <div style="flex:1 1 50%; min-width:420px;">
+
+        <h3 style="margin:6px 0 8px;">Immediate Payment</h3>
         <table class="form-table">
             <tr>
                 <th><label for="eao-pp-gateway">Payment Gateway</label></th>
@@ -161,10 +191,16 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
             </label>
         </p>
 
+        <hr style="margin:14px 0; border:0; border-top:1px solid #dcdcde;" />
+
+        <h3 style="margin:6px 0 8px;">Request Payment</h3>
         <div id="eao-pp-request-panel" style="margin-top:8px;">
-            <p style="margin:6px 0 8px 0;">
-                <button type="button" id="eao-pp-send-request" class="button"<?php echo $has_active_invoice ? ' disabled="disabled"' : ''; ?>>Send Payment Request</button>
-                <button type="button" id="eao-pp-void-invoice" class="button button-secondary" style="<?php echo $has_active_invoice ? '' : 'display:none;'; ?>">Void Payment Request</button>
+            <p style="margin:6px 0 8px 0; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <button type="button" id="eao-pp-send-stripe" class="button"<?php echo ($has_active_invoice || $pp_has_active_invoice) ? ' disabled="disabled"' : ''; ?>>Send Stripe Payment Request</button>
+                <button type="button" id="eao-pp-send-paypal" class="button"<?php echo ($has_active_invoice || $pp_has_active_invoice) ? ' disabled="disabled"' : ''; ?>>Send PayPal Payment Request</button>
+                <button type="button" id="eao-pp-void-stripe" class="button button-secondary" style="<?php echo $has_active_invoice ? '' : 'display:none;'; ?>">Void Stripe Request</button>
+                <button type="button" id="eao-pp-void-paypal" class="button button-secondary" style="<?php echo $pp_has_active_invoice ? '' : 'display:none;'; ?>">Void PayPal Request</button>
+                <button type="button" id="eao-pp-refresh-status" class="button">Refresh Status</button>
             </p>
             <div id="eao-pp-request-options" style="margin:6px 0 10px 0;">
                 <label>Email to send to: <input type="email" id="eao-pp-request-email" value="<?php echo esc_attr($billing_email); ?>" style="width:260px" /></label>
@@ -173,6 +209,8 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                 <label style="margin-left:6px;"><input type="radio" name="eao-pp-line-mode" value="itemized" /> Itemized</label>
                 <input type="hidden" id="eao-pp-invoice-id" value="<?php echo esc_attr($existing_invoice_id); ?>" />
                 <input type="hidden" id="eao-pp-invoice-status" value="<?php echo esc_attr($existing_invoice_status); ?>" />
+                <input type="hidden" id="eao-pp-paypal-invoice-id" value="<?php echo esc_attr($pp_existing_invoice_id); ?>" />
+                <input type="hidden" id="eao-pp-paypal-invoice-status" value="<?php echo esc_attr($pp_existing_invoice_status); ?>" />
             </div>
             <div id="eao-pp-request-messages"></div>
         </div>
@@ -198,8 +236,43 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                     <th>Live Publishable</th>
                     <td><input type="text" id="eao-pp-stripe-live-publishable" value="<?php echo esc_attr($opts['live_publishable'] ?? ''); ?>" style="width:420px;" /></td>
                 </tr>
+                <tr>
+                    <th>Webhook Signing Secret (Live)</th>
+                    <td><input type="text" id="eao-pp-stripe-webhook-secret" value="<?php echo esc_attr($opts['webhook_signing_secret_live'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
             </table>
             <p><button type="button" id="eao-pp-save-stripe" class="button">Save Stripe Keys</button></p>
+
+            <h4 style="margin-top:18px;">PayPal Settings (Live)</h4>
+            <?php $pp_opts = get_option('eao_paypal_settings', array('live_client_id' => '', 'live_secret' => '', 'webhook_id_live' => '')); ?>
+            <table class="form-table">
+                <tr>
+                    <th>Live Client ID</th>
+                    <td><input type="text" id="eao-pp-paypal-live-client-id" value="<?php echo esc_attr($pp_opts['live_client_id'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
+                <tr>
+                    <th>Live Secret</th>
+                    <td><input type="text" id="eao-pp-paypal-live-secret" value="<?php echo esc_attr($pp_opts['live_secret'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
+                <tr>
+                    <th>Webhook ID (Live)</th>
+                    <td><input type="text" id="eao-pp-paypal-webhook-id" value="<?php echo esc_attr($pp_opts['webhook_id_live'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
+            </table>
+            <p><button type="button" id="eao-pp-save-paypal" class="button">Save PayPal Settings</button></p>
+
+            <h4 style="margin-top:18px;">Webhook Endpoints</h4>
+            <table class="form-table">
+                <tr>
+                    <th>Stripe Webhook URL</th>
+                    <td><code><?php echo esc_html( get_rest_url(null, 'eao/v1/stripe/webhook') ); ?></code></td>
+                </tr>
+                <tr>
+                    <th>PayPal Webhook URL</th>
+                    <td><code><?php echo esc_html( get_rest_url(null, 'eao/v1/paypal/webhook') ); ?></code></td>
+                </tr>
+            </table>
+            <p><button type="button" id="eao-pp-save-webhooks" class="button">Save Webhook Settings</button></p>
         </div>
 
         <?php wp_nonce_field('eao_payment_mockup', 'eao_payment_mockup_nonce'); ?>
@@ -298,6 +371,7 @@ function eao_payment_stripe_process() {
         'currency' => get_woocommerce_currency('USD') ?: 'usd',
         'payment_method_types[]' => 'card',
         'metadata[order_id]' => $order_id,
+        'metadata[source]' => 'EAO',
         'description' => 'HolisticPeople.com - ' . (
             (method_exists($order,'get_formatted_billing_full_name') && $order->get_formatted_billing_full_name())
                 ? $order->get_formatted_billing_full_name()
@@ -375,6 +449,7 @@ function eao_payment_stripe_create_intent() {
             'amount' => $amount_cents,
             'currency' => get_woocommerce_currency('USD') ?: 'usd',
             'metadata[order_id]' => $order_id,
+            'metadata[source]' => 'EAO',
             'description' => 'HolisticPeople.com - ' . (function($oid){ $o=wc_get_order($oid); if(!$o){return '';} if(method_exists($o,'get_formatted_billing_full_name') && $o->get_formatted_billing_full_name()){return $o->get_formatted_billing_full_name();} return trim((method_exists($o,'get_billing_first_name')?$o->get_billing_first_name():'').' '.(method_exists($o,'get_billing_last_name')?$o->get_billing_last_name():'')); })($order_id) . ' - Order# ' . $order_id
         ),
         'timeout' => 25
@@ -1092,6 +1167,13 @@ function eao_stripe_send_payment_request() {
     $gw    = isset($_POST['gateway']) ? sanitize_text_field($_POST['gateway']) : 'stripe_live';
     $amount_override = isset($_POST['amount_override']) ? floatval($_POST['amount_override']) : 0.0;
 
+    // Prevent concurrent Stripe/PayPal requests
+    $pp_existing_invoice_id = (string) $order->get_meta('_eao_paypal_invoice_id', true);
+    $pp_existing_invoice_status = strtolower((string) $order->get_meta('_eao_paypal_invoice_status', true));
+    if ($pp_existing_invoice_id !== '' && $pp_existing_invoice_status !== 'void') {
+        wp_send_json_error(array('message' => 'A PayPal payment request is already active for this order. Please void it before sending a Stripe request.'));
+    }
+
     $opts = get_option('eao_stripe_settings', array());
     $secret = ($gw === 'stripe_live') ? ($opts['live_secret'] ?? '') : ($opts['test_secret'] ?? '');
     if (empty($secret)) {
@@ -1272,6 +1354,7 @@ function eao_stripe_send_payment_request() {
         // immediate due (buffer a few minutes to avoid timezone/clock drift issues)
         'due_date' => time() + 600,
         'metadata[order_id]' => $order_id,
+        'metadata[source]' => 'EAO',
         // Ensure the invoice captures the invoice items we just created
         'pending_invoice_items_behavior' => 'include',
     );
@@ -1328,4 +1411,472 @@ function eao_stripe_void_invoice() {
     $order->save();
     $order->add_order_note('Stripe payment request voided. Invoice #' . ($body['number'] ?? $invoice_id));
     wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => ($body['status'] ?? 'void')));
+}
+
+/** Get Stripe invoice status */
+function eao_stripe_get_invoice_status() {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_payment_mockup')) {
+        wp_send_json_error(array('message' => 'Nonce verification failed.'));
+    }
+    if (!current_user_can('manage_woocommerce')) {
+        wp_send_json_error(array('message' => 'Permission denied.'));
+    }
+    $order_id = isset($_POST['order_id']) ? absint($_POST['order_id']) : 0;
+    $order = $order_id ? wc_get_order($order_id) : null;
+    if (!$order) { wp_send_json_error(array('message' => 'Order not found')); }
+    $invoice_id = sanitize_text_field($_POST['invoice_id'] ?? (string) $order->get_meta('_eao_stripe_invoice_id', true));
+    if ($invoice_id === '') { wp_send_json_error(array('message' => 'No Stripe invoice to refresh.')); }
+    $opts = get_option('eao_stripe_settings', array());
+    $secret = (string) ($opts['live_secret'] ?? '');
+    if ($secret === '') { wp_send_json_error(array('message' => 'Stripe secret missing')); }
+    $headers = array('Authorization' => 'Bearer ' . $secret);
+    $resp = wp_remote_get('https://api.stripe.com/v1/invoices/' . rawurlencode($invoice_id), array('headers' => $headers));
+    if (is_wp_error($resp)) { wp_send_json_error(array('message' => 'Stripe: status fetch failed: '.$resp->get_error_message())); }
+    $body = json_decode(wp_remote_retrieve_body($resp), true);
+    if (empty($body['id'])) { wp_send_json_error(array('message' => 'Stripe: status fetch failed', 'stripe' => $body)); }
+    $status = (string) ($body['status'] ?? '');
+    $url = (string) ($body['hosted_invoice_url'] ?? '');
+    if ($url !== '') { $order->update_meta_data('_eao_stripe_invoice_url', $url); }
+    if ($status !== '') { $order->update_meta_data('_eao_stripe_invoice_status', $status); }
+    if ($status === 'paid') {
+        if (method_exists($order, 'payment_complete')) { $order->payment_complete(); }
+        elseif (method_exists($order, 'update_status')) { $order->update_status('processing'); }
+        $order->add_order_note('Stripe invoice marked paid via manual refresh. Invoice ' . $invoice_id);
+    }
+    $order->save();
+    wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => $status, 'url' => $url));
+}
+
+/** Save PayPal (live) settings */
+function eao_payment_paypal_save_settings() {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_payment_mockup')) {
+        wp_send_json_error(array('message' => 'Nonce failed'));
+    }
+    if (!current_user_can('manage_woocommerce')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
+    $opts = (array) get_option('eao_paypal_settings', array());
+    $opts['live_client_id'] = sanitize_text_field($_POST['live_client_id'] ?? ($opts['live_client_id'] ?? ''));
+    $opts['live_secret'] = sanitize_text_field($_POST['live_secret'] ?? ($opts['live_secret'] ?? ''));
+    $opts['webhook_id_live'] = sanitize_text_field($_POST['webhook_id_live'] ?? ($opts['webhook_id_live'] ?? ''));
+    update_option('eao_paypal_settings', $opts);
+    wp_send_json_success(array('message' => 'Saved', 'data' => $opts));
+}
+
+/** Save webhook settings for Stripe and PayPal */
+function eao_payment_webhooks_save_settings() {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_payment_mockup')) {
+        wp_send_json_error(array('message' => 'Nonce failed'));
+    }
+    if (!current_user_can('manage_woocommerce')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
+    // Stripe secret
+    $stripe = (array) get_option('eao_stripe_settings', array());
+    if (isset($_POST['stripe_webhook_secret'])) {
+        $stripe['webhook_signing_secret_live'] = sanitize_text_field(wp_unslash($_POST['stripe_webhook_secret']));
+        update_option('eao_stripe_settings', $stripe);
+    }
+    // PayPal webhook id
+    $pp = (array) get_option('eao_paypal_settings', array());
+    if (isset($_POST['paypal_webhook_id_live'])) {
+        $pp['webhook_id_live'] = sanitize_text_field(wp_unslash($_POST['paypal_webhook_id_live']));
+        update_option('eao_paypal_settings', $pp);
+    }
+    wp_send_json_success(array('message' => 'Saved'));
+}
+
+/** Helper: find order id by meta key/value */
+function eao_find_order_id_by_meta($meta_key, $meta_value) {
+    if (!function_exists('wc_get_orders')) { return 0; }
+    $orders = wc_get_orders(array(
+        'limit' => 1,
+        'meta_key' => $meta_key,
+        'meta_value' => $meta_value,
+        'return' => 'ids'
+    ));
+    if (is_array($orders) && !empty($orders)) { return (int) $orders[0]; }
+    return 0;
+}
+
+/** Helper: PayPal OAuth token (live) */
+function eao_paypal_get_oauth_token(&$err = null) {
+    $opts = get_option('eao_paypal_settings', array());
+    $cid = (string) ($opts['live_client_id'] ?? '');
+    $sec = (string) ($opts['live_secret'] ?? '');
+    if ($cid === '' || $sec === '') { $err = 'PayPal credentials missing'; return ''; }
+    $auth = base64_encode($cid . ':' . $sec);
+    $resp = wp_remote_post('https://api-m.paypal.com/v1/oauth2/token', array(
+        'headers' => array(
+            'Authorization' => 'Basic ' . $auth,
+            'Content-Type' => 'application/x-www-form-urlencoded'
+        ),
+        'body' => array('grant_type' => 'client_credentials'),
+        'timeout' => 25
+    ));
+    if (is_wp_error($resp)) { $err = $resp->get_error_message(); return ''; }
+    $body = json_decode(wp_remote_retrieve_body($resp), true);
+    if (!is_array($body) || empty($body['access_token'])) { $err = 'PayPal OAuth failed'; return ''; }
+    return (string) $body['access_token'];
+}
+
+/** Send PayPal payment request (create + send invoice) */
+function eao_paypal_send_payment_request() {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_payment_mockup')) {
+        wp_send_json_error(array('message' => 'Nonce verification failed.'));
+    }
+    if (!current_user_can('manage_woocommerce')) {
+        wp_send_json_error(array('message' => 'Permission denied.'));
+    }
+
+    $order_id = isset($_POST['order_id']) ? absint($_POST['order_id']) : 0;
+    $order = $order_id ? wc_get_order($order_id) : null;
+    if (!$order) { wp_send_json_error(array('message' => 'Order not found')); }
+
+    $email = sanitize_email($_POST['email'] ?? '');
+    $mode  = in_array(($_POST['mode'] ?? 'grand'), array('grand','itemized'), true) ? $_POST['mode'] : 'grand';
+    $amount_override = isset($_POST['amount_override']) ? floatval($_POST['amount_override']) : 0.0;
+
+    // Prevent concurrent Stripe/PayPal requests
+    $stripe_existing_invoice_id = (string) $order->get_meta('_eao_stripe_invoice_id', true);
+    $stripe_existing_invoice_status = strtolower((string) $order->get_meta('_eao_stripe_invoice_status', true));
+    if ($stripe_existing_invoice_id !== '' && $stripe_existing_invoice_status !== 'void') {
+        wp_send_json_error(array('message' => 'A Stripe payment request is already active for this order. Please void it before sending a PayPal request.'));
+    }
+
+    $err = null;
+    $token = eao_paypal_get_oauth_token($err);
+    if ($token === '') { wp_send_json_error(array('message' => 'PayPal auth error: ' . $err)); }
+
+    $currency = strtoupper(method_exists($order,'get_currency') ? (string) $order->get_currency() : (get_woocommerce_currency('USD') ?: 'USD'));
+    $expected_cents = ($amount_override > 0.0)
+        ? (int) round($amount_override * 100)
+        : (int) round(((float) $order->get_total()) * 100);
+
+    // Reuse existing PP invoice if present and active (DRAFT/SENT/UNPAID)
+    $pp_existing_id = (string) $order->get_meta('_eao_paypal_invoice_id', true);
+    $pp_existing_status = strtoupper((string) $order->get_meta('_eao_paypal_invoice_status', true));
+    if ($pp_existing_id !== '' && in_array($pp_existing_status, array('DRAFT','SENT','UNPAID'), true)) {
+        $send = wp_remote_post('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($pp_existing_id) . '/send', array(
+            'headers' => array('Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'),
+            'body' => wp_json_encode(array())
+        ));
+        if (is_wp_error($send)) { wp_send_json_error(array('message' => 'PayPal resend failed: ' . $send->get_error_message())); }
+        $order->update_meta_data('_eao_paypal_invoice_status', 'SENT');
+        $order->save();
+        $order->add_order_note('PayPal payment request re-sent. Invoice ' . $pp_existing_id);
+        wp_send_json_success(array('invoice_id' => $pp_existing_id, 'status' => 'SENT', 'url' => ($order->get_meta('_eao_paypal_invoice_url', true) ?: '')));
+    }
+
+    // Build items
+    $items = array();
+    if ($mode === 'grand') {
+        $value = number_format(((float)$expected_cents)/100.0, 2, '.', '');
+        $items[] = array(
+            'name' => 'Order #' . $order_id,
+            'quantity' => '1',
+            'unit_amount' => array('currency_code' => $currency, 'value' => $value)
+        );
+    } else {
+        $sum_created_cents = 0;
+        foreach ($order->get_items('line_item') as $item) {
+            $line_total = (float) $item->get_total() + (float) $item->get_total_tax();
+            if ($line_total <= 0) { continue; }
+            $qty = (int) $item->get_quantity();
+            $desc = $item->get_name();
+            if ($qty > 1) { $desc .= ' x ' . $qty; }
+            $cents = (int) round($line_total * 100);
+            $sum_created_cents += $cents;
+            $items[] = array(
+                'name' => $desc,
+                'quantity' => '1',
+                'unit_amount' => array('currency_code' => $currency, 'value' => number_format($cents/100.0, 2, '.', ''))
+            );
+        }
+        // Shipping
+        $shipping_total = (float) $order->get_shipping_total() + (float) $order->get_shipping_tax();
+        if ($shipping_total > 0) {
+            $cents = (int) round($shipping_total * 100);
+            $sum_created_cents += $cents;
+            $items[] = array(
+                'name' => 'Shipping',
+                'quantity' => '1',
+                'unit_amount' => array('currency_code' => $currency, 'value' => number_format($cents/100.0, 2, '.', ''))
+            );
+        }
+        // Fees (positive only)
+        foreach ($order->get_fees() as $fee) {
+            $fee_total = (float) $fee->get_total() + (float) $fee->get_total_tax();
+            if ($fee_total <= 0) { continue; }
+            $cents = (int) round($fee_total * 100);
+            $sum_created_cents += $cents;
+            $items[] = array(
+                'name' => 'Fee: ' . $fee->get_name(),
+                'quantity' => '1',
+                'unit_amount' => array('currency_code' => $currency, 'value' => number_format($cents/100.0, 2, '.', ''))
+            );
+        }
+        $delta_cents = $expected_cents - $sum_created_cents;
+        if ($delta_cents > 0) {
+            $items[] = array(
+                'name' => 'Adjustment',
+                'quantity' => '1',
+                'unit_amount' => array('currency_code' => $currency, 'value' => number_format($delta_cents/100.0, 2, '.', ''))
+            );
+        }
+        // If negative, apply invoice-level discount (when supported)
+        $discount_obj = null;
+        if ($delta_cents < 0) {
+            $discount_obj = array('amount' => array('currency_code' => $currency, 'value' => number_format(abs($delta_cents)/100.0, 2, '.', '')));
+        }
+    }
+
+    $detail = array(
+        'currency_code' => $currency,
+        'invoice_number' => 'EAO-' . $order_id . '-' . time(),
+        'reference' => 'EAO'
+    );
+    if (isset($discount_obj)) { $detail['discount'] = $discount_obj; }
+
+    $create_body = array(
+        'detail' => $detail,
+        'primary_recipients' => array(array('billing_info' => array('email_address' => $email))),
+        'items' => $items
+    );
+
+    $create = wp_remote_post('https://api-m.paypal.com/v2/invoicing/invoices', array(
+        'headers' => array('Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'),
+        'body' => wp_json_encode($create_body),
+        'timeout' => 25
+    ));
+    if (is_wp_error($create)) { wp_send_json_error(array('message' => 'PayPal: invoice create failed: ' . $create->get_error_message())); }
+    $inv = json_decode(wp_remote_retrieve_body($create), true);
+    if (empty($inv['id'])) { wp_send_json_error(array('message' => 'PayPal: invoice create failed', 'paypal' => $inv)); }
+
+    $send = wp_remote_post('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($inv['id']) . '/send', array(
+        'headers' => array('Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'),
+        'body' => wp_json_encode(array())
+    ));
+    if (is_wp_error($send)) { wp_send_json_error(array('message' => 'PayPal: invoice send failed: ' . $send->get_error_message())); }
+
+    // Fetch invoice to capture payer link
+    $get = wp_remote_get('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($inv['id']), array('headers' => array('Authorization' => 'Bearer ' . $token)));
+    $url = '';
+    if (!is_wp_error($get)) {
+        $body = json_decode(wp_remote_retrieve_body($get), true);
+        if (!empty($body['links']) && is_array($body['links'])) {
+            foreach ($body['links'] as $lnk) {
+                if (!empty($lnk['rel']) && $lnk['rel'] === 'payer_view') { $url = (string) ($lnk['href'] ?? ''); break; }
+                if (!empty($lnk['rel']) && $lnk['rel'] === 'view') { $url = (string) ($lnk['href'] ?? ''); }
+            }
+        }
+    }
+
+    $order->update_meta_data('_eao_paypal_invoice_id', (string) $inv['id']);
+    if ($url !== '') { $order->update_meta_data('_eao_paypal_invoice_url', $url); }
+    $order->update_meta_data('_eao_paypal_invoice_status', 'SENT');
+    $order->save();
+    $order->add_order_note('PayPal payment request sent. Invoice ' . $inv['id']);
+
+    wp_send_json_success(array('invoice_id' => $inv['id'], 'status' => 'SENT', 'url' => $url));
+}
+
+/** Void a PayPal invoice */
+function eao_paypal_void_invoice() {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_payment_mockup')) {
+        wp_send_json_error(array('message' => 'Nonce verification failed.'));
+    }
+    if (!current_user_can('manage_woocommerce')) {
+        wp_send_json_error(array('message' => 'Permission denied.'));
+    }
+    $order_id = isset($_POST['order_id']) ? absint($_POST['order_id']) : 0;
+    $order = $order_id ? wc_get_order($order_id) : null;
+    if (!$order) { wp_send_json_error(array('message' => 'Order not found')); }
+    $invoice_id = sanitize_text_field($_POST['invoice_id'] ?? (string) $order->get_meta('_eao_paypal_invoice_id', true));
+    if ($invoice_id === '') { wp_send_json_error(array('message' => 'No PayPal invoice to void.')); }
+
+    $err = null;
+    $token = eao_paypal_get_oauth_token($err);
+    if ($token === '') { wp_send_json_error(array('message' => 'PayPal auth error: ' . $err)); }
+
+    $resp = wp_remote_post('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($invoice_id) . '/cancel', array(
+        'headers' => array('Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'),
+        'body' => wp_json_encode(array('subject' => 'Invoice canceled', 'note' => 'Voided from EAO', 'send_to_recipient' => false, 'send_to_invoicer' => false)),
+        'timeout' => 25
+    ));
+    if (is_wp_error($resp)) { wp_send_json_error(array('message' => 'PayPal: void failed: ' . $resp->get_error_message())); }
+    $order->update_meta_data('_eao_paypal_invoice_status', 'CANCELLED');
+    $order->save();
+    $order->add_order_note('PayPal payment request voided. Invoice ' . $invoice_id);
+    wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => 'CANCELLED'));
+}
+
+/** Get PayPal invoice status */
+function eao_paypal_get_invoice_status() {
+    if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_payment_mockup')) {
+        wp_send_json_error(array('message' => 'Nonce verification failed.'));
+    }
+    if (!current_user_can('manage_woocommerce')) {
+        wp_send_json_error(array('message' => 'Permission denied.'));
+    }
+    $order_id = isset($_POST['order_id']) ? absint($_POST['order_id']) : 0;
+    $order = $order_id ? wc_get_order($order_id) : null;
+    if (!$order) { wp_send_json_error(array('message' => 'Order not found')); }
+    $invoice_id = sanitize_text_field($_POST['invoice_id'] ?? (string) $order->get_meta('_eao_paypal_invoice_id', true));
+    if ($invoice_id === '') { wp_send_json_error(array('message' => 'No PayPal invoice to refresh.')); }
+    $err = null; $token = eao_paypal_get_oauth_token($err);
+    if ($token === '') { wp_send_json_error(array('message' => 'PayPal auth error: ' . $err)); }
+    $resp = wp_remote_get('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($invoice_id), array('headers' => array('Authorization' => 'Bearer ' . $token)));
+    if (is_wp_error($resp)) { wp_send_json_error(array('message' => 'PayPal: status fetch failed: '.$resp->get_error_message())); }
+    $body = json_decode(wp_remote_retrieve_body($resp), true);
+    if (empty($body['id'])) { wp_send_json_error(array('message' => 'PayPal: status fetch failed', 'paypal' => $body)); }
+    $status = strtoupper((string) ($body['status'] ?? ''));
+    $url = '';
+    if (!empty($body['links']) && is_array($body['links'])) {
+        foreach ($body['links'] as $lnk) {
+            if (!empty($lnk['rel']) && ($lnk['rel'] === 'payer_view' || $lnk['rel'] === 'view')) { $url = (string) ($lnk['href'] ?? ''); break; }
+        }
+    }
+    if ($url !== '') { $order->update_meta_data('_eao_paypal_invoice_url', $url); }
+    if ($status !== '') { $order->update_meta_data('_eao_paypal_invoice_status', $status); }
+    if ($status === 'PAID') {
+        if (method_exists($order, 'payment_complete')) { $order->payment_complete(); }
+        elseif (method_exists($order, 'update_status')) { $order->update_status('processing'); }
+        $order->add_order_note('PayPal invoice marked paid via manual refresh. Invoice ' . $invoice_id);
+    }
+    $order->save();
+    wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => $status, 'url' => $url));
+}
+
+/** Stripe webhook handler */
+function eao_stripe_webhook_handler($request) {
+    $body = $request->get_body();
+    $sig = isset($_SERVER['HTTP_STRIPE_SIGNATURE']) ? (string) $_SERVER['HTTP_STRIPE_SIGNATURE'] : (string) $request->get_header('stripe-signature');
+    $opts = get_option('eao_stripe_settings', array());
+    $secret = (string) ($opts['webhook_signing_secret_live'] ?? '');
+    if ($secret === '') { return new WP_REST_Response(array('message' => 'No signing secret'), 400); }
+    // Verify signature (t=..., v1=...)
+    $t = '';$v1 = '';
+    foreach (explode(',', (string)$sig) as $part) {
+        $kv = explode('=', trim($part), 2);
+        if (count($kv) === 2) { if ($kv[0] === 't') { $t = $kv[1]; } elseif ($kv[0] === 'v1') { $v1 = $kv[1]; } }
+    }
+    if ($t === '' || $v1 === '') { return new WP_REST_Response(array('message' => 'Invalid signature header'), 400); }
+    $signed = $t . '.' . $body;
+    $calc = hash_hmac('sha256', $signed, $secret);
+    if (!hash_equals($v1, $calc)) { return new WP_REST_Response(array('message' => 'Signature mismatch'), 400); }
+
+    $event = json_decode($body, true);
+    if (!is_array($event) || empty($event['type'])) { return new WP_REST_Response(array('message' => 'Bad payload'), 400); }
+
+    $type = (string) $event['type'];
+    $obj = isset($event['data']['object']) ? $event['data']['object'] : array();
+
+    // Helper to load order by Stripe invoice id
+    $order = null;
+    if (!empty($obj['id']) && isset($obj['object']) && $obj['object'] === 'invoice') {
+        $oid = eao_find_order_id_by_meta('_eao_stripe_invoice_id', (string) $obj['id']);
+        if ($oid) { $order = wc_get_order($oid); }
+    }
+    // For PI events, ensure EAO tag and metadata order mapping
+    if (!$order && isset($obj['object']) && $obj['object'] === 'payment_intent') {
+        $meta_ok = (isset($obj['metadata']['source']) && $obj['metadata']['source'] === 'EAO');
+        $order_id_meta = isset($obj['metadata']['order_id']) ? absint($obj['metadata']['order_id']) : 0;
+        if ($meta_ok && $order_id_meta) { $order = wc_get_order($order_id_meta); }
+    }
+
+    // Only act if order is identified (prevents interference)
+    if (!$order) { return new WP_REST_Response(array('message' => 'Ignored'), 200); }
+
+    if ($type === 'invoice.paid') {
+        $order->update_meta_data('_eao_stripe_invoice_status', 'paid');
+        if (method_exists($order, 'payment_complete')) { $order->payment_complete(); }
+        elseif (method_exists($order, 'update_status')) { $order->update_status('processing'); }
+        $order->add_order_note('Stripe invoice paid. Invoice ' . (string) $obj['id']);
+        $order->save();
+    } elseif ($type === 'invoice.voided') {
+        $order->update_meta_data('_eao_stripe_invoice_status', 'void');
+        $order->add_order_note('Stripe invoice voided. Invoice ' . (string) $obj['id']);
+        $order->save();
+    } elseif ($type === 'invoice.payment_failed') {
+        $order->add_order_note('Stripe invoice payment failed. Invoice ' . (string) $obj['id']);
+    } elseif ($type === 'payment_intent.succeeded') {
+        // Only for EAO-tagged intents
+        if (isset($obj['metadata']['source']) && $obj['metadata']['source'] === 'EAO') {
+            if (method_exists($order, 'payment_complete')) { $order->payment_complete(); }
+            elseif (method_exists($order, 'update_status')) { $order->update_status('processing'); }
+            $order->add_order_note('Stripe payment intent succeeded for EAO.');
+            $order->save();
+        }
+    }
+
+    return new WP_REST_Response(array('received' => true), 200);
+}
+
+/** PayPal webhook handler */
+function eao_paypal_webhook_handler($request) {
+    $body = $request->get_body();
+    $event = json_decode($body, true);
+    if (!is_array($event) || empty($event['event_type'])) { return new WP_REST_Response(array('message' => 'Bad payload'), 400); }
+
+    $opts = get_option('eao_paypal_settings', array());
+    $webhook_id = (string) ($opts['webhook_id_live'] ?? '');
+    if ($webhook_id === '') { return new WP_REST_Response(array('message' => 'No webhook id'), 400); }
+
+    $err = null;
+    $token = eao_paypal_get_oauth_token($err);
+    if ($token === '') { return new WP_REST_Response(array('message' => 'Auth error'), 400); }
+
+    $headers = array(
+        'paypal-transmission-id' => (string) $request->get_header('paypal-transmission-id'),
+        'paypal-transmission-time' => (string) $request->get_header('paypal-transmission-time'),
+        'paypal-transmission-sig' => (string) $request->get_header('paypal-transmission-sig'),
+        'paypal-cert-url' => (string) $request->get_header('paypal-cert-url'),
+        'paypal-auth-algo' => (string) $request->get_header('paypal-auth-algo'),
+    );
+    foreach ($headers as $k => $v) { if ($v === '') { return new WP_REST_Response(array('message' => 'Missing headers'), 400); } }
+
+    $verify = wp_remote_post('https://api-m.paypal.com/v1/notifications/verify-webhook-signature', array(
+        'headers' => array('Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'),
+        'body' => wp_json_encode(array(
+            'transmission_id' => $headers['paypal-transmission-id'],
+            'transmission_time' => $headers['paypal-transmission-time'],
+            'transmission_sig' => $headers['paypal-transmission-sig'],
+            'cert_url' => $headers['paypal-cert-url'],
+            'auth_algo' => $headers['paypal-auth-algo'],
+            'webhook_id' => $webhook_id,
+            'webhook_event' => $event
+        )),
+        'timeout' => 25
+    ));
+    if (is_wp_error($verify)) { return new WP_REST_Response(array('message' => 'Verify failed'), 400); }
+    $vbody = json_decode(wp_remote_retrieve_body($verify), true);
+    if (!is_array($vbody) || empty($vbody['verification_status']) || strtoupper($vbody['verification_status']) !== 'SUCCESS') {
+        return new WP_REST_Response(array('message' => 'Bad signature'), 400);
+    }
+
+    $type = (string) $event['event_type'];
+    $res = isset($event['resource']) ? $event['resource'] : array();
+    $invoice_id = isset($res['id']) ? (string) $res['id'] : '';
+    if ($invoice_id === '') { return new WP_REST_Response(array('message' => 'No invoice id'), 200); }
+
+    $oid = eao_find_order_id_by_meta('_eao_paypal_invoice_id', $invoice_id);
+    if (!$oid) { return new WP_REST_Response(array('message' => 'Ignored'), 200); }
+    $order = wc_get_order($oid);
+
+    if ($type === 'INVOICING.INVOICE.PAID') {
+        $order->update_meta_data('_eao_paypal_invoice_status', 'PAID');
+        if (method_exists($order, 'payment_complete')) { $order->payment_complete(); }
+        elseif (method_exists($order, 'update_status')) { $order->update_status('processing'); }
+        $order->add_order_note('PayPal invoice paid. Invoice ' . $invoice_id);
+        $order->save();
+    } elseif ($type === 'INVOICING.INVOICE.CANCELLED') {
+        $order->update_meta_data('_eao_paypal_invoice_status', 'CANCELLED');
+        $order->add_order_note('PayPal invoice cancelled. Invoice ' . $invoice_id);
+        $order->save();
+    } elseif ($type === 'INVOICING.INVOICE.REFUNDED') {
+        $order->add_order_note('PayPal invoice refunded. Invoice ' . $invoice_id);
+    }
+
+    return new WP_REST_Response(array('received' => true), 200);
 }
