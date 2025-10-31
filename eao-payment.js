@@ -663,16 +663,18 @@
                 var sId = $('#eao-pp-invoice-id').val()||'';
                 var sSt = String($('#eao-pp-invoice-status').val()||'').toLowerCase();
                 stripeActive = !!(sId && sSt !== 'void');
+                var stripeVoidEligible = !!(stripeActive && sSt !== 'paid');
             } catch(_){}
             try {
                 var pId = $('#eao-pp-paypal-invoice-id').val()||'';
                 var pSt = String($('#eao-pp-paypal-invoice-status').val()||'').toLowerCase();
                 paypalActive = !!(pId && pSt !== 'void' && pSt !== 'cancelled' && pSt !== 'canceled');
+                var paypalVoidEligible = !!(paypalActive && pSt !== 'paid');
             } catch(_){}
             if ($btnStripe.length) $btnStripe.prop('disabled', stripeActive || paypalActive);
             if ($btnPayPal.length) $btnPayPal.prop('disabled', stripeActive || paypalActive);
-            $('#eao-pp-void-stripe').toggle(!!stripeActive);
-            $('#eao-pp-void-paypal').toggle(!!paypalActive);
+            $('#eao-pp-void-stripe').toggle(!!stripeVoidEligible);
+            $('#eao-pp-void-paypal').toggle(!!paypalVoidEligible);
 
             function getSelectedAmount(){
                 var v = parseFloat($('#eao-pp-amount').val()||'');

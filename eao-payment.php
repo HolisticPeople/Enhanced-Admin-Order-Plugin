@@ -1439,6 +1439,12 @@ function eao_stripe_get_invoice_status() {
     $order->update_meta_data('_eao_stripe_invoice_status', $status);
     if ($url !== '') { $order->update_meta_data('_eao_stripe_invoice_url', $url); }
     $order->save();
+    if (strtolower($status) === 'paid') {
+        $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
+        if (!in_array($current, array('processing','completed','shipped'), true)) {
+            try { $order->update_status('processing', 'Stripe invoice paid (manual refresh).'); } catch (Exception $e) { /* noop */ }
+        }
+    }
     wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => $status, 'url' => $url));
 }
 
@@ -1802,6 +1808,12 @@ function eao_paypal_get_invoice_status() {
         }
     }
     $order->save();
+    if (strtoupper($status) === 'PAID') {
+        $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
+        if (!in_array($current, array('processing','completed','shipped'), true)) {
+            try { $order->update_status('processing', 'PayPal invoice paid (manual refresh).'); } catch (Exception $e) { /* noop */ }
+        }
+    }
     wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => $status, 'url' => (string) $order->get_meta('_eao_paypal_invoice_url', true)));
 }
 
@@ -1867,6 +1879,11 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
                     $order->update_meta_data('_eao_stripe_invoice_status', 'paid');
                     $order->save();
                     $order->add_order_note('Stripe invoice paid via webhook.');
+                    // Move order to Processing if applicable
+                    $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
+                    if (!in_array($current, array('processing','completed','shipped'), true)) {
+                        try { $order->update_status('processing', 'Stripe invoice paid.'); } catch (Exception $e) { /* noop */ }
+                    }
                 } elseif ($type === 'invoice.voided') {
                     $order->update_meta_data('_eao_stripe_invoice_status', 'void');
                     $order->save();
@@ -1936,6 +1953,10 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                 $order->update_meta_data('_eao_paypal_invoice_status', 'PAID');
                 $order->save();
                 $order->add_order_note('PayPal invoice paid via webhook.');
+                $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
+                if (!in_array($current, array('processing','completed','shipped'), true)) {
+                    try { $order->update_status('processing', 'PayPal invoice paid.'); } catch (Exception $e) { /* noop */ }
+                }
             } elseif ($type === 'INVOICING.INVOICE.CANCELLED') {
                 $order->update_meta_data('_eao_paypal_invoice_status', 'CANCELLED');
                 $order->save();
