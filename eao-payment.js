@@ -731,7 +731,7 @@
             }, function(resp){
                 if (resp && resp.success) {
                     var url = resp.data && resp.data.url ? resp.data.url : '';
-                    var html = '<div class="notice notice-success"><p>Payment request sent.' + (url ? ' <a target=\\"_blank\\" href=\\"'+url+'\\">Open invoice</a>' : '') + '</p></div>';
+                    var html = '<div class="notice notice-success"><p>Payment request sent.' + (url ? ' <a target="_blank" rel="noopener" href="'+encodeURI(url)+'">Open invoice</a>' : '') + '</p></div>';
                     $msg.html(html);
                     if (resp.data && resp.data.invoice_id) {
                         $('#eao-pp-invoice-id').val(resp.data.invoice_id);
@@ -783,7 +783,7 @@
             }, function(resp){
                 if (resp && resp.success) {
                     var url = resp.data && resp.data.url ? resp.data.url : '';
-                    var html = '<div class="notice notice-success"><p>PayPal payment request sent.' + (url ? ' <a target=\\"_blank\\" href=\\"'+url+'\\">Open invoice</a>' : '') + '</p></div>';
+                    var html = '<div class="notice notice-success"><p>PayPal payment request sent.' + (url ? ' <a target="_blank" rel="noopener" href="'+encodeURI(url)+'">Open invoice</a>' : '') + '</p></div>';
                     $msg.html(html);
                     if (resp.data && resp.data.invoice_id) {
                         $('#eao-pp-paypal-invoice-id').val(resp.data.invoice_id);
