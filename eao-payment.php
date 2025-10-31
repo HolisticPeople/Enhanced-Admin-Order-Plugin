@@ -1567,7 +1567,8 @@ function eao_paypal_send_payment_request() {
     $headers = array(
         'Authorization' => 'Bearer ' . $token,
         'Content-Type'  => 'application/json',
-        'Accept'        => 'application/json'
+        'Accept'        => 'application/json',
+        'Prefer'        => 'return=representation'
     );
 
     // Compose minimal invoice (grand total). For itemized mode, we still send a single line to ensure totals match.
@@ -1602,7 +1603,25 @@ function eao_paypal_send_payment_request() {
     }
     $http_code = (int) wp_remote_retrieve_response_code($resp);
     $created = json_decode(wp_remote_retrieve_body($resp), true);
-    if (!is_array($created) || empty($created['id'])) {
+    $inv_id = '';
+    if (is_array($created) && !empty($created['id'])) { $inv_id = (string) $created['id']; }
+    if ($inv_id === '') {
+        $location = wp_remote_retrieve_header($resp, 'location');
+        if ($location && preg_match('~/invoicing/invoices/([^/]+)$~', $location, $m)) { $inv_id = $m[1]; }
+    }
+    if ($inv_id === '' && is_array($created)) {
+        // Some responses contain a single link object or an array of links
+        if (!empty($created['href']) && preg_match('~/invoicing/invoices/([^/]+)$~', (string) $created['href'], $m)) {
+            $inv_id = $m[1];
+        } elseif (!empty($created[0]['href']) && preg_match('~/invoicing/invoices/([^/]+)$~', (string) $created[0]['href'], $m)) {
+            $inv_id = $m[1];
+        } elseif (!empty($created['links']) && is_array($created['links'])) {
+            foreach ($created['links'] as $lnk) {
+                if (!empty($lnk['rel']) && $lnk['rel'] === 'self' && !empty($lnk['href']) && preg_match('~/invoicing/invoices/([^/]+)$~', (string) $lnk['href'], $m)) { $inv_id = $m[1]; break; }
+            }
+        }
+    }
+    if ($inv_id === '') {
         $msg = 'PayPal create failed';
         if (is_array($created)) {
             $name = isset($created['name']) ? $created['name'] : '';
@@ -1611,11 +1630,12 @@ function eao_paypal_send_payment_request() {
             if ($name || $m) { $msg .= ': ' . trim($name . ' ' . $m); }
             if ($dbg) { $msg .= ' ['.$dbg.']'; }
         }
-        error_log('[EAO PayPal] Create failed (HTTP '.$http_code.'): ' . substr(wp_remote_retrieve_body($resp), 0, 800));
+        error_log('[EAO PayPal] Create ambiguous (HTTP '.$http_code.'): ' . substr(wp_remote_retrieve_body($resp), 0, 800));
         wp_send_json_error(array('message' => $msg, 'paypal' => $created, 'http' => $http_code));
     }
 
-    $inv_id = (string) $created['id'];
+    // Ensure created payload carries id for visibility
+    if (!isset($created['id'])) { $created['id'] = $inv_id; }
     // Send invoice
     $send_url = 'https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($inv_id) . '/send';
     $send = wp_remote_post($send_url, array(
