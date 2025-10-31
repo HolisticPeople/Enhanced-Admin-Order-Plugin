@@ -1495,7 +1495,10 @@ function eao_paypal_get_oauth_token() {
     $pp = get_option('eao_paypal_settings', array());
     $client_id = isset($pp['live_client_id']) ? trim((string) $pp['live_client_id']) : '';
     $secret    = isset($pp['live_secret']) ? trim((string) $pp['live_secret']) : '';
-    if ($client_id === '' || $secret === '') { return new WP_Error('missing_keys', 'PayPal live client id/secret missing'); }
+    if ($client_id === '' || $secret === '') {
+        error_log('[EAO PayPal] Missing live client id/secret');
+        return new WP_Error('missing_keys', 'PayPal live client id/secret missing');
+    }
     $cached = get_transient('eao_paypal_access_token_live');
     if (is_array($cached) && !empty($cached['token']) && !empty($cached['exp']) && time() < (int) $cached['exp']) {
         return (string) $cached['token'];
@@ -1510,9 +1513,15 @@ function eao_paypal_get_oauth_token() {
         'body'    => 'grant_type=client_credentials',
         'timeout' => 25,
     ));
-    if (is_wp_error($resp)) { return $resp; }
+    if (is_wp_error($resp)) {
+        error_log('[EAO PayPal] OAuth request error: ' . $resp->get_error_message());
+        return $resp;
+    }
     $body = json_decode(wp_remote_retrieve_body($resp), true);
-    if (!is_array($body) || empty($body['access_token'])) { return new WP_Error('oauth_failed', 'PayPal OAuth failed'); }
+    if (!is_array($body) || empty($body['access_token'])) {
+        error_log('[EAO PayPal] OAuth failed. Body: ' . substr(wp_remote_retrieve_body($resp), 0, 500));
+        return new WP_Error('oauth_failed', 'PayPal OAuth failed');
+    }
     $token = (string) $body['access_token'];
     $ttl   = isset($body['expires_in']) ? max(60, (int) $body['expires_in'] - 60) : 300;
     set_transient('eao_paypal_access_token_live', array('token' => $token, 'exp' => time() + $ttl), $ttl);
@@ -1580,23 +1589,44 @@ function eao_paypal_send_payment_request() {
         'items' => $items,
     );
 
-    $resp = wp_remote_post('https://api-m.paypal.com/v2/invoicing/invoices', array(
+    $create_url = 'https://api-m.paypal.com/v2/invoicing/invoices';
+    error_log('[EAO PayPal] Create invoice: order=' . $order_id . ' amount=' . number_format($amount_value,2,'.','') . ' ' . $currency . ' email=' . $email);
+    $resp = wp_remote_post($create_url, array(
         'headers' => $headers,
         'body'    => wp_json_encode($create_body),
         'timeout' => 25,
     ));
-    if (is_wp_error($resp)) { wp_send_json_error(array('message' => 'PayPal: create failed: ' . $resp->get_error_message())); }
+    if (is_wp_error($resp)) {
+        error_log('[EAO PayPal] Create error: ' . $resp->get_error_message());
+        wp_send_json_error(array('message' => 'PayPal create failed: ' . $resp->get_error_message()));
+    }
+    $http_code = (int) wp_remote_retrieve_response_code($resp);
     $created = json_decode(wp_remote_retrieve_body($resp), true);
-    if (!is_array($created) || empty($created['id'])) { wp_send_json_error(array('message' => 'PayPal: create failed', 'paypal' => $created)); }
+    if (!is_array($created) || empty($created['id'])) {
+        $msg = 'PayPal create failed';
+        if (is_array($created)) {
+            $name = isset($created['name']) ? $created['name'] : '';
+            $m = isset($created['message']) ? $created['message'] : '';
+            $dbg = isset($created['debug_id']) ? $created['debug_id'] : '';
+            if ($name || $m) { $msg .= ': ' . trim($name . ' ' . $m); }
+            if ($dbg) { $msg .= ' ['.$dbg.']'; }
+        }
+        error_log('[EAO PayPal] Create failed (HTTP '.$http_code.'): ' . substr(wp_remote_retrieve_body($resp), 0, 800));
+        wp_send_json_error(array('message' => $msg, 'paypal' => $created, 'http' => $http_code));
+    }
 
     $inv_id = (string) $created['id'];
     // Send invoice
-    $send = wp_remote_post('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($inv_id) . '/send', array(
+    $send_url = 'https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($inv_id) . '/send';
+    $send = wp_remote_post($send_url, array(
         'headers' => $headers,
         'body'    => wp_json_encode(array()),
         'timeout' => 25,
     ));
-    if (is_wp_error($send)) { wp_send_json_error(array('message' => 'PayPal: send failed: ' . $send->get_error_message())); }
+    if (is_wp_error($send)) {
+        error_log('[EAO PayPal] Send failed: ' . $send->get_error_message());
+        wp_send_json_error(array('message' => 'PayPal send failed: ' . $send->get_error_message()));
+    }
     $sent = json_decode(wp_remote_retrieve_body($send), true);
     $status = isset($sent['status']) ? (string) $sent['status'] : 'SENT';
     $payer_url = 'https://www.paypal.com/invoice/payerView/details/' . rawurlencode($inv_id);

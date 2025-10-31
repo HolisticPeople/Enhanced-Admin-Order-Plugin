@@ -792,7 +792,17 @@
                     }
                 } else {
                     var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to send PayPal payment request';
+                    try {
+                        if (resp && resp.data && resp.data.paypal) {
+                            if (resp.data.paypal.debug_id) err += ' [' + resp.data.paypal.debug_id + ']';
+                            if (resp.data.paypal.details && resp.data.paypal.details.length) {
+                                var d = resp.data.paypal.details[0];
+                                if (d && (d.issue || d.description)) { err += ': ' + (d.issue || d.description); }
+                            }
+                        }
+                    } catch(_){ }
                     $msg.html('<div class=\\"notice notice-error\\"><p>'+err+'</p></div>');
+                    try { console.error('EAO PayPal error', resp); } catch(_){ }
                 }
             }, 'json');
         });
