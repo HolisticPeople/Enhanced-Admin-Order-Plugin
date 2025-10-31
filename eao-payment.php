@@ -1441,7 +1441,8 @@ function eao_stripe_get_invoice_status() {
     $order->save();
     if (strtolower($status) === 'paid') {
         $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
-        if ($current === 'pending') {
+        $is_pending_like = in_array($current, array('pending','pending-payment'), true);
+        if ($is_pending_like) {
             try { $order->update_status('processing', 'Stripe invoice paid (manual refresh).'); } catch (Exception $e) { /* noop */ }
         }
     }
@@ -1810,7 +1811,8 @@ function eao_paypal_get_invoice_status() {
     $order->save();
     if (strtoupper($status) === 'PAID') {
         $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
-        if ($current === 'pending') {
+        $is_pending_like = in_array($current, array('pending','pending-payment'), true);
+        if ($is_pending_like) {
             try { $order->update_status('processing', 'PayPal invoice paid (manual refresh).'); } catch (Exception $e) { /* noop */ }
         }
     }
@@ -1884,7 +1886,8 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
                     $order->add_order_note('Stripe invoice paid via webhook.');
                     // Move order to Processing only from Pending
                     $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
-                    if ($current === 'pending') {
+                    $is_pending_like = in_array($current, array('pending','pending-payment'), true);
+                    if ($is_pending_like) {
                         try { $order->update_status('processing', 'Stripe invoice paid.'); } catch (Exception $e) { /* noop */ }
                     }
                 } elseif ($type === 'invoice.voided') {
@@ -1961,7 +1964,8 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                 $order->save();
                 $order->add_order_note('PayPal invoice paid via webhook.');
                 $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
-                if ($current === 'pending') {
+                $is_pending_like = in_array($current, array('pending','pending-payment'), true);
+                if ($is_pending_like) {
                     try { $order->update_status('processing', 'PayPal invoice paid.'); } catch (Exception $e) { /* noop */ }
                 }
             } elseif ($type === 'INVOICING.INVOICE.CANCELLED') {
