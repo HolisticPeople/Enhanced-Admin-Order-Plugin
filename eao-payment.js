@@ -762,6 +762,16 @@
                         $('#eao-pp-invoice-status').val(resp.data.status || 'open');
                         if (url) { $('#eao-pp-invoice-url').val(url); }
                         eaoUpdateRequestButtons();
+                            // Replace email input with a note indicating where the email was sent
+                            try {
+                                var sentTo = $('#eao-pp-request-email').val() || '';
+                                var $input = $('#eao-pp-request-email');
+                                $input.hide().prop('disabled', true);
+                                if (!$('#eao-pp-email-sent-note').length) {
+                                    $('<span id="eao-pp-email-sent-note" style="margin-left:6px;"></span>').insertAfter($input);
+                                }
+                                $('#eao-pp-email-sent-note').text(sentTo ? ('Email was sent to ' + sentTo) : 'Email was sent.');
+                            } catch(_){}
                     }
                 } else {
                     var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to send payment request';
@@ -815,6 +825,16 @@
                         $('#eao-pp-paypal-invoice-status').val(resp.data.status || 'SENT');
                         if (url) { $('#eao-pp-paypal-invoice-url').val(url); }
                         eaoUpdateRequestButtons();
+                            // Replace email input with a note indicating where the email was sent
+                            try {
+                                var sentTo = $('#eao-pp-request-email').val() || '';
+                                var $input = $('#eao-pp-request-email');
+                                $input.hide().prop('disabled', true);
+                                if (!$('#eao-pp-email-sent-note').length) {
+                                    $('<span id="eao-pp-email-sent-note" style="margin-left:6px;"></span>').insertAfter($input);
+                                }
+                                $('#eao-pp-email-sent-note').text(sentTo ? ('Email was sent to ' + sentTo) : 'Email was sent.');
+                            } catch(_){}
                     }
                 } else {
                     var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to send PayPal payment request';
