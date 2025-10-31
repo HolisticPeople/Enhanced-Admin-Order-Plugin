@@ -668,7 +668,9 @@
             $('#eao-pp-void-stripe').toggle(!!stripeActive);
             $('#eao-pp-void-paypal').toggle(!!paypalActive);
 
-            function getGrandTotal(){
+            function getSelectedAmount(){
+                var v = parseFloat($('#eao-pp-amount').val()||'');
+                if (!isNaN(v) && v > 0) return v;
                 try {
                     var s = window.currentOrderSummaryData || {};
                     var gt = (typeof s.grand_total !== 'undefined') ? parseFloat(s.grand_total) : parseFloat(s.grand_total_raw);
@@ -681,7 +683,7 @@
                 } catch(_){ }
                 return NaN;
             }
-            var val = getGrandTotal();
+            var val = getSelectedAmount();
             if (!isNaN(val)) {
                 if ($btnStripe.length) $btnStripe.text('Send Stripe Payment Request ($' + val.toFixed(2) + ')');
                 if ($btnPayPal.length) $btnPayPal.text('Send PayPal Payment Request ($' + val.toFixed(2) + ')');
@@ -701,7 +703,9 @@
             var mode = $('input[name="eao-pp-line-mode"]:checked').val() || 'grand';
             var gateway = $('#eao-pp-gateway').val();
             var $msg = $('#eao-pp-request-messages');
-            function getGrandTotal(){
+            function getSelectedAmount(){
+                var v = parseFloat($('#eao-pp-amount').val()||'');
+                if (!isNaN(v) && v > 0) return v;
                 try {
                     var s = window.currentOrderSummaryData || {};
                     var gt = (typeof s.grand_total !== 'undefined') ? parseFloat(s.grand_total) : parseFloat(s.grand_total_raw);
@@ -714,7 +718,7 @@
                 } catch(_){ }
                 return NaN;
             }
-            var amountOverride = getGrandTotal();
+            var amountOverride = getSelectedAmount();
             $msg.html('<div class="notice notice-info"><p>Sending payment request...</p></div>');
             $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
                 action: 'eao_stripe_send_payment_request',
@@ -752,7 +756,9 @@
             var email = $('#eao-pp-request-email').val() || '';
             var mode = $('input[name="eao-pp-line-mode"]:checked').val() || 'grand';
             var $msg = $('#eao-pp-request-messages');
-            function getGrandTotal(){
+            function getSelectedAmount(){
+                var v = parseFloat($('#eao-pp-amount').val()||'');
+                if (!isNaN(v) && v > 0) return v;
                 try {
                     var s = window.currentOrderSummaryData || {};
                     var gt = (typeof s.grand_total !== 'undefined') ? parseFloat(s.grand_total) : parseFloat(s.grand_total_raw);
@@ -765,7 +771,7 @@
                 } catch(_){ }
                 return NaN;
             }
-            var amountOverride = getGrandTotal();
+            var amountOverride = getSelectedAmount();
             $msg.html('<div class="notice notice-info"><p>Sending PayPal payment request...</p></div>');
             $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
                 action: 'eao_paypal_send_payment_request',
