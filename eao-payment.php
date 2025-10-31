@@ -1647,9 +1647,36 @@ function eao_paypal_send_payment_request() {
         error_log('[EAO PayPal] Send failed: ' . $send->get_error_message());
         wp_send_json_error(array('message' => 'PayPal send failed: ' . $send->get_error_message()));
     }
+    $send_http = (int) wp_remote_retrieve_response_code($send);
+    if ($send_http >= 400) {
+        $dbg = wp_remote_retrieve_header($send, 'paypal-debug-id');
+        error_log('[EAO PayPal] Send failed HTTP '.$send_http.' dbg=' . $dbg . ' body=' . substr(wp_remote_retrieve_body($send), 0, 500));
+        wp_send_json_error(array('message' => 'PayPal send failed (HTTP '.$send_http.')' . ($dbg ? ' ['.$dbg.']' : '')));
+    }
     $sent = json_decode(wp_remote_retrieve_body($send), true);
     $status = isset($sent['status']) ? (string) $sent['status'] : 'SENT';
-    $payer_url = 'https://www.paypal.com/invoice/payerView/details/' . rawurlencode($inv_id);
+
+    // Retrieve invoice details to get canonical payer-view link
+    $detail_resp = wp_remote_get('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($inv_id), array(
+        'headers' => array('Authorization' => 'Bearer ' . $token, 'Accept' => 'application/json'),
+        'timeout' => 20,
+    ));
+    $payer_url = '';
+    if (!is_wp_error($detail_resp)) {
+        $detail = json_decode(wp_remote_retrieve_body($detail_resp), true);
+        if (is_array($detail) && !empty($detail['links']) && is_array($detail['links'])) {
+            foreach ($detail['links'] as $lnk) {
+                if (!empty($lnk['rel']) && in_array($lnk['rel'], array('payer-view','payment-link'), true) && !empty($lnk['href'])) {
+                    $payer_url = (string) $lnk['href'];
+                    break;
+                }
+            }
+        }
+    }
+    if ($payer_url === '') {
+        // Fallback pattern (works for most accounts)
+        $payer_url = 'https://www.paypal.com/invoice/payerView/details/' . rawurlencode($inv_id);
+    }
 
     $order->update_meta_data('_eao_paypal_invoice_id', $inv_id);
     $order->update_meta_data('_eao_paypal_invoice_status', $status);
