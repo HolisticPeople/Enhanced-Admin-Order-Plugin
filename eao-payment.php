@@ -111,6 +111,8 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
     $pp_existing_invoice_url = (string) $order->get_meta('_eao_paypal_invoice_url', true);
     $pp_status_norm = strtolower($pp_existing_invoice_status);
     $pp_has_active_invoice = ($pp_existing_invoice_id !== '' && !in_array($pp_status_norm, array('void','voided','cancel','canceled','cancelled'), true));
+    $last_paid_cents = (int) $order->get_meta('_eao_last_charged_amount_cents', true);
+    $last_paid_currency = (string) $order->get_meta('_eao_last_charged_currency', true);
 
     ?>
     <div id="eao-payment-processing-container">
@@ -277,6 +279,8 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                 <input type="hidden" id="eao-pp-paypal-invoice-id" value="<?php echo esc_attr($pp_existing_invoice_id); ?>" />
                 <input type="hidden" id="eao-pp-paypal-invoice-status" value="<?php echo esc_attr($pp_existing_invoice_status); ?>" />
                 <input type="hidden" id="eao-pp-paypal-invoice-url" value="<?php echo esc_attr($pp_existing_invoice_url); ?>" />
+                <input type="hidden" id="eao-pp-paid-cents" value="<?php echo esc_attr($last_paid_cents); ?>" />
+                <input type="hidden" id="eao-pp-paid-currency" value="<?php echo esc_attr($last_paid_currency); ?>" />
             </div>
             <div id="eao-pp-request-messages"></div>
         </div>
@@ -1446,7 +1450,15 @@ function eao_stripe_get_invoice_status() {
             try { $order->update_status('processing', 'Stripe invoice paid (manual refresh).'); } catch (Exception $e) { /* noop */ }
         }
     }
-    wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => $status, 'url' => $url));
+    // Persist paid amount when available
+    if (!empty($body['amount_paid'])) {
+        $order->update_meta_data('_eao_last_charged_amount_cents', (int) $body['amount_paid']);
+        if (!empty($body['currency'])) { $order->update_meta_data('_eao_last_charged_currency', strtoupper((string)$body['currency'])); }
+        $order->save();
+    }
+    $paid_cents = isset($body['amount_paid']) ? (int) $body['amount_paid'] : 0;
+    $currency   = !empty($body['currency']) ? strtoupper((string) $body['currency']) : '';
+    wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => $status, 'url' => $url, 'paid_cents' => $paid_cents, 'currency' => $currency));
 }
 
 /** Save PayPal live credentials */
@@ -1808,6 +1820,19 @@ function eao_paypal_get_invoice_status() {
             }
         }
     }
+    // Try to extract paid/total amount from response for UI and notes
+    $paid_cents = 0; $currency = '';
+    if (!empty($body['amount']) && is_array($body['amount']) && isset($body['amount']['value'])) {
+        $paid_cents = (int) round(((float) $body['amount']['value']) * 100);
+        $currency = isset($body['amount']['currency_code']) ? strtoupper((string) $body['amount']['currency_code']) : '';
+    } elseif (!empty($body['total_amount']) && is_array($body['total_amount']) && isset($body['total_amount']['value'])) {
+        $paid_cents = (int) round(((float) $body['total_amount']['value']) * 100);
+        $currency = isset($body['total_amount']['currency_code']) ? strtoupper((string) $body['total_amount']['currency_code']) : '';
+    }
+    if ($paid_cents > 0) {
+        $order->update_meta_data('_eao_last_charged_amount_cents', $paid_cents);
+        if ($currency !== '') { $order->update_meta_data('_eao_last_charged_currency', $currency); }
+    }
     $order->save();
     if (strtoupper($status) === 'PAID') {
         $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
@@ -1816,7 +1841,7 @@ function eao_paypal_get_invoice_status() {
             try { $order->update_status('processing', 'PayPal invoice paid (manual refresh).'); } catch (Exception $e) { /* noop */ }
         }
     }
-    wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => $status, 'url' => (string) $order->get_meta('_eao_paypal_invoice_url', true)));
+    wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => $status, 'url' => (string) $order->get_meta('_eao_paypal_invoice_url', true), 'paid_cents' => $paid_cents, 'currency' => $currency));
 }
 
 /** Helper: find order id by meta key/value */
@@ -1959,7 +1984,7 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
             // SAFETY: only act if stored invoice matches
             $stored = (string) $order->get_meta('_eao_paypal_invoice_id', true);
             if ($stored !== $invoice_id) { return new WP_REST_Response(array('ok' => true, 'ignored' => 'invoice_mismatch')); }
-            if ($type === 'INVOICING.INVOICE.PAID') {
+                if ($type === 'INVOICING.INVOICE.PAID') {
                 $order->update_meta_data('_eao_paypal_invoice_status', 'PAID');
                 $order->save();
                 $order->add_order_note('PayPal invoice paid via webhook.');
@@ -1967,6 +1992,23 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                 $is_pending_like = in_array($current, array('pending','pending-payment'), true);
                 if ($is_pending_like) {
                     try { $order->update_status('processing', 'PayPal invoice paid.'); } catch (Exception $e) { /* noop */ }
+                }
+                // Attempt to fetch and persist paid amount
+                $token2 = eao_paypal_get_oauth_token();
+                if (!is_wp_error($token2)) {
+                    $detail_resp2 = wp_remote_get('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($invoice_id), array('headers' => array('Authorization' => 'Bearer ' . $token2, 'Accept' => 'application/json'), 'timeout' => 15));
+                    if (!is_wp_error($detail_resp2)) {
+                        $d2 = json_decode(wp_remote_retrieve_body($detail_resp2), true);
+                        if (!empty($d2['amount']['value'])) {
+                            $order->update_meta_data('_eao_last_charged_amount_cents', (int) round(((float)$d2['amount']['value']) * 100));
+                            if (!empty($d2['amount']['currency_code'])) { $order->update_meta_data('_eao_last_charged_currency', strtoupper((string)$d2['amount']['currency_code'])); }
+                            $order->save();
+                        } elseif (!empty($d2['total_amount']['value'])) {
+                            $order->update_meta_data('_eao_last_charged_amount_cents', (int) round(((float)$d2['total_amount']['value']) * 100));
+                            if (!empty($d2['total_amount']['currency_code'])) { $order->update_meta_data('_eao_last_charged_currency', strtoupper((string)$d2['total_amount']['currency_code'])); }
+                            $order->save();
+                        }
+                    }
                 }
             } elseif ($type === 'INVOICING.INVOICE.CANCELLED') {
                 $order->update_meta_data('_eao_paypal_invoice_status', 'CANCELLED');

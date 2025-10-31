@@ -98,6 +98,10 @@
                     if (resp && resp.success) {
                         $('#eao-pp-invoice-status').val(resp.data && resp.data.status ? resp.data.status : 'open');
                         if (resp.data && resp.data.url) { $('#eao-pp-invoice-url').val(resp.data.url); }
+                        if (resp.data && (resp.data.paid_cents || resp.data.currency)) {
+                            if (typeof resp.data.paid_cents === 'number') { $('#eao-pp-paid-cents').val(resp.data.paid_cents); }
+                            if (resp.data.currency) { $('#eao-pp-paid-currency').val(String(resp.data.currency).toUpperCase()); }
+                        }
                         eaoUpdateRequestButtons();
                         var url = resp.data && resp.data.url ? resp.data.url : '';
                         var suffix = url ? ' <a target="_blank" rel="noopener" href="'+encodeURI(url)+'">Open invoice</a>' : '';
@@ -116,6 +120,10 @@
                     if (resp && resp.success) {
                         $('#eao-pp-paypal-invoice-status').val(resp.data && resp.data.status ? resp.data.status : 'SENT');
                         if (resp.data && resp.data.url) { $('#eao-pp-paypal-invoice-url').val(resp.data.url); }
+                        if (resp.data && (resp.data.paid_cents || resp.data.currency)) {
+                            if (typeof resp.data.paid_cents === 'number') { $('#eao-pp-paid-cents').val(resp.data.paid_cents); }
+                            if (resp.data.currency) { $('#eao-pp-paid-currency').val(String(resp.data.currency).toUpperCase()); }
+                        }
                         eaoUpdateRequestButtons();
                         var url = resp.data && resp.data.url ? resp.data.url : '';
                         var suffix = url ? ' <a target="_blank" rel="noopener" href="'+encodeURI(url)+'">Open invoice</a>' : '';
@@ -700,15 +708,21 @@
             // Render existing link if available
             try {
                 var $msg = $('#eao-pp-request-messages');
+                var paidCents = parseInt($('#eao-pp-paid-cents').val()||'0', 10) || 0;
+                var paidCurr = ($('#eao-pp-paid-currency').val()||'').toUpperCase();
                 if (stripeActive) {
                     var surl = $('#eao-pp-invoice-url').val()||'';
+                    var sSt = String($('#eao-pp-invoice-status').val()||'').toLowerCase();
                     if (surl) {
-                        $msg.html('<div class="notice notice-info"><p>Stripe request active. <a target="_blank" rel="noopener" href="'+encodeURI(surl)+'">Open invoice</a></p></div>');
+                        var prefix = (sSt === 'paid' && paidCents>0) ? ('Stripe Status: PAID — $'+ (paidCents/100).toFixed(2)) : 'Stripe request active.';
+                        $msg.html('<div class="notice notice-info"><p>'+prefix+' <a target="_blank" rel="noopener" href="'+encodeURI(surl)+'">Open invoice</a></p></div>');
                     }
                 } else if (paypalActive) {
                     var purl = $('#eao-pp-paypal-invoice-url').val()||'';
+                    var pSt = String($('#eao-pp-paypal-invoice-status').val()||'').toLowerCase();
                     if (purl) {
-                        $msg.html('<div class="notice notice-info"><p>PayPal request active. <a target="_blank" rel="noopener" href="'+encodeURI(purl)+'">Open invoice</a></p></div>');
+                        var prefix2 = (pSt === 'paid' && paidCents>0) ? ('PayPal Status: PAID — $'+ (paidCents/100).toFixed(2)) : 'PayPal request active.';
+                        $msg.html('<div class="notice notice-info"><p>'+prefix2+' <a target="_blank" rel="noopener" href="'+encodeURI(purl)+'">Open invoice</a></p></div>');
                     }
                 }
             } catch(_){ }
