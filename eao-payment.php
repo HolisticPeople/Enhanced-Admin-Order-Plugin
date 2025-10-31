@@ -1728,6 +1728,9 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
         if ($order_id) {
             $order = wc_get_order($order_id);
             if ($order) {
+                // SAFETY: only act if this order stores the same invoice id
+                $stored = (string) $order->get_meta('_eao_stripe_invoice_id', true);
+                if ($stored !== $invoice_id) { return new WP_REST_Response(array('ok' => true, 'ignored' => 'invoice_mismatch')); }
                 if ($type === 'invoice.paid') {
                     $order->update_meta_data('_eao_stripe_invoice_status', 'paid');
                     $order->save();
@@ -1794,6 +1797,9 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
     if ($order_id) {
         $order = wc_get_order($order_id);
         if ($order) {
+            // SAFETY: only act if stored invoice matches
+            $stored = (string) $order->get_meta('_eao_paypal_invoice_id', true);
+            if ($stored !== $invoice_id) { return new WP_REST_Response(array('ok' => true, 'ignored' => 'invoice_mismatch')); }
             if ($type === 'INVOICING.INVOICE.PAID') {
                 $order->update_meta_data('_eao_paypal_invoice_status', 'PAID');
                 $order->save();
