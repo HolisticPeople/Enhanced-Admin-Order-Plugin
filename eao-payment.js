@@ -97,8 +97,11 @@
                 }, function(resp){
                     if (resp && resp.success) {
                         $('#eao-pp-invoice-status').val(resp.data && resp.data.status ? resp.data.status : 'open');
+                        if (resp.data && resp.data.url) { $('#eao-pp-invoice-url').val(resp.data.url); }
                         eaoUpdateRequestButtons();
-                        $msg.html('<div class="notice notice-success"><p>Status: '+ String((resp.data && resp.data.status) || 'open').toUpperCase() +'</p></div>');
+                        var url = resp.data && resp.data.url ? resp.data.url : '';
+                        var suffix = url ? ' <a target="_blank" rel="noopener" href="'+encodeURI(url)+'">Open invoice</a>' : '';
+                        $msg.html('<div class="notice notice-success"><p>Status: '+ String((resp.data && resp.data.status) || 'open').toUpperCase() + suffix + '</p></div>');
                     } else {
                         $msg.html('<div class="notice notice-error"><p>' + (resp && resp.data && resp.data.message ? resp.data.message : 'Failed to refresh Stripe status') + '</p></div>');
                     }
@@ -112,8 +115,11 @@
                 }, function(resp){
                     if (resp && resp.success) {
                         $('#eao-pp-paypal-invoice-status').val(resp.data && resp.data.status ? resp.data.status : 'SENT');
+                        if (resp.data && resp.data.url) { $('#eao-pp-paypal-invoice-url').val(resp.data.url); }
                         eaoUpdateRequestButtons();
-                        $msg.html('<div class="notice notice-success"><p>PayPal Status: '+ String((resp.data && resp.data.status) || 'SENT').toUpperCase() +'</p></div>');
+                        var url = resp.data && resp.data.url ? resp.data.url : '';
+                        var suffix = url ? ' <a target="_blank" rel="noopener" href="'+encodeURI(url)+'">Open invoice</a>' : '';
+                        $msg.html('<div class="notice notice-success"><p>PayPal Status: '+ String((resp.data && resp.data.status) || 'SENT').toUpperCase() + suffix + '</p></div>');
                     } else {
                         $msg.html('<div class="notice notice-error"><p>' + (resp && resp.data && resp.data.message ? resp.data.message : 'Failed to refresh PayPal status') + '</p></div>');
                     }
@@ -688,6 +694,22 @@
                 if ($btnStripe.length) $btnStripe.text('Send Stripe Payment Request ($' + val.toFixed(2) + ')');
                 if ($btnPayPal.length) $btnPayPal.text('Send PayPal Payment Request ($' + val.toFixed(2) + ')');
             }
+
+            // Render existing link if available
+            try {
+                var $msg = $('#eao-pp-request-messages');
+                if (stripeActive) {
+                    var surl = $('#eao-pp-invoice-url').val()||'';
+                    if (surl) {
+                        $msg.html('<div class="notice notice-info"><p>Stripe request active. <a target="_blank" rel="noopener" href="'+encodeURI(surl)+'">Open invoice</a></p></div>');
+                    }
+                } else if (paypalActive) {
+                    var purl = $('#eao-pp-paypal-invoice-url').val()||'';
+                    if (purl) {
+                        $msg.html('<div class="notice notice-info"><p>PayPal request active. <a target="_blank" rel="noopener" href="'+encodeURI(purl)+'">Open invoice</a></p></div>');
+                    }
+                }
+            } catch(_){ }
         }
         eaoUpdateRequestButtons();
         $(document).on('change keyup', '#eao-pp-amount', eaoUpdateRequestButtons);
@@ -736,6 +758,7 @@
                     if (resp.data && resp.data.invoice_id) {
                         $('#eao-pp-invoice-id').val(resp.data.invoice_id);
                         $('#eao-pp-invoice-status').val(resp.data.status || 'open');
+                        if (url) { $('#eao-pp-invoice-url').val(url); }
                         eaoUpdateRequestButtons();
                     }
                 } else {
@@ -788,6 +811,7 @@
                     if (resp.data && resp.data.invoice_id) {
                         $('#eao-pp-paypal-invoice-id').val(resp.data.invoice_id);
                         $('#eao-pp-paypal-invoice-status').val(resp.data.status || 'SENT');
+                        if (url) { $('#eao-pp-paypal-invoice-url').val(url); }
                         eaoUpdateRequestButtons();
                     }
                 } else {

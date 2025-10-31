@@ -102,11 +102,13 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
 
     $existing_invoice_id = (string) $order->get_meta('_eao_stripe_invoice_id', true);
     $existing_invoice_status = (string) $order->get_meta('_eao_stripe_invoice_status', true);
+    $existing_invoice_url = (string) $order->get_meta('_eao_stripe_invoice_url', true);
     $has_active_invoice = ($existing_invoice_id !== '' && strtolower($existing_invoice_status) !== 'void');
 
     // PayPal existing invoice meta
     $pp_existing_invoice_id = (string) $order->get_meta('_eao_paypal_invoice_id', true);
     $pp_existing_invoice_status = (string) $order->get_meta('_eao_paypal_invoice_status', true);
+    $pp_existing_invoice_url = (string) $order->get_meta('_eao_paypal_invoice_url', true);
     $pp_status_norm = strtolower($pp_existing_invoice_status);
     $pp_has_active_invoice = ($pp_existing_invoice_id !== '' && !in_array($pp_status_norm, array('void','voided','cancel','canceled','cancelled'), true));
 
@@ -272,8 +274,10 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                 <label style="margin-left:6px;"><input type="radio" name="eao-pp-line-mode" value="itemized" /> Itemized</label>
                 <input type="hidden" id="eao-pp-invoice-id" value="<?php echo esc_attr($existing_invoice_id); ?>" />
                 <input type="hidden" id="eao-pp-invoice-status" value="<?php echo esc_attr($existing_invoice_status); ?>" />
+                <input type="hidden" id="eao-pp-invoice-url" value="<?php echo esc_attr($existing_invoice_url); ?>" />
                 <input type="hidden" id="eao-pp-paypal-invoice-id" value="<?php echo esc_attr($pp_existing_invoice_id); ?>" />
                 <input type="hidden" id="eao-pp-paypal-invoice-status" value="<?php echo esc_attr($pp_existing_invoice_status); ?>" />
+                <input type="hidden" id="eao-pp-paypal-invoice-url" value="<?php echo esc_attr($pp_existing_invoice_url); ?>" />
             </div>
             <div id="eao-pp-request-messages"></div>
         </div>
@@ -1583,7 +1587,7 @@ function eao_paypal_send_payment_request() {
         'detail' => array(
             'currency_code' => $currency,
             'reference' => 'EAO-' . $order_id,
-            'note' => 'EAO admin payment request',
+            'note' => 'Please complete payment for Order #' . $order_id . '. Thank you.',
             'payment_term' => array('term_type' => 'DUE_ON_RECEIPT')
         ),
         'primary_recipients' => array(array('billing_info' => array('email_address' => $email))),
