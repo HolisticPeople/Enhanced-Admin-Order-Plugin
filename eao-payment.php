@@ -37,6 +37,20 @@ add_action('wp_ajax_eao_paypal_get_invoice_status', 'eao_paypal_get_invoice_stat
 add_action('wp_ajax_eao_payment_paypal_save_settings', 'eao_payment_paypal_save_settings');
 add_action('wp_ajax_eao_payment_webhooks_save_settings', 'eao_payment_webhooks_save_settings');
 
+// REST API webhooks
+add_action('rest_api_init', function(){
+    register_rest_route('eao/v1', '/stripe/webhook', array(
+        'methods' => 'POST',
+        'callback' => 'eao_stripe_webhook_handler',
+        'permission_callback' => '__return_true',
+    ));
+    register_rest_route('eao/v1', '/paypal/webhook', array(
+        'methods' => 'POST',
+        'callback' => 'eao_paypal_webhook_handler',
+        'permission_callback' => '__return_true',
+    ));
+});
+
 /**
  * Add Payment Processing metabox (real)
  */
@@ -99,7 +113,7 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
     ?>
     <div id="eao-payment-processing-container">
         <div style="display:flex; gap:16px; align-items:flex-start;">
-        <div style="flex:1 1 50%; min-width:420px;">
+        <div style="flex:1 1 50%; min-width:420px; border-right:1px solid #dcdcde; padding-right:12px;">
         <table class="form-table">
             <tr>
                 <th><label for="eao-pp-amount">Payment Amount</label></th>
@@ -113,6 +127,64 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
             </tr>
         </table>
         <hr style="margin:10px 0 14px; border:0; border-top:1px solid #dcdcde;" />
+
+        <div id="eao-pp-settings-panel" style="display:none; margin:8px 0 12px 0;">
+            <h4>Stripe Settings</h4>
+            <table class="form-table">
+                <tr>
+                    <th>Test Secret</th>
+                    <td><input type="text" id="eao-pp-stripe-test-secret" value="<?php echo esc_attr($opts['test_secret'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
+                <tr>
+                    <th>Test Publishable</th>
+                    <td><input type="text" id="eao-pp-stripe-test-publishable" value="<?php echo esc_attr($opts['test_publishable'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
+                <tr>
+                    <th>Live Secret</th>
+                    <td><input type="text" id="eao-pp-stripe-live-secret" value="<?php echo esc_attr($opts['live_secret'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
+                <tr>
+                    <th>Live Publishable</th>
+                    <td><input type="text" id="eao-pp-stripe-live-publishable" value="<?php echo esc_attr($opts['live_publishable'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
+                <tr>
+                    <th>Webhook Signing Secret (Live)</th>
+                    <td><input type="text" id="eao-pp-stripe-webhook-secret" value="<?php echo esc_attr($opts['webhook_signing_secret_live'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
+            </table>
+            <p><button type="button" id="eao-pp-save-stripe" class="button">Save Stripe Keys</button></p>
+
+            <h4 style="margin-top:18px;">PayPal Settings (Live)</h4>
+            <?php $pp_opts = get_option('eao_paypal_settings', array('live_client_id' => '', 'live_secret' => '', 'webhook_id_live' => '')); ?>
+            <table class="form-table">
+                <tr>
+                    <th>Live Client ID</th>
+                    <td><input type="text" id="eao-pp-paypal-live-client-id" value="<?php echo esc_attr($pp_opts['live_client_id'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
+                <tr>
+                    <th>Live Secret</th>
+                    <td><input type="text" id="eao-pp-paypal-live-secret" value="<?php echo esc_attr($pp_opts['live_secret'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
+                <tr>
+                    <th>Webhook ID (Live)</th>
+                    <td><input type="text" id="eao-pp-paypal-webhook-id" value="<?php echo esc_attr($pp_opts['webhook_id_live'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
+            </table>
+            <p><button type="button" id="eao-pp-save-paypal" class="button">Save PayPal Settings</button></p>
+
+            <h4 style="margin-top:18px;">Webhook Endpoints</h4>
+            <table class="form-table">
+                <tr>
+                    <th>Stripe Webhook URL</th>
+                    <td><code><?php echo esc_html( get_rest_url(null, 'eao/v1/stripe/webhook') ); ?></code></td>
+                </tr>
+                <tr>
+                    <th>PayPal Webhook URL</th>
+                    <td><code><?php echo esc_html( get_rest_url(null, 'eao/v1/paypal/webhook') ); ?></code></td>
+                </tr>
+            </table>
+            <p><button type="button" id="eao-pp-save-webhooks" class="button">Save Webhook Settings</button></p>
+        </div>
 
         <h3 style="margin:6px 0 8px;">Immediate Payment</h3>
         <hr style="margin:6px 0 10px; border:0; border-top:1px solid #dcdcde;" />
@@ -208,68 +280,12 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
 
         <div id="eao-pp-messages"></div>
 
-        <div id="eao-pp-settings-panel" style="display:none; margin-top:12px;">
-            <h4>Stripe Settings</h4>
-            <table class="form-table">
-                <tr>
-                    <th>Test Secret</th>
-                    <td><input type="text" id="eao-pp-stripe-test-secret" value="<?php echo esc_attr($opts['test_secret'] ?? ''); ?>" style="width:420px;" /></td>
-                </tr>
-                <tr>
-                    <th>Test Publishable</th>
-                    <td><input type="text" id="eao-pp-stripe-test-publishable" value="<?php echo esc_attr($opts['test_publishable'] ?? ''); ?>" style="width:420px;" /></td>
-                </tr>
-                <tr>
-                    <th>Live Secret</th>
-                    <td><input type="text" id="eao-pp-stripe-live-secret" value="<?php echo esc_attr($opts['live_secret'] ?? ''); ?>" style="width:420px;" /></td>
-                </tr>
-                <tr>
-                    <th>Live Publishable</th>
-                    <td><input type="text" id="eao-pp-stripe-live-publishable" value="<?php echo esc_attr($opts['live_publishable'] ?? ''); ?>" style="width:420px;" /></td>
-                </tr>
-                <tr>
-                    <th>Webhook Signing Secret (Live)</th>
-                    <td><input type="text" id="eao-pp-stripe-webhook-secret" value="<?php echo esc_attr($opts['webhook_signing_secret_live'] ?? ''); ?>" style="width:420px;" /></td>
-                </tr>
-            </table>
-            <p><button type="button" id="eao-pp-save-stripe" class="button">Save Stripe Keys</button></p>
-
-            <h4 style="margin-top:18px;">PayPal Settings (Live)</h4>
-            <?php $pp_opts = get_option('eao_paypal_settings', array('live_client_id' => '', 'live_secret' => '', 'webhook_id_live' => '')); ?>
-            <table class="form-table">
-                <tr>
-                    <th>Live Client ID</th>
-                    <td><input type="text" id="eao-pp-paypal-live-client-id" value="<?php echo esc_attr($pp_opts['live_client_id'] ?? ''); ?>" style="width:420px;" /></td>
-                </tr>
-                <tr>
-                    <th>Live Secret</th>
-                    <td><input type="text" id="eao-pp-paypal-live-secret" value="<?php echo esc_attr($pp_opts['live_secret'] ?? ''); ?>" style="width:420px;" /></td>
-                </tr>
-                <tr>
-                    <th>Webhook ID (Live)</th>
-                    <td><input type="text" id="eao-pp-paypal-webhook-id" value="<?php echo esc_attr($pp_opts['webhook_id_live'] ?? ''); ?>" style="width:420px;" /></td>
-                </tr>
-            </table>
-            <p><button type="button" id="eao-pp-save-paypal" class="button">Save PayPal Settings</button></p>
-
-            <h4 style="margin-top:18px;">Webhook Endpoints</h4>
-            <table class="form-table">
-                <tr>
-                    <th>Stripe Webhook URL</th>
-                    <td><code><?php echo esc_html( get_rest_url(null, 'eao/v1/stripe/webhook') ); ?></code></td>
-                </tr>
-                <tr>
-                    <th>PayPal Webhook URL</th>
-                    <td><code><?php echo esc_html( get_rest_url(null, 'eao/v1/paypal/webhook') ); ?></code></td>
-                </tr>
-            </table>
-            <p><button type="button" id="eao-pp-save-webhooks" class="button">Save Webhook Settings</button></p>
-        </div>
+        
 
         <?php wp_nonce_field('eao_payment_mockup', 'eao_payment_mockup_nonce'); ?>
         <input type="hidden" id="eao-pp-order-id" value="<?php echo esc_attr($order_id); ?>" />
         </div>
-        <div style="flex:1 1 50%; min-width:420px;">
+        <div style="flex:1 1 50%; min-width:420px; padding-left:12px;">
             <h4>Refunds</h4>
             <div id="eao-refunds-gateway-summary" class="eao-refunds-gateway-banner" style="margin:4px 0 12px;padding:10px 12px;border-left:4px solid #72aee6;background:#f0f6fc;border-radius:4px;color:#1d2327;<?php echo esc_attr($gateway_notice_style); ?>">
                 <p class="eao-refunds-gateway-label" style="margin:0;font-weight:600;">Charge done by - <span id="eao-refunds-gateway-label-text" style="font-weight:600;"><?php echo esc_html($gateway_label_text); ?></span></p>
@@ -1655,4 +1671,142 @@ function eao_paypal_get_invoice_status() {
     }
     $order->save();
     wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => $status, 'url' => (string) $order->get_meta('_eao_paypal_invoice_url', true)));
+}
+
+/** Helper: find order id by meta key/value */
+function eao_find_order_id_by_meta($meta_key, $value) {
+    if ($meta_key === '' || $value === '') { return 0; }
+    $q = new WP_Query(array(
+        'post_type' => 'shop_order',
+        'post_status' => 'any',
+        'meta_query' => array(
+            array('key' => $meta_key, 'value' => $value)
+        ),
+        'fields' => 'ids',
+        'posts_per_page' => 1
+    ));
+    if (!is_wp_error($q) && !empty($q->posts)) { return (int) $q->posts[0]; }
+    return 0;
+}
+
+/** Stripe webhook handler */
+function eao_stripe_webhook_handler( WP_REST_Request $request ) {
+    $payload = $request->get_body();
+    $sig_header = $request->get_header('stripe-signature');
+    $settings = get_option('eao_stripe_settings', array());
+    $secret = (string) ($settings['webhook_signing_secret_live'] ?? '');
+
+    // Basic signature verification (tolerance 5 minutes)
+    if ($secret !== '' && $sig_header) {
+        $parts = array();
+        foreach (explode(',', $sig_header) as $seg) {
+            $kv = explode('=', trim($seg), 2);
+            if (count($kv) === 2) { $parts[$kv[0]] = $kv[1]; }
+        }
+        $ts = isset($parts['t']) ? (int) $parts['t'] : 0;
+        $v1 = isset($parts['v1']) ? $parts['v1'] : '';
+        if ($ts < (time() - 300)) { return new WP_REST_Response(array('ok' => false, 'reason' => 'timestamp_too_old'), 400); }
+        $signed_payload = $ts . '.' . $payload;
+        $expected = hash_hmac('sha256', $signed_payload, $secret);
+        if (!hash_equals($expected, $v1)) {
+            return new WP_REST_Response(array('ok' => false, 'reason' => 'bad_signature'), 400);
+        }
+    }
+
+    $event = json_decode($payload, true);
+    if (!is_array($event) || empty($event['type'])) { return new WP_REST_Response(array('ok' => false), 400); }
+
+    $type = (string) $event['type'];
+    $object = isset($event['data']['object']) ? $event['data']['object'] : array();
+
+    // Only handle EAO invoice events
+    if (strpos($type, 'invoice.') === 0) {
+        $invoice_id = (string) ($object['id'] ?? '');
+        $order_id = 0;
+        if (!empty($object['metadata']['order_id'])) { $order_id = (int) $object['metadata']['order_id']; }
+        if (!$order_id && $invoice_id !== '') { $order_id = eao_find_order_id_by_meta('_eao_stripe_invoice_id', $invoice_id); }
+        if ($order_id) {
+            $order = wc_get_order($order_id);
+            if ($order) {
+                if ($type === 'invoice.paid') {
+                    $order->update_meta_data('_eao_stripe_invoice_status', 'paid');
+                    $order->save();
+                    $order->add_order_note('Stripe invoice paid via webhook.');
+                } elseif ($type === 'invoice.voided') {
+                    $order->update_meta_data('_eao_stripe_invoice_status', 'void');
+                    $order->save();
+                    $order->add_order_note('Stripe invoice voided via webhook.');
+                } elseif ($type === 'invoice.payment_failed') {
+                    $order->update_meta_data('_eao_stripe_invoice_status', 'open');
+                    $order->save();
+                    $order->add_order_note('Stripe invoice payment failed (webhook).');
+                }
+            }
+        }
+    }
+
+    return new WP_REST_Response(array('ok' => true));
+}
+
+/** PayPal webhook handler */
+function eao_paypal_webhook_handler( WP_REST_Request $request ) {
+    $body = $request->get_body();
+    $headers = array_change_key_case($request->get_headers(), CASE_LOWER);
+    $pp = get_option('eao_paypal_settings', array());
+    $webhook_id = (string) ($pp['webhook_id_live'] ?? '');
+
+    // Verify via PayPal API if webhook id is set
+    if ($webhook_id !== '') {
+        $token = eao_paypal_get_oauth_token();
+        if (!is_wp_error($token)) {
+            $verify = array(
+                'transmission_id' => $request->get_header('paypal-transmission-id'),
+                'transmission_time' => $request->get_header('paypal-transmission-time'),
+                'cert_url' => $request->get_header('paypal-cert-url'),
+                'auth_algo' => $request->get_header('paypal-auth-algo'),
+                'transmission_sig' => $request->get_header('paypal-transmission-sig'),
+                'webhook_id' => $webhook_id,
+                'webhook_event' => json_decode($body, true)
+            );
+            $resp = wp_remote_post('https://api-m.paypal.com/v1/notifications/verify-webhook-signature', array(
+                'headers' => array('Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'),
+                'body' => wp_json_encode($verify),
+                'timeout' => 25,
+            ));
+            if (!is_wp_error($resp)) {
+                $res = json_decode(wp_remote_retrieve_body($resp), true);
+                if (empty($res['verification_status']) || $res['verification_status'] !== 'SUCCESS') {
+                    return new WP_REST_Response(array('ok' => false, 'reason' => 'verification_failed'), 400);
+                }
+            }
+        }
+    }
+
+    $event = json_decode($body, true);
+    if (!is_array($event) || empty($event['event_type'])) { return new WP_REST_Response(array('ok' => false), 400); }
+    $type = (string) $event['event_type'];
+    $resource = isset($event['resource']) ? $event['resource'] : array();
+    $invoice_id = (string) ($resource['id'] ?? '');
+    $reference = (string) ($resource['detail']['reference'] ?? '');
+    $order_id = 0;
+    if (strpos($reference, 'EAO-') === 0) { $order_id = (int) substr($reference, 4); }
+    if (!$order_id && $invoice_id !== '') { $order_id = eao_find_order_id_by_meta('_eao_paypal_invoice_id', $invoice_id); }
+    if ($order_id) {
+        $order = wc_get_order($order_id);
+        if ($order) {
+            if ($type === 'INVOICING.INVOICE.PAID') {
+                $order->update_meta_data('_eao_paypal_invoice_status', 'PAID');
+                $order->save();
+                $order->add_order_note('PayPal invoice paid via webhook.');
+            } elseif ($type === 'INVOICING.INVOICE.CANCELLED') {
+                $order->update_meta_data('_eao_paypal_invoice_status', 'CANCELLED');
+                $order->save();
+                $order->add_order_note('PayPal invoice cancelled via webhook.');
+            } elseif ($type === 'INVOICING.INVOICE.REFUNDED') {
+                $order->add_order_note('PayPal invoice refunded via webhook.');
+            }
+        }
+    }
+
+    return new WP_REST_Response(array('ok' => true));
 }
