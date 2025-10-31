@@ -74,6 +74,52 @@
         $('#eao-pp-gateway-settings').on('click', function(){
             $('#eao-pp-settings-panel').slideToggle(150);
         });
+        
+        // Refresh Status
+        $('#eao-pp-refresh-status').on('click', function(){
+            var orderId = $('#eao-pp-order-id').val();
+            var $msg = $('#eao-pp-request-messages');
+            var sId = $('#eao-pp-invoice-id').val()||'';
+            var sSt = String($('#eao-pp-invoice-status').val()||'').toLowerCase();
+            var pId = $('#eao-pp-paypal-invoice-id').val()||'';
+            var pSt = String($('#eao-pp-paypal-invoice-status').val()||'').toLowerCase();
+            var doStripe = !!(sId && sSt !== 'void');
+            var doPayPal = !doStripe && !!(pId && pSt !== 'void' && pSt !== 'cancelled' && pSt !== 'canceled');
+            if (!doStripe && !doPayPal) { $msg.html('<div class="notice notice-warning"><p>No active payment request.</p></div>'); return; }
+            $msg.html('<div class="notice notice-info"><p>Refreshing status...</p></div>');
+            if (doStripe) {
+                $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
+                    action: 'eao_stripe_get_invoice_status',
+                    nonce: $('#eao_payment_mockup_nonce').val(),
+                    order_id: orderId,
+                    invoice_id: sId,
+                    gateway: $('#eao-pp-gateway').val()
+                }, function(resp){
+                    if (resp && resp.success) {
+                        $('#eao-pp-invoice-status').val(resp.data && resp.data.status ? resp.data.status : 'open');
+                        eaoUpdateRequestButtons();
+                        $msg.html('<div class="notice notice-success"><p>Status: '+ String((resp.data && resp.data.status) || 'open').toUpperCase() +'</p></div>');
+                    } else {
+                        $msg.html('<div class="notice notice-error"><p>' + (resp && resp.data && resp.data.message ? resp.data.message : 'Failed to refresh Stripe status') + '</p></div>');
+                    }
+                }, 'json');
+            } else if (doPayPal) {
+                $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
+                    action: 'eao_paypal_get_invoice_status',
+                    nonce: $('#eao_payment_mockup_nonce').val(),
+                    order_id: orderId,
+                    invoice_id: pId
+                }, function(resp){
+                    if (resp && resp.success) {
+                        $('#eao-pp-paypal-invoice-status').val(resp.data && resp.data.status ? resp.data.status : 'SENT');
+                        eaoUpdateRequestButtons();
+                        $msg.html('<div class="notice notice-success"><p>PayPal Status: '+ String((resp.data && resp.data.status) || 'SENT').toUpperCase() +'</p></div>');
+                    } else {
+                        $msg.html('<div class="notice notice-error"><p>' + (resp && resp.data && resp.data.message ? resp.data.message : 'Failed to refresh PayPal status') + '</p></div>');
+                    }
+                }, 'json');
+            }
+        });
 
         $('#eao-pp-save-stripe').on('click', function(){
             var $btn = $(this);
@@ -94,6 +140,49 @@
                 }
             }, 'json').always(function(){
                 $btn.prop('disabled', false).text('Save Stripe Keys');
+            });
+        });
+
+        // Save PayPal settings (live only)
+        $('#eao-pp-save-paypal').on('click', function(){
+            var $btn = $(this);
+            var $msg = $('#eao-pp-messages');
+            $btn.prop('disabled', true).text('Saving...');
+            $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
+                action: 'eao_payment_paypal_save_settings',
+                nonce: $('#eao_payment_mockup_nonce').val(),
+                live_client_id: $('#eao-pp-paypal-live-client-id').val(),
+                live_secret: $('#eao-pp-paypal-live-secret').val(),
+                webhook_id_live: $('#eao-pp-paypal-webhook-id').val()
+            }, function(resp){
+                if (resp && resp.success) {
+                    $msg.html('<div class="notice notice-success"><p>PayPal settings saved.</p></div>');
+                } else {
+                    $msg.html('<div class="notice notice-error"><p>' + (resp && resp.data && resp.data.message ? resp.data.message : 'Error saving') + '</p></div>');
+                }
+            }, 'json').always(function(){
+                $btn.prop('disabled', false).text('Save PayPal Settings');
+            });
+        });
+
+        // Save webhook settings (Stripe + PayPal)
+        $('#eao-pp-save-webhooks').on('click', function(){
+            var $btn = $(this);
+            var $msg = $('#eao-pp-messages');
+            $btn.prop('disabled', true).text('Saving...');
+            $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
+                action: 'eao_payment_webhooks_save_settings',
+                nonce: $('#eao_payment_mockup_nonce').val(),
+                stripe_webhook_signing_secret_live: $('#eao-pp-stripe-webhook-secret').val(),
+                paypal_webhook_id_live: $('#eao-pp-paypal-webhook-id').val()
+            }, function(resp){
+                if (resp && resp.success) {
+                    $msg.html('<div class="notice notice-success"><p>Webhook settings saved.</p></div>');
+                } else {
+                    $msg.html('<div class="notice notice-error"><p>' + (resp && resp.data && resp.data.message ? resp.data.message : 'Error saving') + '</p></div>');
+                }
+            }, 'json').always(function(){
+                $btn.prop('disabled', false).text('Save Webhook Settings');
             });
         });
 
@@ -170,8 +259,8 @@
                     if (!isNaN(num)) { amt = num; }
                 }
                 if (!isNaN(amt)) { $('#eao-pp-amount').val(amt.toFixed(2)); }
-                // Update request button label if available
-                try { if (typeof eaoUpdateRequestButton === 'function') { eaoUpdateRequestButton(); } } catch(_){ }
+                // Update request button labels if available
+                try { if (typeof eaoUpdateRequestButtons === 'function') { eaoUpdateRequestButtons(); } } catch(_){ }
             } catch(_){ }
         });
 
@@ -559,18 +648,26 @@
             });
         });
 
-        // --- Stripe Payment Request (Invoice) ---
-        function eaoUpdateRequestButton(){
-            var $btn = $('#eao-pp-send-request');
-            if (!$btn.length) return;
-            // Disable/enable based on existing invoice meta
+        // --- Payment Request (Invoice) ---
+        function eaoUpdateRequestButtons(){
+            var $btnStripe = $('#eao-pp-send-stripe');
+            var $btnPayPal = $('#eao-pp-send-paypal');
+            var stripeActive = false, paypalActive = false;
             try {
-                var invId = $('#eao-pp-invoice-id').val()||'';
-                var invStatus = String($('#eao-pp-invoice-status').val()||'').toLowerCase();
-                var active = (invId && invStatus !== 'void');
-                $btn.prop('disabled', !!active);
-                $('#eao-pp-void-invoice').toggle(!!active);
-            } catch(_){ }
+                var sId = $('#eao-pp-invoice-id').val()||'';
+                var sSt = String($('#eao-pp-invoice-status').val()||'').toLowerCase();
+                stripeActive = !!(sId && sSt !== 'void');
+            } catch(_){}
+            try {
+                var pId = $('#eao-pp-paypal-invoice-id').val()||'';
+                var pSt = String($('#eao-pp-paypal-invoice-status').val()||'').toLowerCase();
+                paypalActive = !!(pId && pSt !== 'void' && pSt !== 'cancelled' && pSt !== 'canceled');
+            } catch(_){}
+            if ($btnStripe.length) $btnStripe.prop('disabled', stripeActive || paypalActive);
+            if ($btnPayPal.length) $btnPayPal.prop('disabled', stripeActive || paypalActive);
+            $('#eao-pp-void-stripe').toggle(!!stripeActive);
+            $('#eao-pp-void-paypal').toggle(!!paypalActive);
+
             function getGrandTotal(){
                 try {
                     var s = window.currentOrderSummaryData || {};
@@ -586,19 +683,19 @@
             }
             var val = getGrandTotal();
             if (!isNaN(val)) {
-                $btn.text('Request payment of $' + val.toFixed(2));
+                if ($btnStripe.length) $btnStripe.text('Send Stripe Payment Request ($' + val.toFixed(2) + ')');
+                if ($btnPayPal.length) $btnPayPal.text('Send PayPal Payment Request ($' + val.toFixed(2) + ')');
             }
         }
-        eaoUpdateRequestButton();
-        // Avoid constant polling; update on user actions
-        $(document).on('change keyup', '#eao-pp-amount', eaoUpdateRequestButton);
-        $(document).on('click', '#eao-pp-copy-gt', eaoUpdateRequestButton);
-        $(document).on('change', 'input[name="eao-pp-line-mode"], #eao-pp-request-email', eaoUpdateRequestButton);
-        // Ensure initial value appears even if summary loads a bit later
-        setTimeout(eaoUpdateRequestButton, 600);
-        setTimeout(eaoUpdateRequestButton, 1500);
+        eaoUpdateRequestButtons();
+        $(document).on('change keyup', '#eao-pp-amount', eaoUpdateRequestButtons);
+        $(document).on('click', '#eao-pp-copy-gt', eaoUpdateRequestButtons);
+        $(document).on('change', 'input[name="eao-pp-line-mode"], #eao-pp-request-email', eaoUpdateRequestButtons);
+        setTimeout(eaoUpdateRequestButtons, 600);
+        setTimeout(eaoUpdateRequestButtons, 1500);
 
-        $('#eao-pp-send-request').on('click', function(){
+        // Send Stripe invoice
+        $('#eao-pp-send-stripe').on('click', function(){
             var orderId = $('#eao-pp-order-id').val();
             var email = $('#eao-pp-request-email').val() || '';
             var mode = $('input[name="eao-pp-line-mode"]:checked').val() || 'grand';
@@ -630,13 +727,12 @@
             }, function(resp){
                 if (resp && resp.success) {
                     var url = resp.data && resp.data.url ? resp.data.url : '';
-                    var html = '<div class="notice notice-success"><p>Payment request sent.' + (url ? ' <a target=\"_blank\" href=\"'+url+'\">Open invoice</a>' : '') + '</p></div>';
+                    var html = '<div class="notice notice-success"><p>Payment request sent.' + (url ? ' <a target=\\"_blank\\" href=\\"'+url+'\\">Open invoice</a>' : '') + '</p></div>';
                     $msg.html(html);
                     if (resp.data && resp.data.invoice_id) {
                         $('#eao-pp-invoice-id').val(resp.data.invoice_id);
                         $('#eao-pp-invoice-status').val(resp.data.status || 'open');
-                        $('#eao-pp-void-invoice').show();
-                        $('#eao-pp-send-request').prop('disabled', true);
+                        eaoUpdateRequestButtons();
                     }
                 } else {
                     var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to send payment request';
@@ -645,12 +741,58 @@
                             err += ': ' + resp.data.stripe.error.message;
                         }
                     } catch(_){ }
-                    $msg.html('<div class=\"notice notice-error\"><p>'+err+'</p></div>');
+                    $msg.html('<div class=\\"notice notice-error\\"><p>'+err+'</p></div>');
                 }
             }, 'json');
         });
 
-        $('#eao-pp-void-invoice').on('click', function(){
+        // Send PayPal invoice
+        $('#eao-pp-send-paypal').on('click', function(){
+            var orderId = $('#eao-pp-order-id').val();
+            var email = $('#eao-pp-request-email').val() || '';
+            var mode = $('input[name="eao-pp-line-mode"]:checked').val() || 'grand';
+            var $msg = $('#eao-pp-request-messages');
+            function getGrandTotal(){
+                try {
+                    var s = window.currentOrderSummaryData || {};
+                    var gt = (typeof s.grand_total !== 'undefined') ? parseFloat(s.grand_total) : parseFloat(s.grand_total_raw);
+                    if (!isNaN(gt)) return gt;
+                } catch(_){ }
+                try {
+                    var txt = $('.eao-grand-total-line .eao-summary-monetary-value, .eao-grand-total-value, #eao-grand-total-value, .grand-total, [data-field="grand_total"]').first().text() || '';
+                    var num = parseFloat(String(txt).replace(/[^0-9.\-]/g,''));
+                    if (!isNaN(num)) return num;
+                } catch(_){ }
+                return NaN;
+            }
+            var amountOverride = getGrandTotal();
+            $msg.html('<div class="notice notice-info"><p>Sending PayPal payment request...</p></div>');
+            $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
+                action: 'eao_paypal_send_payment_request',
+                nonce: $('#eao_payment_mockup_nonce').val(),
+                order_id: orderId,
+                email: email,
+                mode: mode,
+                amount_override: isNaN(amountOverride) ? '' : amountOverride
+            }, function(resp){
+                if (resp && resp.success) {
+                    var url = resp.data && resp.data.url ? resp.data.url : '';
+                    var html = '<div class="notice notice-success"><p>PayPal payment request sent.' + (url ? ' <a target=\\"_blank\\" href=\\"'+url+'\\">Open invoice</a>' : '') + '</p></div>';
+                    $msg.html(html);
+                    if (resp.data && resp.data.invoice_id) {
+                        $('#eao-pp-paypal-invoice-id').val(resp.data.invoice_id);
+                        $('#eao-pp-paypal-invoice-status').val(resp.data.status || 'SENT');
+                        eaoUpdateRequestButtons();
+                    }
+                } else {
+                    var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to send PayPal payment request';
+                    $msg.html('<div class=\\"notice notice-error\\"><p>'+err+'</p></div>');
+                }
+            }, 'json');
+        });
+
+        // Void Stripe invoice
+        $('#eao-pp-void-stripe').on('click', function(){
             var orderId = $('#eao-pp-order-id').val();
             var invoiceId = $('#eao-pp-invoice-id').val();
             var gateway = $('#eao-pp-gateway').val();
@@ -661,11 +803,10 @@
             // Immediately re-enable send button; if server fails, we'll revert below
             var prevId = $('#eao-pp-invoice-id').val()||'';
             var prevStatus = $('#eao-pp-invoice-status').val()||'';
-            $('#eao-pp-void-invoice').hide();
+            $('#eao-pp-void-stripe').hide();
             $('#eao-pp-invoice-id').val('');
             $('#eao-pp-invoice-status').val('void');
-            $('#eao-pp-send-request').prop('disabled', false);
-            eaoUpdateRequestButton();
+            eaoUpdateRequestButtons();
             $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
                 action: 'eao_stripe_void_invoice',
                 nonce: $('#eao_payment_mockup_nonce').val(),
@@ -679,11 +820,44 @@
                     var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to void payment request';
                     $msg.html('<div class="notice notice-error"><p>'+err+'</p></div>');
                     // Revert UI to previous state since server reported failure
-                    $('#eao-pp-void-invoice').show();
+                    $('#eao-pp-void-stripe').show();
                     $('#eao-pp-invoice-id').val(prevId);
                     $('#eao-pp-invoice-status').val(prevStatus);
-                    $('#eao-pp-send-request').prop('disabled', true);
-                    eaoUpdateRequestButton();
+                    eaoUpdateRequestButtons();
+                }
+            }, 'json');
+        });
+
+        // Void PayPal invoice
+        $('#eao-pp-void-paypal').on('click', function(){
+            var orderId = $('#eao-pp-order-id').val();
+            var invoiceId = $('#eao-pp-paypal-invoice-id').val();
+            var $msg = $('#eao-pp-request-messages');
+            if (!invoiceId) { $msg.html('<div class="notice notice-warning"><p>No existing PayPal invoice to void.</p></div>'); return; }
+            if (!window.confirm('Void the PayPal payment request?')) { return; }
+            $msg.html('<div class="notice notice-info"><p>Voiding PayPal invoice...</p></div>');
+            var prevId = $('#eao-pp-paypal-invoice-id').val()||'';
+            var prevStatus = $('#eao-pp-paypal-invoice-status').val()||'';
+            $('#eao-pp-void-paypal').hide();
+            $('#eao-pp-paypal-invoice-id').val('');
+            $('#eao-pp-paypal-invoice-status').val('void');
+            eaoUpdateRequestButtons();
+            $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
+                action: 'eao_paypal_void_invoice',
+                nonce: $('#eao_payment_mockup_nonce').val(),
+                order_id: orderId,
+                invoice_id: invoiceId
+            }, function(resp){
+                if (resp && resp.success) {
+                    $msg.html('<div class="notice notice-success"><p>PayPal payment request voided.</p></div>');
+                } else {
+                    var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to void PayPal payment request';
+                    $msg.html('<div class="notice notice-error"><p>'+err+'</p></div>');
+                    // Revert
+                    $('#eao-pp-void-paypal').show();
+                    $('#eao-pp-paypal-invoice-id').val(prevId);
+                    $('#eao-pp-paypal-invoice-status').val(prevStatus);
+                    eaoUpdateRequestButtons();
                 }
             }, 'json');
         });
