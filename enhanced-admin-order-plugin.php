@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.2.12
+ * Version: 5.2.13
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin version constant (v5.1.29: broaden YITH unhook across priorities; message tweak)
-define('EAO_PLUGIN_VERSION', '5.2.12');
+define('EAO_PLUGIN_VERSION', '5.2.13');
 
 /**
  * Check if we should load EAO functionality

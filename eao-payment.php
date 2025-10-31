@@ -189,7 +189,6 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
         </div>
 
         <h3 style="margin:6px 0 8px;">Immediate Payment</h3>
-        <hr style="margin:6px 0 10px; border:0; border-top:1px solid #dcdcde;" />
         <table class="form-table">
             <tr>
                 <th><label for="eao-pp-gateway">Payment Gateway</label></th>
@@ -1575,13 +1574,63 @@ function eao_paypal_send_payment_request() {
         'Prefer'        => 'return=representation'
     );
 
-    // Compose minimal invoice (grand total). For itemized mode, we still send a single line to ensure totals match.
+    // Compose invoice items
     $items = array();
-    $items[] = array(
-        'name' => 'Order #' . $order_id,
-        'quantity' => '1',
-        'unit_amount' => array('currency_code' => $currency, 'value' => number_format($amount_value, 2, '.', '')),
-    );
+    if ($mode === 'grand') {
+        // Single grand total line
+        $items[] = array(
+            'name' => 'Order #' . $order_id,
+            'quantity' => '1',
+            'unit_amount' => array('currency_code' => $currency, 'value' => number_format($amount_value, 2, '.', '')),
+        );
+    } else {
+        // Itemized: products + shipping + fees, then an adjustment to match staged grand total
+        $sum_created = 0.0;
+        foreach ($order->get_items('line_item') as $item) {
+            $qty = (int) $item->get_quantity();
+            $line_total = (float) $item->get_total() + (float) $item->get_total_tax();
+            if ($line_total <= 0 || $qty <= 0) { continue; }
+            $unit = round($line_total / max(1,$qty), 2);
+            $name = $item->get_name();
+            $items[] = array(
+                'name' => $name,
+                'quantity' => (string) $qty,
+                'unit_amount' => array('currency_code' => $currency, 'value' => number_format($unit, 2, '.', '')),
+            );
+            $sum_created += $unit * $qty;
+        }
+        // Shipping
+        $shipping_total = (float) $order->get_shipping_total() + (float) $order->get_shipping_tax();
+        if ($shipping_total > 0) {
+            $items[] = array(
+                'name' => 'Shipping',
+                'quantity' => '1',
+                'unit_amount' => array('currency_code' => $currency, 'value' => number_format($shipping_total, 2, '.', '')),
+            );
+            $sum_created += $shipping_total;
+        }
+        // Positive fees
+        foreach ($order->get_fees() as $fee) {
+            $fee_total = (float) $fee->get_total() + (float) $fee->get_total_tax();
+            if ($fee_total <= 0) { continue; }
+            $items[] = array(
+                'name' => 'Fee: ' . $fee->get_name(),
+                'quantity' => '1',
+                'unit_amount' => array('currency_code' => $currency, 'value' => number_format($fee_total, 2, '.', '')),
+            );
+            $sum_created += $fee_total;
+        }
+        // Adjustment delta to include coupons/points so PayPal total matches staged grand total
+        $expected = $amount_value;
+        $delta = round($expected - $sum_created, 2);
+        if (abs($delta) >= 0.01) {
+            $items[] = array(
+                'name' => ($delta < 0 ? 'Discount/Adjustment' : 'Adjustment'),
+                'quantity' => '1',
+                'unit_amount' => array('currency_code' => $currency, 'value' => number_format($delta, 2, '.', '')),
+            );
+        }
+    }
 
     $create_body = array(
         'detail' => array(
