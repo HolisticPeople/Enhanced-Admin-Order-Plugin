@@ -1441,7 +1441,7 @@ function eao_stripe_get_invoice_status() {
     $order->save();
     if (strtolower($status) === 'paid') {
         $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
-        if (!in_array($current, array('processing','completed','shipped'), true)) {
+        if ($current === 'pending') {
             try { $order->update_status('processing', 'Stripe invoice paid (manual refresh).'); } catch (Exception $e) { /* noop */ }
         }
     }
@@ -1810,7 +1810,7 @@ function eao_paypal_get_invoice_status() {
     $order->save();
     if (strtoupper($status) === 'PAID') {
         $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
-        if (!in_array($current, array('processing','completed','shipped'), true)) {
+        if ($current === 'pending') {
             try { $order->update_status('processing', 'PayPal invoice paid (manual refresh).'); } catch (Exception $e) { /* noop */ }
         }
     }
@@ -1839,6 +1839,7 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
     $sig_header = $request->get_header('stripe-signature');
     $settings = get_option('eao_stripe_settings', array());
     $secret = (string) ($settings['webhook_signing_secret_live'] ?? '');
+    error_log('[EAO Stripe WH] Received');
 
     // Basic signature verification (tolerance 5 minutes)
     if ($secret !== '' && $sig_header) {
@@ -1853,6 +1854,7 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
         $signed_payload = $ts . '.' . $payload;
         $expected = hash_hmac('sha256', $signed_payload, $secret);
         if (!hash_equals($expected, $v1)) {
+            error_log('[EAO Stripe WH] Bad signature');
             return new WP_REST_Response(array('ok' => false, 'reason' => 'bad_signature'), 400);
         }
     }
@@ -1862,6 +1864,7 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
 
     $type = (string) $event['type'];
     $object = isset($event['data']['object']) ? $event['data']['object'] : array();
+    error_log('[EAO Stripe WH] type=' . $type . ' invoice=' . (string)($object['id'] ?? ''));
 
     // Only handle EAO invoice events
     if (strpos($type, 'invoice.') === 0) {
@@ -1879,9 +1882,9 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
                     $order->update_meta_data('_eao_stripe_invoice_status', 'paid');
                     $order->save();
                     $order->add_order_note('Stripe invoice paid via webhook.');
-                    // Move order to Processing if applicable
+                    // Move order to Processing only from Pending
                     $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
-                    if (!in_array($current, array('processing','completed','shipped'), true)) {
+                    if ($current === 'pending') {
                         try { $order->update_status('processing', 'Stripe invoice paid.'); } catch (Exception $e) { /* noop */ }
                     }
                 } elseif ($type === 'invoice.voided') {
@@ -1906,6 +1909,7 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
     $headers = array_change_key_case($request->get_headers(), CASE_LOWER);
     $pp = get_option('eao_paypal_settings', array());
     $webhook_id = (string) ($pp['webhook_id_live'] ?? '');
+    error_log('[EAO PayPal WH] Received');
 
     // Verify via PayPal API if webhook id is set
     if ($webhook_id !== '') {
@@ -1928,8 +1932,10 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
             if (!is_wp_error($resp)) {
                 $res = json_decode(wp_remote_retrieve_body($resp), true);
                 if (empty($res['verification_status']) || $res['verification_status'] !== 'SUCCESS') {
+                    error_log('[EAO PayPal WH] verification failed');
                     return new WP_REST_Response(array('ok' => false, 'reason' => 'verification_failed'), 400);
                 }
+                error_log('[EAO PayPal WH] verification success');
             }
         }
     }
@@ -1940,6 +1946,7 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
     $resource = isset($event['resource']) ? $event['resource'] : array();
     $invoice_id = (string) ($resource['id'] ?? '');
     $reference = (string) ($resource['detail']['reference'] ?? '');
+    error_log('[EAO PayPal WH] type=' . $type . ' invoice=' . $invoice_id . ' ref=' . $reference);
     $order_id = 0;
     if (strpos($reference, 'EAO-') === 0) { $order_id = (int) substr($reference, 4); }
     if (!$order_id && $invoice_id !== '') { $order_id = eao_find_order_id_by_meta('_eao_paypal_invoice_id', $invoice_id); }
@@ -1954,7 +1961,7 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                 $order->save();
                 $order->add_order_note('PayPal invoice paid via webhook.');
                 $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
-                if (!in_array($current, array('processing','completed','shipped'), true)) {
+                if ($current === 'pending') {
                     try { $order->update_status('processing', 'PayPal invoice paid.'); } catch (Exception $e) { /* noop */ }
                 }
             } elseif ($type === 'INVOICING.INVOICE.CANCELLED') {
