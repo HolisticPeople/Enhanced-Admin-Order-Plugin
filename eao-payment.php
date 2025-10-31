@@ -100,18 +100,22 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
     <div id="eao-payment-processing-container">
         <div style="display:flex; gap:16px; align-items:flex-start;">
         <div style="flex:1 1 50%; min-width:420px;">
-        <h3 style="margin:6px 0 8px;">Amount</h3>
         <table class="form-table">
             <tr>
                 <th><label for="eao-pp-amount">Payment Amount</label></th>
                 <td>
                     <input type="number" id="eao-pp-amount" step="0.01" min="0.01" value="<?php echo esc_attr(number_format((float)$amount,2,'.','')); ?>" />
                     <button type="button" id="eao-pp-copy-gt" class="button" style="margin-left:6px;">Copy grand total</button>
+                    <button type="button" id="eao-pp-gateway-settings" class="button" title="Payment Settings" style="margin-left:6px;">
+                        <span class="dashicons dashicons-admin-generic"></span>
+                    </button>
                 </td>
             </tr>
         </table>
+        <hr style="margin:10px 0 14px; border:0; border-top:1px solid #dcdcde;" />
 
         <h3 style="margin:6px 0 8px;">Immediate Payment</h3>
+        <hr style="margin:6px 0 10px; border:0; border-top:1px solid #dcdcde;" />
         <table class="form-table">
             <tr>
                 <th><label for="eao-pp-gateway">Payment Gateway</label></th>
@@ -122,9 +126,6 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                         <option value="paypal">PayPal</option>
                         <option value="authorize">Authorize.net</option>
                     </select>
-                    <button type="button" id="eao-pp-gateway-settings" class="button" style="margin-left:6px;">
-                        <span class="dashicons dashicons-admin-generic"></span>
-                    </button>
                 </td>
             </tr>
         </table>
