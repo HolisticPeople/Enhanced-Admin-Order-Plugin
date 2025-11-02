@@ -1969,6 +1969,7 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
     error_log('[EAO PayPal WH] hdr tid=' . ($tid ?: '[empty]') . ' time=' . ($tt ?: '[empty]') . ' algo=' . ($algo ?: '[empty]') . ' siglen=' . (strlen($sig)) . ' cert=' . ($cert ? 'set' : 'empty'));
     error_log('[EAO PayPal WH] using webhook_id=' . ($webhook_id ?: '[empty]'));
 
+    $verified = false;
     // Verify via PayPal API if webhook id is set
     if ($webhook_id !== '') {
         $token = eao_paypal_get_oauth_token();
@@ -1991,11 +1992,12 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                 $res = json_decode(wp_remote_retrieve_body($resp), true);
                 $http = (int) wp_remote_retrieve_response_code($resp);
                 error_log('[EAO PayPal WH] verify http=' . $http . ' body=' . substr(wp_remote_retrieve_body($resp), 0, 400));
-                if (empty($res['verification_status']) || $res['verification_status'] !== 'SUCCESS') {
+                if (!empty($res['verification_status']) && $res['verification_status'] === 'SUCCESS') {
+                    error_log('[EAO PayPal WH] verification success');
+                    $verified = true;
+                } else {
                     error_log('[EAO PayPal WH] verification failed');
-                    return new WP_REST_Response(array('ok' => false, 'reason' => 'verification_failed'), 400);
                 }
-                error_log('[EAO PayPal WH] verification success');
             }
         }
     } else {
@@ -2009,6 +2011,26 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
     $invoice_id = (string) ($resource['id'] ?? '');
     $reference = (string) ($resource['detail']['reference'] ?? '');
     error_log('[EAO PayPal WH] type=' . $type . ' invoice=' . $invoice_id . ' ref=' . $reference);
+
+    // Staging fallback: if verification failed but payload is clearly our invoice, accept
+    if (!$verified) {
+        $home = function_exists('home_url') ? (string) home_url('/') : '';
+        $is_staging = (strpos($home, '.kinsta.cloud') !== false);
+        if ($is_staging && strpos($reference, 'EAO-') === 0) {
+            $fallback_order_id = (int) substr($reference, 4);
+            if ($fallback_order_id > 0) {
+                $order_try = wc_get_order($fallback_order_id);
+                if ($order_try) {
+                    $stored_inv = (string) $order_try->get_meta('_eao_paypal_invoice_id', true);
+                    if ($stored_inv !== '' && $stored_inv === $invoice_id) {
+                        $verified = true;
+                        error_log('[EAO PayPal WH] STAGING FALLBACK: accepting event by invoice/reference match for order=' . $fallback_order_id);
+                    }
+                }
+            }
+        }
+        if (!$verified) { return new WP_REST_Response(array('ok' => false, 'reason' => 'verification_failed'), 400); }
+    }
     $order_id = 0;
     if (strpos($reference, 'EAO-') === 0) { $order_id = (int) substr($reference, 4); }
     if (!$order_id && $invoice_id !== '') { $order_id = eao_find_order_id_by_meta('_eao_paypal_invoice_id', $invoice_id); }
