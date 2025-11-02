@@ -82,6 +82,10 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
     $first_name = method_exists($order,'get_billing_first_name') ? (string)$order->get_billing_first_name() : '';
     $last_name  = method_exists($order,'get_billing_last_name') ? (string)$order->get_billing_last_name() : '';
     $billing_email = method_exists($order,'get_billing_email') ? (string)$order->get_billing_email() : '';
+    if ($billing_email === '' && method_exists($order,'get_user_id')) {
+        $uid = (int) $order->get_user_id();
+        if ($uid) { $u = get_user_by('id', $uid); if ($u && !empty($u->user_email)) { $billing_email = (string) $u->user_email; } }
+    }
 
     $opts = get_option('eao_stripe_settings', array(
         'test_secret' => '', 'test_publishable' => '', 'live_secret' => '', 'live_publishable' => ''
@@ -269,7 +273,7 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                 <button type="button" id="eao-pp-refresh-status" class="button">Refresh Status</button>
             </p>
             <div id="eao-pp-request-options" style="margin:6px 0 10px 0;">
-                <label>Email to send to: <input type="email" id="eao-pp-request-email" value="<?php echo esc_attr($billing_email); ?>" style="width:260px" /></label>
+                <label id="eao-pp-email-label" style="<?php echo ($has_active_invoice || $pp_has_active_invoice) ? 'display:none;' : ''; ?>">Email to send to: <input type="email" id="eao-pp-request-email" value="<?php echo esc_attr($billing_email); ?>" style="width:260px" /></label>
                 <span style="margin-left:12px;">Amount source:</span>
                 <label style="margin-left:6px;"><input type="radio" name="eao-pp-line-mode" value="grand" checked /> Grand total</label>
                 <label style="margin-left:6px;"><input type="radio" name="eao-pp-line-mode" value="itemized" /> Itemized</label>
@@ -2120,6 +2124,7 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                     $detail_resp2 = wp_remote_get('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($invoice_id), array('headers' => array('Authorization' => 'Bearer ' . $token2, 'Accept' => 'application/json'), 'timeout' => 15));
                 if (!is_wp_error($detail_resp2)) {
                         $d2 = json_decode(wp_remote_retrieve_body($detail_resp2), true);
+                    if (is_array($d2)) { error_log('[EAO PayPal WH] invoice detail keys: ' . implode(',', array_keys($d2))); }
                         if (!empty($d2['amount']['value'])) {
                             $order->update_meta_data('_eao_last_charged_amount_cents', (int) round(((float)$d2['amount']['value']) * 100));
                             if (!empty($d2['amount']['currency_code'])) { $order->update_meta_data('_eao_last_charged_currency', strtoupper((string)$d2['amount']['currency_code'])); }
@@ -2135,10 +2140,13 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                     if (empty($order->get_meta('_eao_paypal_capture_id', true))) {
                         $capture_id = '';
                         if (!empty($d2['payments']) && is_array($d2['payments'])) {
+                            error_log('[EAO PayPal WH] invoice payments sample: ' . substr(wp_json_encode($d2['payments']), 0, 400));
                             foreach ($d2['payments'] as $pay) {
                                 if (!empty($pay['transaction_id'])) { $capture_id = (string)$pay['transaction_id']; break; }
                                 if (!$capture_id && !empty($pay['paypal_transaction_id'])) { $capture_id = (string)$pay['paypal_transaction_id']; break; }
                                 if (!$capture_id && !empty($pay['id'])) { $capture_id = (string)$pay['id']; break; }
+                                if (!$capture_id && !empty($pay['reference_id'])) { $capture_id = (string)$pay['reference_id']; break; }
+                                if (!$capture_id && !empty($pay['paypal_reference_id'])) { $capture_id = (string)$pay['paypal_reference_id']; break; }
                             }
                         }
                         if ($capture_id !== '') { $order->update_meta_data('_eao_paypal_capture_id', $capture_id); $order->save(); }
