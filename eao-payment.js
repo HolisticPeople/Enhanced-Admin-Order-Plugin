@@ -734,10 +734,28 @@
         setTimeout(eaoUpdateRequestButtons, 600);
         setTimeout(eaoUpdateRequestButtons, 1500);
 
+        function eaoDeriveCustomerEmail(){
+            var v = ($('#eao-pp-request-email').val()||'').trim();
+            if (v) return v;
+            var bill = ($('#_billing_email').val()||'').trim();
+            if (bill) return bill;
+            return '';
+        }
+        // Keep email field in sync if billing email changes
+        $(document).on('input change', '#_billing_email', function(){
+            var v = ($('#eao-pp-request-email').val()||'').trim();
+            if (!v) { $('#eao-pp-request-email').val($(this).val()); }
+        });
+
         // Send Stripe invoice
         $('#eao-pp-send-stripe').on('click', function(){
             var orderId = $('#eao-pp-order-id').val();
-            var email = $('#eao-pp-request-email').val() || '';
+            var email = eaoDeriveCustomerEmail();
+            if (!email) {
+                $('#eao-pp-request-email').val('');
+            } else {
+                $('#eao-pp-request-email').val(email);
+            }
             var mode = $('input[name="eao-pp-line-mode"]:checked').val() || 'grand';
             var gateway = $('#eao-pp-gateway').val();
             var $msg = $('#eao-pp-request-messages');
@@ -804,7 +822,12 @@
         // Send PayPal invoice
         $('#eao-pp-send-paypal').on('click', function(){
             var orderId = $('#eao-pp-order-id').val();
-            var email = $('#eao-pp-request-email').val() || '';
+            var email = eaoDeriveCustomerEmail();
+            if (!email) {
+                $('#eao-pp-request-email').val('');
+            } else {
+                $('#eao-pp-request-email').val(email);
+            }
             var mode = $('input[name="eao-pp-line-mode"]:checked').val() || 'grand';
             var $msg = $('#eao-pp-request-messages');
             function getSelectedAmount(){

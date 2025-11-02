@@ -1251,6 +1251,8 @@ function eao_stripe_send_payment_request() {
     if (!$order) { wp_send_json_error(array('message' => 'Order not found')); }
 
     $email = sanitize_email($_POST['email'] ?? '');
+    if ($email === '') { $email = method_exists($order,'get_billing_email') ? (string) $order->get_billing_email() : ''; }
+    if ($email === '' && method_exists($order,'get_user_id')) { $uid = (int) $order->get_user_id(); if ($uid) { $u = get_user_by('id', $uid); if ($u && !empty($u->user_email)) { $email = (string) $u->user_email; } } }
     $mode  = in_array(($_POST['mode'] ?? 'grand'), array('grand','itemized'), true) ? $_POST['mode'] : 'grand';
     $gw    = isset($_POST['gateway']) ? sanitize_text_field($_POST['gateway']) : 'stripe_live';
     $amount_override = isset($_POST['amount_override']) ? floatval($_POST['amount_override']) : 0.0;
@@ -1281,6 +1283,18 @@ function eao_stripe_send_payment_request() {
         $stripe_customer_id = (string) $cust['id'];
         $order->update_meta_data('_eao_stripe_customer_id', $stripe_customer_id);
         $order->save();
+    } else if ($email) {
+        // Ensure existing Stripe customer has an email; update if missing
+        try {
+            $c_resp = wp_remote_get('https://api.stripe.com/v1/customers/' . rawurlencode($stripe_customer_id), array('headers' => array('Authorization' => 'Bearer ' . $secret)));
+            if (!is_wp_error($c_resp)) {
+                $c_body = json_decode(wp_remote_retrieve_body($c_resp), true);
+                $cust_email = is_array($c_body) && !empty($c_body['email']) ? (string) $c_body['email'] : '';
+                if ($cust_email === '') {
+                    wp_remote_post('https://api.stripe.com/v1/customers/' . rawurlencode($stripe_customer_id), array('headers' => $headers, 'body' => array('email' => $email), 'timeout' => 15));
+                }
+            }
+        } catch (Exception $e) { /* noop */ }
     }
 
     // SAFETY: Clear any pending invoice items for this customer (previous failed attempts)
@@ -1442,6 +1456,7 @@ function eao_stripe_send_payment_request() {
     if ($allow_ach) { $pm_types[] = 'us_bank_account'; }
     foreach ($pm_types as $i => $t) { $body['payment_settings[payment_method_types]['.$i.']'] = $t; }
 
+    if ($email) { $body['customer_email'] = $email; }
     $inv_create = wp_remote_post('https://api.stripe.com/v1/invoices', array('headers' => $headers, 'body' => $body, 'timeout' => 25));
     if (is_wp_error($inv_create)) { wp_send_json_error(array('message' => 'Stripe: invoice create failed: '.$inv_create->get_error_message())); }
     $invoice = json_decode(wp_remote_retrieve_body($inv_create), true);
