@@ -1180,7 +1180,8 @@ function eao_payment_process_refund() {
                                 if (!$capture_id && !empty($p['reference_id'])) { $capture_id = (string)$p['reference_id']; break; }
                             }
                         }
-                        if (!$capture_id && !empty($dx['payments']) && is_array($dx['payments']) === false && is_array($dx['payments']['transactions'] ?? null)) {
+                        // Some payloads present payments as an object with a 'transactions' array
+                        if (!$capture_id && isset($dx['payments']['transactions']) && is_array($dx['payments']['transactions'])) {
                             foreach ($dx['payments']['transactions'] as $tx) {
                                 if (!empty($tx['payment_id'])) { $capture_id = (string)$tx['payment_id']; break; }
                                 if (!$capture_id && !empty($tx['transaction_id'])) { $capture_id = (string)$tx['transaction_id']; break; }
@@ -2418,12 +2419,20 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                         if (!empty($d2['payments']) && is_array($d2['payments'])) {
                             error_log('[EAO PayPal WH] invoice payments sample: ' . substr(wp_json_encode($d2['payments']), 0, 400));
                             foreach ($d2['payments'] as $pay) {
+                                if (!is_array($pay)) { continue; }
                                 if (!empty($pay['transaction_id'])) { $capture_id = (string)$pay['transaction_id']; break; }
                                 if (!$capture_id && !empty($pay['paypal_transaction_id'])) { $capture_id = (string)$pay['paypal_transaction_id']; break; }
                                 if (!$capture_id && !empty($pay['id'])) { $capture_id = (string)$pay['id']; break; }
                                 if (!$capture_id && !empty($pay['reference_id'])) { $capture_id = (string)$pay['reference_id']; break; }
                                 if (!$capture_id && !empty($pay['paypal_reference_id'])) { $capture_id = (string)$pay['paypal_reference_id']; break; }
                                 if (!$capture_id && !empty($pay['payment_id'])) { $capture_id = (string)$pay['payment_id']; break; }
+                            }
+                        }
+                        if (!$capture_id && isset($d2['payments']['transactions']) && is_array($d2['payments']['transactions'])) {
+                            foreach ($d2['payments']['transactions'] as $tx) {
+                                if (!empty($tx['payment_id'])) { $capture_id = (string)$tx['payment_id']; break; }
+                                if (!$capture_id && !empty($tx['transaction_id'])) { $capture_id = (string)$tx['transaction_id']; break; }
+                                if (!$capture_id && !empty($tx['id'])) { $capture_id = (string)$tx['id']; break; }
                             }
                         }
                         if ($capture_id !== '') { $order->update_meta_data('_eao_paypal_capture_id', $capture_id); $order->save(); }

@@ -20569,6 +20569,1076 @@ failed. check logs
 
 _**Assistant (gpt-5-high)**_
 
+<think><details><summary>Thought Process</summary>**Executing command for orders**
+
+I’m planning to query the last five orders using WP-CLI on Kinsta. First, I'll run a command to list the latest orders with details like ID, status, and date. Once I get those results, I can analyze them and check the metadata for each order ID. I want to display a few specific meta keys, but I need to remember that the terminal can only run one command at a time, though I can chain them.
+**Running log and order commands**
+
+I’m planning to run a command that will print both logs and WP-CLI outputs. First, I'll show the version lines from the plugin file, then display the last 300 lines of the debug log filtered for specific keywords using grep.
+
+I'll also get the last five orders to check their metadata. To do this, I’ll use an SQL query to fetch the latest order IDs and loop through them in Bash. Since the WP table prefix isn’t known, I'll stick with the common "wp_" but remember that it could be different in Kinsta.
+**Running commands for order data**
+
+I’m preparing to loop through order IDs and run `wp post meta get` for various keys. I'm considering a command to retrieve the EAO version from the plugin file, although it seems complex, so I might simplify it with a combination of head and grep.
+
+Next, I’ll grep the last 500 lines of the logs for specific phrases like “EAO DEBUG” and “Billing email." After that, I’ll list the latest orders and gather their metadata. This command should run successfully, and I’ll provide an explanation about the need for relevant logs and order meta for debugging before executing it.</details></think>
+
+---
+
+I'll inspect the staging logs and latest orders' meta to locate where the billing email is lost and why PayPal refund lacks a capture id. Now I'll run a remote command to fetch debug logs and order meta.
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "cd public && echo 'EAO version:' && head -30 wp-content/plugins/enhanced-admin-order-plugin/enhanced-admin-order-plugin.php | grep -E 'Version:|EAO_PLUGIN_VERSION' && echo '--- Recent EAO debug (last 600 lines) ---' && (tail -n 600 wp-content/debug.log | grep -n -i 'EAO DEBUG\|Billing email\|SAVE PIPELINE\|PayPal refund' || true) && echo '--- Latest shop_order IDs ---' && IDS=\$(wp --allow-root post list --post_type=shop_order --format=ids --order=desc --number=5) && echo \$IDS && for ID in \$IDS; do echo "--- Order \$ID metas ---"; echo -n 'billing_email='; wp --allow-root post meta get \$ID _billing_email; echo -n 'wc_billing_email='; wp --allow-root eval "echo get_post_meta(\$argv[0],'_billing_email',true);" \$ID; echo -n 'paypal_invoice_id='; wp --allow-root post meta get \$ID _eao_paypal_invoice_id; echo -n 'paypal_capture_id='; wp --allow-root post meta get \$ID _eao_paypal_capture_id; echo -n 'paid_cents='; wp --allow-root post meta get \$ID _eao_last_charged_amount_cents; done"
+```
+
+```
+At C:\Users\user\AppData\Local\Temp\ps-script-83548817-dd9d-4e62-9ac7-e4b26c532cdb.ps1:75 char:716
++ ... _email='; wp --allow-root eval "echo get_post_meta(\$argv[0],'_billin ...
++                                                                 ~
+Missing argument in parameter list.
+    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : MissingArgument
+ 
+
+```
+
+---
+
+
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "cd public && echo 'EAO version:' && head -30 wp-content/plugins/enhanced-admin-order-plugin/enhanced-admin-order-plugin.php | grep -E 'Version:|EAO_PLUGIN_VERSION' && echo '--- Recent EAO debug (last 600 lines) ---' && (tail -n 600 wp-content/debug.log | grep -n -i 'EAO DEBUG\|Billing email\|SAVE PIPELINE\|PayPal refund' || true) && echo '--- Latest shop_order IDs ---' && IDS=\$(wp --allow-root post list --post_type=shop_order --format=ids --order=desc --number=5) && echo \$IDS && for ID in \$IDS; do echo "--- Order \$ID metas ---"; echo -n 'billing_email='; wp --allow-root post meta get \$ID _billing_email; echo -n 'paypal_invoice_id='; wp --allow-root post meta get \$ID _eao_paypal_invoice_id; echo -n 'paypal_capture_id='; wp --allow-root post meta get \$ID _eao_paypal_capture_id; echo -n 'paid_cents='; wp --allow-root post meta get \$ID _eao_last_charged_amount_cents; done"
+```
+
+```
+wp : The term 'wp' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the 
+spelling of the name, or if a path was included, verify that the path is correct and try again.
+At C:\Users\user\AppData\Local\Temp\ps-script-b3d46435-8a98-4027-902d-aea5a2e33766.ps1:75 char:403
++ ... || true) && echo '--- Latest shop_order IDs ---' && IDS=\$(wp --allow ...
++                                                                ~~
+    + CategoryInfo          : ObjectNotFound: (wp:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+bash: -c: line 1: syntax error near unexpected token `echo'
+bash: -c: line 1: `cd public && echo 'EAO version:' && head -30 wp-content/plugins/enhanced-admin-order-plugin/enhanced-admin-order-plugin.php | grep -E 'Version:|EAO_PLUGIN_VERSION' && echo '--- Recent EAO debug (last 600 lines) ---' && (tail -n 600 wp-content/debug.log | grep -n -i 'EAO DEBUG\|Billing email\|SAVE PIPELINE\|PayPal refund' || true) && echo '--- Latest shop_order IDs ---' && IDS=\ && echo \ && for ID in \; do echo  --- Order \ metas ---; echo -n 'billing_email='; wp --allow-root post meta get \ _billing_email; echo -n 'paypal_invoice_id='; wp --allow-root post meta get \ _eao_paypal_invoice_id; echo -n 'paypal_capture_id='; wp --allow-root post meta get \ _eao_paypal_capture_id; echo -n 'paid_cents='; wp --allow-root post meta get \ _eao_last_charged_amount_cents; done'
+
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Diagnosing command issues**
+
+I’m noticing an error indicating that the local Windows environment is trying to parse something incorrect. It looks like the 'wp' command isn't recognized in PowerShell, even though it worked earlier with '--allow-root.' This suggests that the issue might stem from backslashes escaping incorrectly, causing 'wp' to attempt execution locally rather than remotely. To simplify things, I'll opt to run smaller commands sequentially using ssh, rather than trying to execute a long chain all at once.
+**Planning command execution**
+
+I’m thinking we should include a status update before each command. The developer instructions suggest parallelizing, but sequential execution might be necessary here. Quoting for "ssh kinsta-staging 'cmd...'" seems fine, but Windows can complicate things with escapes. It’s safer to use single quotes around the remote script, even though PowerShell handles them differently. I’ll write the command to ensure proper execution in bash. For now, let’s start by retrieving logs and then listing IDs using WP CLI.
+**Executing SSH command**
+
+I’m attempting to run an SSH command to check the EAO version and retrieve recent debug information. The command uses a bash line to change to the public directory, then grabs the version details from a specific plugin file. After that, it outputs recent debug logs filtered for specific keywords. I’ll use `run_terminal_cmd` to execute this. Let’s see how it goes and ensure everything functions as expected!</details></think>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "bash -lc 'cd public; echo EAO version:; grep -E "Version:|EAO_PLUGIN_VERSION" -n wp-content/plugins/enhanced-admin-order-plugin/enhanced-admin-order-plugin.php | head -n 2; echo "--- Recent EAO debug (last 600 lines) ---"; tail -n 600 wp-content/debug.log | grep -n -i "EAO DEBUG|Billing email|SAVE PIPELINE|PayPal refund" || true;'"
+```
+
+```
+last : The term 'last' is not recognized as the name of a cmdlet, function, script file, or operable program. Check 
+the spelling of the name, or if a path was included, verify that the path is correct and try again.
+At C:\Users\user\AppData\Local\Temp\ps-script-57982b3b-8ce8-4683-99e2-849b2699b44a.ps1:76 char:222
++ ... rder-plugin.php | head -n 2; echo "--- Recent EAO debug (last 600 lin ...
++                                                              ~~~~
+    + CategoryInfo          : ObjectNotFound: (last:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 
+
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Troubleshooting PowerShell quoting**
+
+I'm dealing with a PowerShell issue where it's interpreting "last 600 lines" in parentheses as a command. The error message that 'last' isn't recognized suggests the double quotes in the remote script aren't escaping correctly. PowerShell probably tries to parse 'last' because of improper quoting. The message points to a specific character, implying it's splitting the quotes. To simplify things, it might be best to avoid phrases like 'last 600 lines' with parentheses altogether.
+**Clarifying PowerShell command issues**
+
+I see that "last 600 lines" actually contains spaces, which is why it was flagged. The issue arose because PowerShell interpreted the parentheses in the command `echo --- Recent EAO debug (last 600 lines) ---` as a function call. The error indicates that 'last' is unknown since PowerShell was trying to parse it incorrectly. To avoid these quoting problems, it looks like we should steer clear of using parentheses in echo lines and just keep things simple!
+**Revising SSH command**
+
+I'm refining the command to avoid parentheses and keep it straightforward. The new version looks like this: 
+
+`ssh kinsta-staging "bash -lc 'cd public; echo EAO version:; grep -E \"Version:|EAO_PLUGIN_VERSION\" -n wp-content/plugins/enhanced-admin-order-plugin/enhanced-admin-order-plugin.php | head -n 2; echo DEBUG SNIP; tail -n 600 wp-content/debug.log | egrep -n -i \"EAO DEBUG|Billing email|SAVE PIPELINE|PayPal refund\" || true;'"`
+
+Now that I've removed the parentheses, I'm ready to run it again and see the results!</details></think>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "bash -lc 'cd public; echo EAO version:; grep -E \"Version:|EAO_PLUGIN_VERSION\" -n wp-content/plugins/enhanced-admin-order-plugin/enhanced-admin-order-plugin.php | head -n 2; echo DEBUG_SNIP; tail -n 600 wp-content/debug.log | egrep -n -i \"EAO DEBUG|Billing email|SAVE PIPELINE|PayPal refund\" || true;'"
+```
+
+```
+EAO_PLUGIN_VERSION\ -n wp-content/plugins/enhanced-admin-order-plugin/enhanced-admin-order-plugin.php | head -n 2; 
+echo DEBUG_SNIP; tail -n 600 wp-content/debug.log | egrep -n -i \EAO : The module 'EAO_PLUGIN_VERSION' could not be 
+loaded. For more information, run 'Import-Module EAO_PLUGIN_VERSION'.
+At C:\Users\user\AppData\Local\Temp\ps-script-ddcc3d82-86a7-4e0e-85c0-e9c9ceca4a1e.ps1:75 char:80
++ ...  \"Version:|EAO_PLUGIN_VERSION\" -n wp-content/plugins/enhanced-admin ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (EAO_PLUGIN_VERS...grep -n -i \EAO:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CouldNotAutoLoadModule
+ 
+
+```
+
+---
+
+<think><details><summary>Thought Process</summary>**Investigating PayPal errors**
+
+I’m looking at a log screenshot showing “PayPal capture reference not found” for an invoice. This error often occurs when our code can’t derive a capture reference, so I need to explore why. It could be an issue with the PayPal API returning a 401 error due to token problems. There’s also a chance the invoice ID is present, but our code isn't running correctly because of variable misdetection. The 'payments' array might be structured deeper than expected, too.
+**Analyzing PayPal payment details**
+
+I’m looking into some previous changes where we tried checking the 'payments' array. If it’s not found, we might need to explore older structures, possibly checking 'transactions' or 'payment_details.' I really want to see the logs to refine this. Since I can't run them, I propose a more robust derivation, possibly using the endpoint '/v2/invoicing/invoices/{id}' to find 'paid_amount' and 'refunds.' We might need to call other specific endpoints to retrieve a capture ID and gather necessary details.
+**Checking order metadata**
+
+I’m considering whether the stored order metadata, like _eao_paypal_invoice_id, exists. It seems we refresh the status and store _eao_paypal_capture_id, which supports the idea that the invoice details might return something only after refreshing. I wonder if we used the client 'api-m.paypal.com' instead of 'api.sandbox.paypal.com,' since the staging environment uses live. The debug failure shows "PayPal capture reference not found," and I’ve added logs indicating the process. Since I can’t run logs, I might need to ask the user to paste them for review.
+**Exploring the capture ID issue**
+
+I see that the instructions suggest avoiding optional confirmation, but we're currently facing a block. One idea is to enhance the code to parse payments from the new 'payment_summary' structure, which includes 'paid_amount.' However, that alone doesn't seem helpful. I could possibly derive the capture ID from the 'PAYMENT.CAPTURE.COMPLETED' webhooks, which should store the meta _eao_paypal_capture_id. 
+
+It’s mentioned that the refund works after clicking "Refresh Status," so the capture ID may only be retrievable when invoice details are updated upon refresh. Our refund attempt might be happening too soon, before the 'payments' object is available.
+**Improving refund logic**
+
+The invoice shows as "PAID," but I suspect the 'payments' field isn't visible immediately. After a refresh, it becomes available, so I need to adjust our code to attempt fetching the capture ID during refund processes. Instead of a single GET call, I’ll implement a retry mechanism. If the capture ID is empty, I’ll call the invoice details and then fallback to the payments endpoint, allowing up to four attempts.
+
+I'll also ensure better billing email handling, ensuring it's set correctly. I'll log attempts and bump the plugin version to 5.2.50 before pushing the changes.</details></think>
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for eao-payment.php</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: eao-payment.php
+@@
+-            $capture_id = (string) $order->get_meta('_eao_paypal_capture_id', true);
+-            error_log('[EAO DEBUG] PayPal refund start for order #' . $order_id . ' capture_meta=' . ($capture_id ?: '(empty)'));
+-            if ($capture_id === '') {
+-                // Attempt to derive capture id from invoice detail
+-                $invoice_id = (string) $order->get_meta('_eao_paypal_invoice_id', true);
+-                error_log('[EAO DEBUG] PayPal refund: deriving capture from invoice ' . ($invoice_id ?: '(none)'));
+-                if ($invoice_id !== '') {
+-                    $det = wp_remote_get('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($invoice_id), array('headers' => array('Authorization' => 'Bearer ' . $token3, 'Accept' => 'application/json'), 'timeout' => 15));
+-                    if (!is_wp_error($det)) {
+-                        $dx = json_decode(wp_remote_retrieve_body($det), true);
+-                        error_log('[EAO DEBUG] PayPal refund: invoice details payments present=' . (!empty($dx['payments']) ? 'yes' : 'no'));
+-                        if (!empty($dx['payments']) && is_array($dx['payments'])) {
+-                            // Newer invoices may return an array of payment objects
+-                            foreach ($dx['payments'] as $p) {
+-                                if (!empty($p['transaction_id'])) { $capture_id = (string)$p['transaction_id']; break; }
+-                                if (!$capture_id && !empty($p['paypal_transaction_id'])) { $capture_id = (string)$p['paypal_transaction_id']; break; }
+-                                if (!$capture_id && !empty($p['payment_id'])) { $capture_id = (string)$p['payment_id']; break; }
+-                                if (!$capture_id && !empty($p['id'])) { $capture_id = (string)$p['id']; break; }
+-                                if (!$capture_id && !empty($p['reference_id'])) { $capture_id = (string)$p['reference_id']; break; }
+-                            }
+-                        }
+-                        if (!$capture_id && !empty($dx['payments']) && is_array($dx['payments']) === false && is_array($dx['payments']['transactions'] ?? null)) {
+-                            // Older invoices may return an object with a transactions array
+-                            foreach ($dx['payments']['transactions'] as $tx) {
+-                                if (!empty($tx['payment_id'])) { $capture_id = (string)$tx['payment_id']; break; }
+-                                if (!$capture_id && !empty($tx['transaction_id'])) { $capture_id = (string)$tx['transaction_id']; break; }
+-                                if (!$capture_id && !empty($tx['id'])) { $capture_id = (string)$tx['id']; break; }
+-                            }
+-                        }
+-                        if ($capture_id !== '') { $order->update_meta_data('_eao_paypal_capture_id', $capture_id); $order->save(); }
+-                        error_log('[EAO DEBUG] PayPal refund: derived capture=' . ($capture_id ?: '(empty)'));
+-                    }
+-                }
+-            }
++            $capture_id = (string) $order->get_meta('_eao_paypal_capture_id', true);
++            error_log('[EAO DEBUG] PayPal refund start for order #' . $order_id . ' capture_meta=' . ($capture_id ?: '(empty)'));
++            if ($capture_id === '') {
++                // Attempt to derive capture id from invoice detail (with short retries and fallback endpoint)
++                $invoice_id = (string) $order->get_meta('_eao_paypal_invoice_id', true);
++                error_log('[EAO DEBUG] PayPal refund: deriving capture from invoice ' . ($invoice_id ?: '(none)'));
++                $headers_det = array('Authorization' => 'Bearer ' . $token3, 'Accept' => 'application/json');
++                for ($attempt = 1; $attempt <= 4 && $capture_id === '' && $invoice_id !== ''; $attempt++) {
++                    error_log('[EAO DEBUG] PayPal refund: derive attempt #' . $attempt);
++                    $det = wp_remote_get('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($invoice_id), array('headers' => $headers_det, 'timeout' => 15));
++                    if (!is_wp_error($det)) {
++                        $dx = json_decode(wp_remote_retrieve_body($det), true);
++                        error_log('[EAO DEBUG] PayPal refund: invoice details payments present=' . (!empty($dx['payments']) ? 'yes' : 'no'));
++                        if (!empty($dx['payments']) && is_array($dx['payments'])) {
++                            foreach ($dx['payments'] as $p) {
++                                if (!empty($p['transaction_id'])) { $capture_id = (string)$p['transaction_id']; break; }
++                                if (!$capture_id && !empty($p['paypal_transaction_id'])) { $capture_id = (string)$p['paypal_transaction_id']; break; }
++                                if (!$capture_id && !empty($p['payment_id'])) { $capture_id = (string)$p['payment_id']; break; }
++                                if (!$capture_id && !empty($p['id'])) { $capture_id = (string)$p['id']; break; }
++                                if (!$capture_id && !empty($p['reference_id'])) { $capture_id = (string)$p['reference_id']; break; }
++                            }
++                        }
++                        if (!$capture_id && !empty($dx['payments']) && is_array($dx['payments']) === false && is_array($dx['payments']['transactions'] ?? null)) {
++                            foreach ($dx['payments']['transactions'] as $tx) {
++                                if (!empty($tx['payment_id'])) { $capture_id = (string)$tx['payment_id']; break; }
++                                if (!$capture_id && !empty($tx['transaction_id'])) { $capture_id = (string)$tx['transaction_id']; break; }
++                                if (!$capture_id && !empty($tx['id'])) { $capture_id = (string)$tx['id']; break; }
++                            }
++                        }
++                    }
++                    if ($capture_id === '') {
++                        // Fallback endpoint: explicit payments listing for invoice
++                        $det2 = wp_remote_get('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($invoice_id) . '/payments', array('headers' => $headers_det, 'timeout' => 15));
++                        if (!is_wp_error($det2)) {
++                            $dx2 = json_decode(wp_remote_retrieve_body($det2), true);
++                            if (is_array($dx2)) {
++                                foreach ($dx2 as $p2) {
++                                    if (!empty($p2['transaction_id'])) { $capture_id = (string)$p2['transaction_id']; break; }
++                                    if (!$capture_id && !empty($p2['paypal_transaction_id'])) { $capture_id = (string)$p2['paypal_transaction_id']; break; }
++                                    if (!$capture_id && !empty($p2['payment_id'])) { $capture_id = (string)$p2['payment_id']; break; }
++                                    if (!$capture_id && !empty($p2['id'])) { $capture_id = (string)$p2['id']; break; }
++                                }
++                            }
++                        }
++                    }
++                    if ($capture_id === '') { sleep(1); }
++                }
++                if ($capture_id !== '') { $order->update_meta_data('_eao_paypal_capture_id', $capture_id); $order->save(); }
++                error_log('[EAO DEBUG] PayPal refund: derived capture=' . ($capture_id ?: '(empty)'));
++            }
+*** End Patch
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for enhanced-admin-order-plugin.php</summary>
+      
+
+```diff
+*** Begin Patch
+*** Update File: enhanced-admin-order-plugin.php
+@@
+- * Version: 5.2.49
++ * Version: 5.2.50
+@@
+-define('EAO_PLUGIN_VERSION', '5.2.49');
++define('EAO_PLUGIN_VERSION', '5.2.50');
+*** End Patch
+```
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 2 files</summary>
+      
+Lint paths:
+
+- `eao-payment.php`
+- `enhanced-admin-order-plugin.php`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: add
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: commit
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+  * message: fix(paypal-refund): retry+fallback to /payments endpoint to derive capture id; add debug logs; bump to 5.2.50
+
+*Result*:
+{"data":{"output":"[dev 3e5ca13] fix(paypal-refund): retry+fallback to /payments endpoint to derive capture id; add debug logs; bump to 5.2.50\n 3 files changed, 415 insertions(+), 9 deletions(-)\n"}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_push**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_push: Update remote refs along with associated objects (git push).
+
+*Parameters*:
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+I couldn’t pull the logs via SSH due to quoting issues on my side, so I shipped more diagnostics and a robustness fix, then redeployed.
+
+- Added focused logs for:
+  - When rendering the metabox: shows billing email source or emptiness.
+  - During save: logs if billing_email is present in payload, when it’s set/ignored, and when filled from customer/meta.
+  - PayPal refunds: attempt number, invoice lookup, whether payments were present, derived capture id, API path used, and response code/debug-id.
+
+- Improved PayPal refunds:
+  - If `_eao_paypal_capture_id` is missing, we now try up to 4 short attempts to derive it.
+  - We hit both endpoints: `/v2/invoicing/invoices/{id}` and the fallback `/v2/invoicing/invoices/{id}/payments`.
+  - Once found, we save it and continue with the refund automatically.
+  - Version bumped and pushed: 5.2.50.
+
+Please reproduce once (send PayPal request, pay it, then go straight to Process refund without pressing Refresh). If it still fails, copy-paste the relevant lines from `wp-content/debug.log` that contain:
+- “EAO DEBUG render_metabox”,
+- “Billing email”,
+- “PayPal refund”.
+
+This will tell me exactly where the email is lost and whether PayPal returned the capture on the first few attempts.
+
+---
+
+_**User (2025-11-02 07:27Z)**_
+
+Are you keeping in mind that after refresh status we do have the information? I think that when we get the notice to change the order status to processed, we can already fill in the capture references
+
+---
+
+_**Assistant (gpt-5-high)**_
+
+<think><details><summary>Thought Process</summary>**Confirming order status updates**
+
+I need to respond to the user's question about whether I'm keeping track of the information that comes after the status refresh. They suggest that once we get the notice to change the order status to processed, we can fill in the capture references. This means we should confirm that our code is set up to store those capture references correctly when the order status updates during a webhook or refresh. Previously, we modified functions to capture these IDs during both events, so we should be good!
+**Addressing capture ID storage issues**
+
+The user proposes that we should store the capture ID when the order status flips to processing due to a paid event, which we've already attempted. However, there's a complication: they still see refund failures until the status refresh. Earlier, we added a fallback during refunds by fetching invoice details again to resolve refresh issues. Conceptually, they want assurance that when an order is marked as paid, we persist the capture ID. I need to check the relevant parts of the code for the functions handling payment parsing. Let's dive into that!</details></think>
+
+---
+
+Tool use: **grep**
+
+<details>
+<summary>Grep for "eao_paypal_webhook_handler|get_invoice_status" • 6 matches</summary>
+
+Output mode: content
+
+
+| File | Content | Line |
+|------|------|------|
+| `.\eao-payment.php` | `add_action('wp_ajax_eao_stripe_get_invoice_status', 'eao_stripe_get_invoice_status');` | L31 |
+| `.\eao-payment.php` | `add_action('wp_ajax_eao_paypal_get_invoice_status', 'eao_paypal_get_invoice_status');` | L36 |
+| `.\eao-payment.php` | `'callback' => 'eao_paypal_webhook_handler',` | L51 |
+| `.\eao-payment.php` | `function eao_stripe_get_invoice_status() \{` | L1632 |
+| `.\eao-payment.php` | `function eao_paypal_get_invoice_status() \{` | L2083 |
+| `.\eao-payment.php` | `function eao_paypal_webhook_handler( WP_REST_Request $request ) \{` | L2312 |
+
+
+</details>
+
+---
+
+Tool use: **read_file**
+
+Read file: eao-payment.php
+
+---
+
+Tool use: **read_file**
+
+Read file: eao-payment.php
+
+---
+
+<think><details><summary>Thought Process</summary>**Finalizing refund logic**
+
+I need to ensure that the capture is persisted before a refund. I’ll mention the new logic where, if an item is still missing, the refund endpoint will derive the ID by fetching invoice details or payments. This should make it more robust. I’ll ask them to test it, and if anything is still missing, to provide the order ID so I can inspect the logs. I want to keep the delivery minimal but clear.</details></think>
+
+---
+
+Yes. We now persist the PayPal capture reference at every “paid” touchpoint:
+
+- Webhook “INVOICING.INVOICE.PAID”: fetches invoice details and saves `_eao_paypal_capture_id` before flipping to Processing.
+- Webhook “PAYMENT.CAPTURE.COMPLETED”: also saves `_eao_paypal_capture_id`.
+- Manual Refresh Status: parses invoice details and saves the capture id.
+
+Additionally, if for any reason the capture id is still missing at refund time, the refund handler now derives it on the fly from the invoice’s payments and proceeds.
+
+If you still see “capture not found” after the order changed to Processing, send me the order ID and I’ll read the new debug lines for that specific flow.
+
+---
+
+_**User (2025-11-02 07:27Z)**_
+
+failed. check for order 124879
+
+---
+
+_**Assistant (gpt-5-high)**_
+
+<think><details><summary>Thought Process</summary>**Analyzing PowerShell command issues**
+
+To succeed, I need to properly wrap the remote command in single quotes for PowerShell or use `ssh -tt "kinsta-staging" bash -lc '...`. I tried referencing the string with `ssh kinsta-staging \"bash -lc 'cd public; ...'\"`, but it failed due to PowerShell misinterpreting 'last.' It appears the error stems from the string "EAO debug (last 600 lines)" in the echo statement. Somehow, PowerShell tries to execute 'last' as a command. It seems a missing newline or semicolon is causing this issue.
+**Addressing debugging command complexities**
+
+Given the repeated issues, I'm thinking we might ask the user to run logs. However, the instructions suggest that I should prefer using tools. I can try to simply tail the `debug.log` and grep for '124879' and EAO while minimizing quoting complexity. I'm considering using `ssh kinsta-staging bash -lc "cd public; tail -n 500 wp-content/debug.log | egrep -n '124879|EAO PayPal|EAO DEBUG|PayPal refund|invoice detail|capture' || true"`, but I want to be cautious with quotes since they might break in Windows. Using single quotes around the egrep pattern could help!
+**Considering remote command execution issues**
+
+The environment is using PowerShell, which complicates how quotes and punctuation are parsed. I think using single quotes around the entire remote command might be safer, like this: `ssh kinsta-staging 'bash -lc "cd public; tail -n 600 wp-content/debug.log | egrep -n -i \"EAO|124879\" || true"'`. However, it's tricky in the cmd-to-PowerShell transition. I could attempt to call functions.run_terminal_cmd again with a simpler command. Alternatively, we could avoid the remote method and ask for the order ID logs instead, but the user specifically asked about 124879. So, running a remote log retrieval seems the best plan.
+**Creating a simplified remote command**
+
+I want to craft a remote command that avoids using quotes inside the argument to prevent PowerShell confusion. My first thought is something like: `ssh kinsta-staging bash -lc "cd public; echo EAO; tail -n 600 wp-content/debug.log | tr -d '\\r' | sed -n 's/\\r$//;/124879\\|EAO PayPal\\|PayPal refund\\|paypal/Ip"`, but it still uses quotes. A simpler approach could be to run: `ssh kinsta-staging 'cat public/wp-content/debug.log | tail -n 600'`. However, since we can't parse it locally, I'd settle for printing the last 600 lines directly. I think I'll go with `ssh kinsta-staging "cd public && tail -n 600 wp-content/debug.log"` because it seems straightforward and likely to work.</details></think>
+
+---
+
+Tool use: **run_terminal_cmd**
+
+```bash
+ssh kinsta-staging "cd public && tail -n 600 wp-content/debug.log"
+```
+
+```
+[02-Nov-2025 20:02:44 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:02:44 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:02:44 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:02:44 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:02:44 UTC] [EAO Customer Addresses] Success response sent manually for customer ID: 5
+[02-Nov-2025 20:02:44 UTC] [EAO FluentCRM AJAX] Getting profile for customer ID: 5, email: amnonlee@gmail.com
+[02-Nov-2025 20:02:44 UTC] [EAO FluentCRM AJAX] Profile HTML found, length: 3652
+[02-Nov-2025 20:02:45 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:02:45 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:02:45 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:02:45 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:02:46 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:02:46 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:02:46 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:02:46 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:02:46 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:02:46 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:02:46 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:02:46 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:02:46 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:02:46 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:02:46 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:02:46 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:02:55 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:02:55 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:02:55 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:02:55 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:02:55 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:02:55 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:02:55 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:02:55 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:02:55 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:02:55 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:02:55 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:02:55 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:02:55 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:02:55 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:02:55 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:02:55 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:02:56 UTC] [EAO Product Search] Success response sent manually with 2 products
+[02-Nov-2025 20:03:04 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:03:04 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:03:04 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:03:05 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] eao_ajax_save_order_details: START
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] SAVE PIPELINE: start
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] SAVE PIPELINE: before basics
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Starting basic order details processing: Processing date, status, customer, and discount
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated order date: From: 2025-11-02 15:02:21 To: 2025-11-02 15:02:00
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated order status: From: pending To: wc-pending
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated customer ID: From: 0 To: 5
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Ensure billing email - current value: (empty)
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Filled missing billing email from customer: email=amnonlee@gmail.com
+[02-Nov-2025 20:03:05 UTC] is_internal_meta_key was called incorrectly. Generic add/update/get meta methods should not be used for internal meta data, including "_billing_email". Use getters and setters. Backtrace: do_action('wp_ajax_eao_save_order_details'), WP_Hook->do_action, WP_Hook->apply_filters, eao_ajax_save_order_details, eao_process_basic_order_details, WC_Data->get_meta, WC_Data->is_internal_meta_key, wc_doing_it_wrong. This message was added in version 3.2.0.
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Filled missing billing email from order meta: email=amnonlee@gmail.com
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Basic order details processing complete: Date: updated, Status: updated, Customer: updated, Discount: unchanged
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] SAVE PIPELINE: after basics
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] SAVE PIPELINE: before items
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] DEBUG: Order items data received: 1 items total
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] NEW-ITEM DETECT: Client items without item_id: 1; unique to add: 1
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Processing new items from currentOrderItems: 1 unique products to add
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Added new product from search: ID 42317 quantity 1, item_id: 256469
+[02-Nov-2025 20:03:05 UTC] [EAO SAVE] eao_apply_admin_config_to_wc_fields: item_id=256469 cfg={"product_id":42317,"name":"Iron (Angstrom), 8 fl. oz., Mother Earth Minerals (ME-Iron-8)","price":24,"price_raw":24,"quantity":1,"sku":"ME-Iron-8","thumbnail_url":"https:\/\/env-holisticpeoplecom-hpdevplus.kinsta.cloud\/wp-content\/uploads\/Iron-Angstrom-8-fl.-oz.-Mother-Earth-Minerals-1-150x150.png","stock_html":"<span class=\"eao-stock-sufficient\">Stock: 20<\/span>","manages_stock":true,"stock_quantity":20,"isExisting":false,"isPending":true,"isPendingDeletion":false,"exclude_gd":false,"discount_percent":0,"discounted_price_fixed":24,"_client_uid":"new_42317_1762113781639_8tqt"}
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Using calculated values: Item ID 256469, base_unit=24, subtotal=24, total=24, discount=0%
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Applied WC native fields to new search item: Item ID: 256469
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Processing existing item updates: 1 items to update
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] FINALIZE: applying global discount only: Item ID 256469
+[02-Nov-2025 20:03:05 UTC] [EAO SAVE] eao_apply_admin_config_to_wc_fields: item_id=256469 cfg={"exclude_gd":false}
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Using calculated values: Item ID 256469, base_unit=24, subtotal=24, total=24, discount=0%
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Recalculating order totals: WC native fields updated, calling calculate_totals()
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Order totals recalculated: New order total: 24.00
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Stored pending points to redeem (no deduction in pending): Pending points: 0, status: pending
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Items processing complete: Added: 1, Deleted: 0, Updated: 0
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] SAVE PIPELINE: after items
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Checking for pending shipping rate: POST data inspection
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] No pending shipping rate found: eao_pending_shipstation_rate not in POST or empty
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Starting address processing: Checking for pending addresses and individual fields
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Address key snapshot: pending_bill=none, selected_bill=default_meta, bill_update=yes | pending_ship=none, selected_ship=default_meta, ship_update=yes
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated billing_first_name: From "" to "Amnon-Test"
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated billing_last_name: From "" to "Manneberg"
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated billing_country: From "" to "US"
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated billing_address_1: From "" to "8781 Saddleback Rd"
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated billing_city: From "" to "Park City"
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated billing_state: From "" to "UT"
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated billing_postcode: From "" to "84098"
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated billing_phone: From "" to "6035577636"
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Incoming individual billing_email field: raw=amnonlee@gmail.com
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated shipping_first_name: From "" to "Amnon"
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated shipping_last_name: From "" to "Manneberg"
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated shipping_country: From "" to "IL"
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated shipping_address_1: From "" to "Moshav Yaad"
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated shipping_city: From "" to "D.N. Misgav"
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated shipping_postcode: From "" to "20155"
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Updated shipping_phone: From "" to "+972-50-6550083"
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Address processing complete: Billing: updated, Shipping: updated, Individual fields: 15
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] SAVE PIPELINE: stored pending points (no balance change), points=0
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] SAVE PIPELINE: before notes
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] Checking for staged notes: POST data inspection
+[02-Nov-2025 20:03:05 UTC] [EAO Save v5.2.50] No staged notes found: eao_staged_notes not in POST
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] SAVE PIPELINE: after notes
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] SAVE PIPELINE: before calculate_totals
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] SAVE PIPELINE: after calculate_totals
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] SAVE PIPELINE: before order->save
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] SAVE PIPELINE: after order->save (took 77 ms)
+[02-Nov-2025 20:03:05 UTC] [EAO Plugin v5.2.50] eao_ajax_save_order_details: SUCCESS
+[02-Nov-2025 20:03:07 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:03:07 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:03:07 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:03:07 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:03:07 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:03:07 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:03:07 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:03:07 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:03:07 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:03:08 UTC]   Item ID 256469: Subtotal=24, Total=24, Discount=0
+[02-Nov-2025 20:03:08 UTC]   Item ID 256469: Name=Iron (Angstrom), 8 fl. oz., Mother Earth Minerals, Quantity=1
+[02-Nov-2025 20:03:08 UTC]   Item ID 256469: Line Subtotal=24, Line Total=24
+[02-Nov-2025 20:03:08 UTC]   Item ID 256469: Meta discount percent=
+[02-Nov-2025 20:03:10 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:03:10 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:03:10 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:03:10 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:03:10 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:03:10 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:03:10 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:03:10 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:03:10 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:03:10 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:03:10 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:03:10 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:03:10 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:03:10 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:03:10 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:03:10 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:03:10 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:03:10 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:03:10 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:03:10 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:03:11 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:03:11 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:03:11 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:03:11 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:03:11 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:03:11 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:03:11 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:03:11 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:03:11 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:03:11 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:03:11 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:03:11 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:03:11 UTC] [EAO FluentCRM AJAX] Getting profile for customer ID: 5, email: amnonlee@gmail.com
+[02-Nov-2025 20:03:11 UTC] [EAO FluentCRM AJAX] Profile HTML found, length: 3652
+[02-Nov-2025 20:03:13 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:03:13 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:03:13 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:03:13 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:03:13 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:03:13 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:03:13 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:03:13 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:03:13 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:03:14 UTC]   Item ID 256469: Subtotal=24, Total=24, Discount=0
+[02-Nov-2025 20:03:14 UTC]   Item ID 256469: Name=Iron (Angstrom), 8 fl. oz., Mother Earth Minerals, Quantity=1
+[02-Nov-2025 20:03:14 UTC]   Item ID 256469: Line Subtotal=24, Line Total=24
+[02-Nov-2025 20:03:14 UTC]   Item ID 256469: Meta discount percent=
+[02-Nov-2025 20:03:40 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:03:40 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:03:40 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:03:40 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:03:40 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:03:40 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:03:40 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:03:40 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:03:40 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:03:40 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:03:40 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:03:40 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:03:40 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:03:40 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:03:40 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:03:40 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:03:40 UTC] [EAO PayPal] Create invoice: order=124879 amount=0.79 USD email=amnonlee@gmail.com
+[02-Nov-2025 20:03:41 UTC] [EAO PayPal] Send attempt invoice=INV2-P5MG-7WFG-CNB9-TQZY
+[02-Nov-2025 20:04:53 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:04:53 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:04:53 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:04:53 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:04:53 UTC] PHP Notice:  Function _load_textdomain_just_in_time was called <strong>incorrectly</strong>. Translation loading for the <code>cartflows</code> domain was triggered too early. This is usually an indicator for some code in the plugin or theme running too early. Translations should be loaded at the <code>init</code> action or later. Please see <a href="https://developer.wordpress.org/advanced-administration/debug/debug-wordpress/">Debugging in WordPress</a> for more information. (This message was added in version 6.7.0.) in /www/holisticpeoplecom_349/public/wp-includes/functions.php on line 6121
+[02-Nov-2025 20:04:53 UTC] PHP Notice:  Function _load_textdomain_just_in_time was called <strong>incorrectly</strong>. Translation loading for the <code>cartflows-pro</code> domain was triggered too early. This is usually an indicator for some code in the plugin or theme running too early. Translations should be loaded at the <code>init</code> action or later. Please see <a href="https://developer.wordpress.org/advanced-administration/debug/debug-wordpress/">Debugging in WordPress</a> for more information. (This message was added in version 6.7.0.) in /www/holisticpeoplecom_349/public/wp-includes/functions.php on line 6121
+[02-Nov-2025 20:04:53 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:04:53 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:04:53 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:04:53 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:04:53 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:04:53 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:04:53 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:04:53 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:04:53 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:04:53 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:04:53 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:04:53 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] eao_display_admin_page called. Current user ID: 8375
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] Current screen ID in eao_display_admin_page: toplevel_page_eao_custom_order_editor_page, HPOS active: yes
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] BEFORE direct call to eao_add_fluentcrm_profile_meta_box_direct.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] TOP OF eao_add_fluentcrm_profile_meta_box_direct REACHED.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] eao_add_fluentcrm_profile_meta_box_direct called for order ID: 124879. Attempting to add fluentcrm_woo_order_widget with direct rendering.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] AFTER direct call to eao_add_fluentcrm_profile_meta_box_direct.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] BEFORE direct call to eao_add_shipstation_api_rates_meta_box.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] eao_shipstation_api_rates_metabox added.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] AFTER direct call to eao_add_shipstation_api_rates_meta_box.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] BEFORE direct call to add Fluent Support metabox.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] EAO_Fluent_Support_Integration class exists.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] FS Integration instance: EXISTS
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] FS Integration is available. Calling add_fluent_support_metabox().
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] AFTER direct call to add Fluent Support metabox.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] AST Pro meta box added to EAO sidebar.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] BEFORE direct call to eao_add_custom_order_notes_meta_box.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] Adding Custom Order Notes meta box for screen: toplevel_page_eao_custom_order_editor_page and order ID: 124879
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] Custom Order Notes meta box ADDED with new title.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] AFTER direct call to eao_add_custom_order_notes_meta_box.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] BEFORE direct call to eao_add_order_products_meta_box.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] eao_order_products_metabox added.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] AFTER direct call to eao_add_order_products_meta_box.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] BEFORE do_action for generic add_meta_boxes.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] AFTER do_action for generic add_meta_boxes.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] Template path: /www/holisticpeoplecom_349/public/wp-content/plugins/enhanced-admin-order-plugin/eao-order-editor-page-template.php, exists: yes
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] Loading template file...
+[02-Nov-2025 20:04:54 UTC] [EAO Billing Debug] Array
+(
+    [order_id] => 124879
+    [getter_phone] => 6035577636
+    [details_phone] => 6035577636
+    [meta_phone] => 6035577636
+    [user_meta_phone] => 
+    [final_phone] => 6035577636
+    [getter_email] => amnonlee@gmail.com
+    [details_email] => amnonlee@gmail.com
+    [meta_email] => amnonlee@gmail.com
+    [final_email] => amnonlee@gmail.com
+)
+
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] eao_render_fluentcrm_actual_profile_html called for order ID: 124879
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] eao_render_fluentcrm_actual_profile_html: Fetching profile for user/email: 5
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] HPOS check via OrderUtil: Active
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] HPOS is active, not setting global $post from order ID.
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] Rendering eao-custom-order-notes content for order ID: 124879
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] Rendered custom add note meta box for order ID: 124879
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] eao_render_custom_order_notes_meta_box_content: Add note HTML length: 1878
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] Template output length: 243189
+[02-Nov-2025 20:04:54 UTC] [EAO Plugin v5.2.50] Environment restored after template load.
+[02-Nov-2025 20:04:54 UTC] [EAO PayPal WH] payload sample={"id":"WH-2RM02553JN5458549-3AK46125R87966105","event_version":"1.0","create_time":"2025-11-02T20:04:46.298Z","resource_type":"invoices","event_type":"INVOICING.INVOICE.PAID","summary":"An invoice is paid, partially paid, or payment is made and is pending.","resource":{"invoice":{"id":"INV2-P5MG-7WFG-CNB9-TQZY","status":"PAID","detail":{"reference":"EAO-124879","currency_code":"USD","note":"Please complete payment for Order #124879. Thank you.","category_code":"SHIPPABLE","invoice_number":"100001657-75","invoice_date":"2025-11-02","payment_term":{"term_type":"DUE_ON_RECEIPT"},"viewed_by_recipi
+[02-Nov-2025 20:04:54 UTC] [EAO PayPal WH] hdr tid=2ff5abab-b827-11f0-b3f3-79e183e2212b time=2025-11-02T20:04:49Z algo=SHA256withRSA siglen=344 cert=set
+[02-Nov-2025 20:04:54 UTC] [EAO PayPal WH] using webhook_id=29G41283MC131252J
+[02-Nov-2025 20:04:54 UTC] [EAO PayPal WH] verify http=200 body={"verification_status":"SUCCESS"}
+[02-Nov-2025 20:04:54 UTC] [EAO PayPal WH] verification success
+[02-Nov-2025 20:04:54 UTC] [EAO PayPal WH] type=INVOICING.INVOICE.PAID invoice=INV2-P5MG-7WFG-CNB9-TQZY ref=EAO-124879
+[02-Nov-2025 20:04:54 UTC] [EAO PayPal WH] invoice detail keys: id,status,detail,invoicer,primary_recipients,items,configuration,amount,due_amount,payments,links,unilateral
+[02-Nov-2025 20:04:54 UTC] [EAO PayPal WH] invoice payments sample: {"paid_amount":{"currency_code":"USD","value":"0.79"},"transactions":[{"type":"PAYPAL","payment_id":"55T37297DY6044326","transaction_type":"SALE","payment_date":"2025-11-02","payment_date_time":"2025-11-02T12:04:33Z","method":"PAYPAL","amount":{"currency_code":"USD","value":"0.79"},"transaction_status":"SUCCESS"}]}
+[02-Nov-2025 20:04:55 UTC] [EAO PayPal WH] Flip to processing: order=124879 prev=pending
+[02-Nov-2025 20:04:55 UTC] is_internal_meta_key was called incorrectly. Generic add/update/get meta methods should not be used for internal meta data, including "_payment_method". Use getters and setters. Backtrace: require('wp-blog-header.php'), wp, WP->main, WP->parse_request, do_action_ref_array('parse_request'), WP_Hook->do_action, WP_Hook->apply_filters, rest_api_loaded, WP_REST_Server->serve_request, WP_REST_Server->dispatch, WP_REST_Server->respond_to_request, {closure}, eao_paypal_webhook_handler, WC_Data->update_meta_data, WC_Data->is_internal_meta_key, wc_doing_it_wrong. This message was added in version 3.2.0.
+[02-Nov-2025 20:04:55 UTC] is_internal_meta_key was called incorrectly. Generic add/update/get meta methods should not be used for internal meta data, including "_payment_method_title". Use getters and setters. Backtrace: require('wp-blog-header.php'), wp, WP->main, WP->parse_request, do_action_ref_array('parse_request'), WP_Hook->do_action, WP_Hook->apply_filters, rest_api_loaded, WP_REST_Server->serve_request, WP_REST_Server->dispatch, WP_REST_Server->respond_to_request, {closure}, eao_paypal_webhook_handler, WC_Data->update_meta_data, WC_Data->is_internal_meta_key, wc_doing_it_wrong. This message was added in version 3.2.0.
+[02-Nov-2025 20:04:59 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:04:59 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:04:59 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:04:59 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:05:00 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:05:00 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:05:00 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:05:00 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:05:00 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:05:00 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:05:00 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:05:00 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:05:00 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:05:01 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:05:01 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:05:01 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:05:01 UTC]   Item ID 256469: Subtotal=24, Total=24, Discount=0
+[02-Nov-2025 20:05:01 UTC]   Item ID 256469: Name=Iron (Angstrom), 8 fl. oz., Mother Earth Minerals, Quantity=1
+[02-Nov-2025 20:05:01 UTC]   Item ID 256469: Line Subtotal=24, Line Total=24
+[02-Nov-2025 20:05:01 UTC]   Item ID 256469: Meta discount percent=
+[02-Nov-2025 20:05:01 UTC]   Item ID 256469: Meta key=_reduced_stock, value=1
+[02-Nov-2025 20:05:01 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:05:01 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:05:01 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:05:01 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:05:01 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:05:02 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:05:02 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:05:02 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:05:02 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:05:02 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:05:02 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:05:02 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:05:02 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:05:02 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:05:02 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:05:02 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:05:02 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:05:02 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:05:02 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:05:02 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:05:02 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:05:02 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] eao_display_admin_page called. Current user ID: 8375
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Current screen ID in eao_display_admin_page: toplevel_page_eao_custom_order_editor_page, HPOS active: yes
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] BEFORE direct call to eao_add_fluentcrm_profile_meta_box_direct.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] TOP OF eao_add_fluentcrm_profile_meta_box_direct REACHED.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] eao_add_fluentcrm_profile_meta_box_direct called for order ID: 124879. Attempting to add fluentcrm_woo_order_widget with direct rendering.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] AFTER direct call to eao_add_fluentcrm_profile_meta_box_direct.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] BEFORE direct call to eao_add_shipstation_api_rates_meta_box.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] eao_shipstation_api_rates_metabox added.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] AFTER direct call to eao_add_shipstation_api_rates_meta_box.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] BEFORE direct call to add Fluent Support metabox.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] EAO_Fluent_Support_Integration class exists.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] FS Integration instance: EXISTS
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] FS Integration is available. Calling add_fluent_support_metabox().
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] AFTER direct call to add Fluent Support metabox.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] AST Pro meta box added to EAO sidebar.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] BEFORE direct call to eao_add_custom_order_notes_meta_box.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Adding Custom Order Notes meta box for screen: toplevel_page_eao_custom_order_editor_page and order ID: 124879
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Custom Order Notes meta box ADDED with new title.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] AFTER direct call to eao_add_custom_order_notes_meta_box.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] BEFORE direct call to eao_add_order_products_meta_box.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] eao_order_products_metabox added.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] AFTER direct call to eao_add_order_products_meta_box.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] BEFORE do_action for generic add_meta_boxes.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] AFTER do_action for generic add_meta_boxes.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Template path: /www/holisticpeoplecom_349/public/wp-content/plugins/enhanced-admin-order-plugin/eao-order-editor-page-template.php, exists: yes
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Loading template file...
+[02-Nov-2025 20:05:03 UTC] [EAO Billing Debug] Array
+(
+    [order_id] => 124879
+    [getter_phone] => 6035577636
+    [details_phone] => 6035577636
+    [meta_phone] => 6035577636
+    [user_meta_phone] => 
+    [final_phone] => 6035577636
+    [getter_email] => amnonlee@gmail.com
+    [details_email] => amnonlee@gmail.com
+    [meta_email] => amnonlee@gmail.com
+    [final_email] => amnonlee@gmail.com
+)
+
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] eao_render_fluentcrm_actual_profile_html called for order ID: 124879
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] eao_render_fluentcrm_actual_profile_html: Fetching profile for user/email: 5
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] HPOS check via OrderUtil: Active
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] HPOS is active, not setting global $post from order ID.
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Rendering eao-custom-order-notes content for order ID: 124879
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Rendered custom add note meta box for order ID: 124879
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] eao_render_custom_order_notes_meta_box_content: Add note HTML length: 1878
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Template output length: 244172
+[02-Nov-2025 20:05:03 UTC] [EAO Plugin v5.2.50] Environment restored after template load.
+[02-Nov-2025 20:05:03 UTC] [EAO ShipStation Debug] API test completed after: 1.2428572177887 seconds
+[02-Nov-2025 20:05:08 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:05:08 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:05:08 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:05:09 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:05:09 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:05:09 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:05:09 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:05:09 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:05:09 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:05:09 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:05:09 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:05:09 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:05:09 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:05:10 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:05:10 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:05:10 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:05:10 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:05:10 UTC]   Item ID 256469: Subtotal=24, Total=24, Discount=0
+[02-Nov-2025 20:05:10 UTC]   Item ID 256469: Name=Iron (Angstrom), 8 fl. oz., Mother Earth Minerals, Quantity=1
+[02-Nov-2025 20:05:10 UTC]   Item ID 256469: Line Subtotal=24, Line Total=24
+[02-Nov-2025 20:05:10 UTC]   Item ID 256469: Meta discount percent=
+[02-Nov-2025 20:05:10 UTC]   Item ID 256469: Meta key=_reduced_stock, value=1
+[02-Nov-2025 20:05:10 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:05:10 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:05:10 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:05:10 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:05:10 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:05:10 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:05:10 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:05:10 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:05:10 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:05:10 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:05:10 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:05:10 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:05:10 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:05:10 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:05:10 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:05:11 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:05:11 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:05:11 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:05:11 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:05:11 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:05:11 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:05:11 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:05:11 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:05:11 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:05:11 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:05:11 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:05:11 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:05:11 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:05:13 UTC] [EAO ShipStation Debug] API test completed after: 1.3371460437775 seconds
+[02-Nov-2025 20:05:19 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:05:19 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:05:19 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:05:19 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:05:19 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:05:19 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:05:19 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:05:19 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:05:19 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:05:19 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:05:19 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:05:19 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:05:19 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:05:19 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:05:19 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:05:19 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:05:25 UTC] [EAO Fluent Support] eao_fluent_support_integration function called
+[02-Nov-2025 20:05:25 UTC] [EAO Fluent Support] Starting availability check...
+[02-Nov-2025 20:05:25 UTC] [EAO Fluent Support] Detection results: FLUENT_SUPPORT_VERSION constant found: 1.9.2; FluentSupportApi function found; FluentSupport Helper class found; FluentSupport App class found; Found in active plugins: fluent-support-pro/fluent-support-pro.php; Found in active plugins: fluent-support/fluent-support.php
+[02-Nov-2025 20:05:25 UTC] [EAO] Admin Columns integration initialized successfully
+[02-Nov-2025 20:05:25 UTC] [EAO Plugin v5.2.50] Starting Enhanced Admin Order Plugin initialization
+[02-Nov-2025 20:05:25 UTC] [EAO Plugin v5.2.50] Registering AJAX handlers...
+[02-Nov-2025 20:05:25 UTC] [EAO Plugin v5.2.50] Registered eao_save_order_details handler
+[02-Nov-2025 20:05:25 UTC] [EAO Plugin v5.2.50] Registered eao_add_order_note handler
+[02-Nov-2025 20:05:25 UTC] [EAO Plugin v5.2.50] Registered eao_refresh_order_notes handler
+[02-Nov-2025 20:05:25 UTC] [EAO Plugin v5.2.50] ShipStation test connection handler available
+[02-Nov-2025 20:05:25 UTC] [EAO Plugin v5.2.50] ShipStation get rates handler available
+[02-Nov-2025 20:05:25 UTC] [EAO Plugin v5.2.50] Product search handler available
+[02-Nov-2025 20:05:25 UTC] [EAO Plugin v5.2.50] Customer search handler available
+[02-Nov-2025 20:05:25 UTC] [EAO Plugin v5.2.50] WARNING: Custom order note handler not found
+[02-Nov-2025 20:05:25 UTC] [EAO Plugin v5.2.50] AJAX handlers registration completed
+[02-Nov-2025 20:05:25 UTC] [EAO Plugin v5.2.50] Enhanced Admin Order Plugin initialized successfully
+[02-Nov-2025 20:05:26 UTC] is_internal_meta_key was called incorrectly. Generic add/update/get meta methods should not be used for internal meta data, including "_payment_method". Use getters and setters. Backtrace: do_action('wp_ajax_eao_payment_process_refund'), WP_Hook->do_action, WP_Hook->apply_filters, eao_payment_process_refund, eao_payment_locate_wc_gateway_for_order, WC_Data->get_meta, WC_Data->is_internal_meta_key, wc_doing_it_wrong. This message was added in version 3.2.0.
+[02-Nov-2025 20:05:26 UTC] [EAO DEBUG] PayPal refund start for order #124879 capture_meta=(empty)
+[02-Nov-2025 20:05:26 UTC] [EAO DEBUG] PayPal refund: deriving capture from invoice INV2-P5MG-7WFG-CNB9-TQZY
+[02-Nov-2025 20:05:26 UTC] [EAO DEBUG] PayPal refund: derive attempt #1
+[02-Nov-2025 20:05:26 UTC] [EAO DEBUG] PayPal refund: invoice details payments present=yes
+[02-Nov-2025 20:05:27 UTC] [EAO DEBUG] PayPal refund: derive attempt #2
+[02-Nov-2025 20:05:27 UTC] [EAO DEBUG] PayPal refund: invoice details payments present=yes
+[02-Nov-2025 20:05:29 UTC] [EAO DEBUG] PayPal refund: derive attempt #3
+[02-Nov-2025 20:05:29 UTC] [EAO DEBUG] PayPal refund: invoice details payments present=yes
+[02-Nov-2025 20:05:30 UTC] [EAO DEBUG] PayPal refund: derive attempt #4
+[02-Nov-2025 20:05:30 UTC] [EAO DEBUG] PayPal refund: invoice details payments present=yes
+[02-Nov-2025 20:05:31 UTC] [EAO DEBUG] PayPal refund: derived capture=(empty)
+
+```
+
+---
+
 
 
 ---
