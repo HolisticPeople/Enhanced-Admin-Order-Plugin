@@ -867,6 +867,20 @@ function eao_payment_describe_order_gateway($order) {
         return $result;
     }
 
+    // EAO Stripe Invoice detection
+    $st_inv_id = (string) $order->get_meta('_eao_stripe_invoice_id', true);
+    if ($st_inv_id !== '') {
+        $mode_meta = strtolower((string) $order->get_meta('_eao_stripe_payment_mode'));
+        $mode = ($mode_meta === 'test') ? 'test' : 'live';
+        $result['id'] = 'eao_stripe_' . $mode;
+        $result['source'] = 'eao_stripe_invoice';
+        $result['label'] = 'Stripe (EAO ' . (($mode === 'test') ? 'Test' : 'Live') . ')';
+        $result['mode'] = $mode;
+        $result['reference'] = $st_inv_id;
+        $result['message'] = 'Gateway for this order: ' . $result['label'] . '. Refunds will be sent through the Enhanced Admin Order Stripe API. Reference: ' . $st_inv_id . '.';
+        return $result;
+    }
+
     $resolution = eao_payment_locate_wc_gateway_for_order($order);
     if (!empty($resolution['id'])) {
         $result['id'] = (string) $resolution['id'];
@@ -1472,6 +1486,7 @@ function eao_stripe_send_payment_request() {
     $order->update_meta_data('_eao_stripe_invoice_id', (string) $sent['id']);
     $order->update_meta_data('_eao_stripe_invoice_url', (string) ($sent['hosted_invoice_url'] ?? ''));
     $order->update_meta_data('_eao_stripe_invoice_status', (string) ($sent['status'] ?? 'open'));
+    $order->update_meta_data('_eao_stripe_payment_mode', ($gw === 'stripe_live') ? 'live' : 'test');
     $order->save();
     $order->add_order_note('Stripe payment request sent. Invoice #' . ($sent['number'] ?? $sent['id']));
 
@@ -1536,9 +1551,18 @@ function eao_stripe_get_invoice_status() {
     if (strtolower($status) === 'paid') {
         $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
         $is_pending_like = in_array($current, array('pending','pending-payment'), true);
+        $paid_cents = isset($body['amount_paid']) ? (int) $body['amount_paid'] : 0;
+        $paid_text = $paid_cents ? (' ($' . number_format($paid_cents/100, 2) . ')') : '';
         if ($is_pending_like) {
-            try { $order->update_status('processing', 'Stripe invoice paid (manual refresh).'); } catch (Exception $e) { /* noop */ }
+            try { $order->update_status('processing', 'Stripe invoice paid' . $paid_text . ' (manual refresh).'); } catch (Exception $e) { /* noop */ }
+        } else {
+            $order->add_order_note('Stripe invoice paid' . $paid_text . ' (manual refresh).');
         }
+        // Persist gateway identity for refunds/labels
+        $order->update_meta_data('_eao_payment_gateway', ($gw === 'stripe_live') ? 'stripe_live' : 'stripe_test');
+        $order->update_meta_data('_payment_method', ($gw === 'stripe_live') ? 'eao_stripe_live' : 'eao_stripe_test');
+        $order->update_meta_data('_payment_method_title', 'Stripe (EAO ' . (($gw === 'stripe_live') ? 'Live' : 'Test') . ')');
+        $order->save();
     }
     // Persist paid amount when available
     if (!empty($body['amount_paid'])) {
@@ -2051,14 +2075,27 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
                 if ($stored !== $invoice_id) { return new WP_REST_Response(array('ok' => true, 'ignored' => 'invoice_mismatch')); }
                 if ($type === 'invoice.paid') {
                     $order->update_meta_data('_eao_stripe_invoice_status', 'paid');
+                    // Persist paid amount if present
+                    if (!empty($object['amount_paid'])) {
+                        $order->update_meta_data('_eao_last_charged_amount_cents', (int) $object['amount_paid']);
+                        if (!empty($object['currency'])) { $order->update_meta_data('_eao_last_charged_currency', strtoupper((string)$object['currency'])); }
+                    }
                     $order->save();
-                    $order->add_order_note('Stripe invoice paid via webhook.');
+                    $paid_text = '';
+                    if (!empty($object['amount_paid'])) { $paid_text = ' ($' . number_format(((int)$object['amount_paid'])/100, 2) . ')'; }
                     // Move order to Processing only from Pending
                     $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
                     $is_pending_like = in_array($current, array('pending','pending-payment'), true);
                     if ($is_pending_like) {
-                        try { $order->update_status('processing', 'Stripe invoice paid.'); } catch (Exception $e) { /* noop */ }
+                        try { $order->update_status('processing', 'Stripe invoice paid' . $paid_text . '.'); } catch (Exception $e) { /* noop */ }
+                    } else {
+                        $order->add_order_note('Stripe invoice paid' . $paid_text . '.');
                     }
+                    // Persist gateway identity for refunds/labels
+                    $order->update_meta_data('_eao_payment_gateway', 'stripe_live');
+                    $order->update_meta_data('_payment_method', 'eao_stripe_live');
+                    $order->update_meta_data('_payment_method_title', 'Stripe (EAO Live)');
+                    $order->save();
                 } elseif ($type === 'invoice.voided') {
                     $order->update_meta_data('_eao_stripe_invoice_status', 'void');
                     $order->save();
