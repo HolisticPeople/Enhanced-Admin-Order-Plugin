@@ -1,3 +1,46 @@
+        // Save Stripe-only webhook settings
+        $('#eao-pp-save-stripe-webhooks').on('click', function(){
+            var $btn = $(this);
+            var $msg = $('#eao-pp-messages');
+            $btn.prop('disabled', true).text('Saving...');
+            $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
+                action: 'eao_payment_stripe_webhooks_save',
+                nonce: $('#eao_payment_mockup_nonce').val(),
+                webhook_url_live: $('#eao-stripe-webhook-url-live').val(),
+                webhook_url_staging: $('#eao-stripe-webhook-url-stg').val(),
+                webhook_signing_secret_live: $('#eao-stripe-webhook-secret-live').val() || $('#eao-pp-stripe-webhook-secret-live2').val(),
+                webhook_signing_secret_staging: $('#eao-pp-stripe-webhook-secret-staging').val(),
+                webhook_env: $('#eao-webhook-env-stripe').val()
+            }, function(resp){
+                if (resp && resp.success) {
+                    $msg.html('<div class="notice notice-success"><p>Stripe webhook settings saved.</p></div>');
+                } else {
+                    $msg.html('<div class="notice notice-error"><p>' + (resp && resp.data && resp.data.message ? resp.data.message : 'Error saving') + '</p></div>');
+                }
+            }, 'json').always(function(){ $btn.prop('disabled', false).text('Save Stripe Webhooks'); });
+        });
+
+        // Save PayPal-only webhook settings
+        $('#eao-pp-save-paypal-webhooks').on('click', function(){
+            var $btn = $(this);
+            var $msg = $('#eao-pp-messages');
+            $btn.prop('disabled', true).text('Saving...');
+            $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
+                action: 'eao_payment_paypal_webhooks_save',
+                nonce: $('#eao_payment_mockup_nonce').val(),
+                webhook_url_live: $('#eao-paypal-webhook-url-live').val(),
+                webhook_url_staging: $('#eao-paypal-webhook-url-stg').val(),
+                webhook_id_live: $('#eao-pp-paypal-webhook-id-live2').val(),
+                webhook_id_staging: $('#eao-pp-paypal-webhook-id-staging').val(),
+                webhook_env: $('#eao-webhook-env-paypal').val()
+            }, function(resp){
+                if (resp && resp.success) {
+                    $msg.html('<div class="notice notice-success"><p>PayPal webhook settings saved.</p></div>');
+                } else {
+                    $msg.html('<div class="notice notice-error"><p>' + (resp && resp.data && resp.data.message ? resp.data.message : 'Error saving') + '</p></div>');
+                }
+            }, 'json').always(function(){ $btn.prop('disabled', false).text('Save PayPal Webhooks'); });
+        });
 (function($){
     'use strict';
     // Load Stripe.js dynamically if not present
