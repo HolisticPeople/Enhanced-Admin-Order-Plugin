@@ -2,7 +2,11 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
+<<<<<<< HEAD
  * Version: 5.2.1
+=======
+ * Version: 5.2.52
+>>>>>>> dev
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -13,7 +17,11 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin version constant (v5.1.29: broaden YITH unhook across priorities; message tweak)
+<<<<<<< HEAD
 define('EAO_PLUGIN_VERSION', '5.2.1');
+=======
+define('EAO_PLUGIN_VERSION', '5.2.52');
+>>>>>>> dev
 
 /**
  * Check if we should load EAO functionality
@@ -258,6 +266,30 @@ if ( eao_should_load() ) {
         add_action('add_meta_boxes', 'eao_add_payment_processing_metabox', 40);
     }
 } // End admin-only module loading
+
+// Always expose REST webhook endpoints (load lazily to avoid frontend overhead)
+add_action('rest_api_init', function(){
+    register_rest_route('eao/v1', '/stripe/webhook', array(
+        'methods' => 'POST',
+        'permission_callback' => '__return_true',
+        'callback' => function( $request ) {
+            if (!function_exists('eao_stripe_webhook_handler')) {
+                if ( file_exists( EAO_PLUGIN_DIR . 'eao-payment.php' ) ) { require_once EAO_PLUGIN_DIR . 'eao-payment.php'; }
+            }
+            return function_exists('eao_stripe_webhook_handler') ? eao_stripe_webhook_handler( $request ) : new WP_REST_Response(array('ok'=>false), 500);
+        }
+    ));
+    register_rest_route('eao/v1', '/paypal/webhook', array(
+        'methods' => 'POST',
+        'permission_callback' => '__return_true',
+        'callback' => function( $request ) {
+            if (!function_exists('eao_paypal_webhook_handler')) {
+                if ( file_exists( EAO_PLUGIN_DIR . 'eao-payment.php' ) ) { require_once EAO_PLUGIN_DIR . 'eao-payment.php'; }
+            }
+            return function_exists('eao_paypal_webhook_handler') ? eao_paypal_webhook_handler( $request ) : new WP_REST_Response(array('ok'=>false), 500);
+        }
+    ));
+});
 
 /**
  * Enable enhanced order editing by hijacking the default order screen.

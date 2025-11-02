@@ -994,8 +994,9 @@ function eao_process_address_updates($order, $post_data) {
                         $setter = 'set_billing_' . $key;
                         if (method_exists($order, $setter)) {
                             try {
-                                $old_value = $order->{'get_billing_' . $key}();
                                 $new_value = sanitize_text_field($value);
+                                if ($new_value === '' || $new_value === null) { continue; }
+                                $old_value = $order->{'get_billing_' . $key}();
                                 if ($old_value !== $new_value) {
                                     $order->{$setter}($new_value);
                                     $result['address_updated'] = true;
@@ -1017,8 +1018,9 @@ function eao_process_address_updates($order, $post_data) {
                     $setter = 'set_billing_' . $key;
                     if (method_exists($order, $setter)) {
                         try {
-                            $old_value = $order->{'get_billing_' . $key}();
                             $new_value = sanitize_text_field($value);
+                            if ($new_value === '' || $new_value === null) { continue; }
+                            $old_value = $order->{'get_billing_' . $key}();
                             if ($old_value !== $new_value) {
                                 $order->{$setter}($new_value);
                                 $result['address_updated'] = true;
@@ -1230,8 +1232,9 @@ function eao_process_address_updates($order, $post_data) {
                 $result['individual_fields_processed']++;
             } elseif (method_exists($order, $setter)) {
                 try {
-                    $old_value = $order->{'get_billing_' . $field_key}();
                     $new_value = sanitize_text_field(wp_unslash($post_value));
+                    if ($new_value === '' || $new_value === null) { continue; }
+                    $old_value = $order->{'get_billing_' . $field_key}();
                     if ($old_value !== $new_value) {
                         $order->{$setter}($new_value);
                         $result['address_updated'] = true;
@@ -1271,6 +1274,7 @@ function eao_process_address_updates($order, $post_data) {
                 : substr($post_key, strlen('shipping_'));
             $setter = 'set_shipping_' . $field_key;
             $new_value = sanitize_text_field(wp_unslash($post_value));
+            if ($new_value === '' || $new_value === null) { continue; }
 
             if ($is_thwma_shipping_key && class_exists('THWMA_Utils')) {
                 $shipping_updates_for_thwma[$field_key] = $new_value;
@@ -1423,6 +1427,31 @@ function eao_process_basic_order_details($order, $post_data) {
             $result['customer_updated'] = true;
             eao_log_save_operation('Updated customer ID', 'From: ' . $old_customer_id . ' To: ' . $customer_id);
         }
+
+        // --- Ensure billing email is populated when saving ---
+    try {
+        $current_email = method_exists($order, 'get_billing_email') ? (string) $order->get_billing_email() : '';
+            if ($current_email === '') {
+                $candidate_id = $order->get_customer_id() ? $order->get_customer_id() : $customer_id;
+                if ($candidate_id) {
+                    $u = get_user_by('id', $candidate_id);
+                    if ($u && !empty($u->user_email)) {
+                        if (method_exists($order, 'set_billing_email')) {
+                            $order->set_billing_email($u->user_email);
+                            $result['basics_updated'] = true;
+                        }
+                    }
+                }
+                // Fallback to existing order meta if present
+                if ($current_email === '' && method_exists($order, 'get_meta')) {
+                    $meta_email = (string) $order->get_meta('_billing_email', true);
+                    if ($meta_email !== '' && method_exists($order, 'set_billing_email')) {
+                        $order->set_billing_email($meta_email);
+                        $result['basics_updated'] = true;
+                    }
+                }
+        }
+        } catch (Exception $e) { /* no-op */ }
 
         // --- Process Global Discount Percentage ---
         if ($global_order_discount_percent > 0 && $global_order_discount_percent <= 100) {
