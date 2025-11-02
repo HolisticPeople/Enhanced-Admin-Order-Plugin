@@ -2015,13 +2015,12 @@ function eao_paypal_get_invoice_status() {
         if ($is_pending_like) {
             try {
                 $order->update_status('processing', $note);
-                error_log('[EAO PayPal Refresh] Flip to processing: order=' . $order_id . ' prev=' . $current);
             } catch (Exception $e) {
-                error_log('[EAO PayPal Refresh] Flip failed: order=' . $order_id . ' err=' . $e->getMessage());
+                
             }
         } else {
             $order->add_order_note($note);
-            error_log('[EAO PayPal Refresh] No flip (status not pending-like): order=' . $order_id . ' current=' . $current);
+            
         }
         // Persist gateway identity for refunds/labels
         $order->update_meta_data('_eao_payment_gateway', 'paypal_invoice');
@@ -2054,7 +2053,7 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
     $sig_header = $request->get_header('stripe-signature');
     $settings = get_option('eao_stripe_settings', array());
     $secret = (string) ($settings['webhook_signing_secret_live'] ?? '');
-    error_log('[EAO Stripe WH] Received');
+    
 
     // Basic signature verification (tolerance 5 minutes)
     if ($secret !== '' && $sig_header) {
@@ -2069,7 +2068,6 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
         $signed_payload = $ts . '.' . $payload;
         $expected = hash_hmac('sha256', $signed_payload, $secret);
         if (!hash_equals($expected, $v1)) {
-            error_log('[EAO Stripe WH] Bad signature');
             return new WP_REST_Response(array('ok' => false, 'reason' => 'bad_signature'), 400);
         }
     }
@@ -2079,7 +2077,7 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
 
     $type = (string) $event['type'];
     $object = isset($event['data']['object']) ? $event['data']['object'] : array();
-    error_log('[EAO Stripe WH] type=' . $type . ' invoice=' . (string)($object['id'] ?? ''));
+    
 
     // Only handle EAO invoice events
     if (strpos($type, 'invoice.') === 0) {
@@ -2160,7 +2158,7 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
     $headers = array_change_key_case($request->get_headers(), CASE_LOWER);
     $pp = get_option('eao_paypal_settings', array());
     $webhook_id = (string) ($pp['webhook_id_live'] ?? '');
-    error_log('[EAO PayPal WH] Received');
+    
     if (!empty($body)) { error_log('[EAO PayPal WH] payload sample=' . substr($body, 0, 600)); }
 
     // Log essential header presence for troubleshooting
