@@ -1876,6 +1876,7 @@ function eao_paypal_get_invoice_status() {
     if (is_wp_error($resp)) { wp_send_json_error(array('message' => 'PayPal: status fetch failed: ' . $resp->get_error_message())); }
     $body = json_decode(wp_remote_retrieve_body($resp), true);
     if (!is_array($body) || empty($body['status'])) { wp_send_json_error(array('message' => 'PayPal: status fetch failed')); }
+    if (!empty($body['payments'])) { error_log('[EAO PayPal] Invoice detail payments sample: ' . substr(wp_json_encode($body['payments']), 0, 400)); }
     $status = (string) $body['status'];
     $order->update_meta_data('_eao_paypal_invoice_status', $status);
     if (!empty($body['links']) && is_array($body['links'])) {
@@ -2181,6 +2182,20 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                     if (!empty($resource['amount']['value'])) { $amt_text = '$' . number_format((float) $resource['amount']['value'], 2); }
                     $ord->add_order_note('PayPal refund completed' . ($amt_text ? ' (' . $amt_text . ')' : '') . ' via webhook.');
                 }
+            }
+        }
+    }
+
+    // Payment capture completed: try to associate capture id to invoice/order for future refunds
+    if ($type === 'PAYMENT.CAPTURE.COMPLETED') {
+        $cap_id = (string) ($resource['id'] ?? '');
+        $related_invoice = (string) ($resource['supplementary_data']['related_ids']['invoice_id'] ?? '');
+        error_log('[EAO PayPal WH] capture.completed id=' . $cap_id . ' inv=' . $related_invoice);
+        if ($cap_id !== '' && $related_invoice !== '') {
+            $oid = eao_find_order_id_by_meta('_eao_paypal_invoice_id', $related_invoice);
+            if ($oid) {
+                $ord = wc_get_order($oid);
+                if ($ord) { $ord->update_meta_data('_eao_paypal_capture_id', $cap_id); $ord->save(); }
             }
         }
     }
