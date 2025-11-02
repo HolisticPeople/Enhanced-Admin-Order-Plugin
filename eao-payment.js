@@ -1,5 +1,17 @@
-        // Save Stripe-only webhook settings
-        $('#eao-pp-save-stripe-webhooks').on('click', function(){
+(function($){
+    'use strict';
+    // Load Stripe.js dynamically if not present
+    function loadStripeJs(cb){
+        if (window.Stripe) { cb(); return; }
+        var s = document.createElement('script');
+        s.src = 'https://js.stripe.com/v3/';
+        s.onload = cb; document.head.appendChild(s);
+    }
+    $(document).ready(function(){
+        var $container = $('#eao-payment-processing-container');
+        if (!$container.length) return;
+        // Save Stripe-only webhook settings (delegate to ensure handler binds even if panel is hidden)
+        $(document).on('click', '#eao-pp-save-stripe-webhooks', function(){
             var $btn = $(this);
             var $msg = $('#eao-pp-messages');
             $btn.prop('disabled', true).text('Saving...');
@@ -21,7 +33,7 @@
         });
 
         // Save PayPal-only webhook settings
-        $('#eao-pp-save-paypal-webhooks').on('click', function(){
+        $(document).on('click', '#eao-pp-save-paypal-webhooks', function(){
             var $btn = $(this);
             var $msg = $('#eao-pp-messages');
             $btn.prop('disabled', true).text('Saving...');
@@ -41,18 +53,6 @@
                 }
             }, 'json').always(function(){ $btn.prop('disabled', false).text('Save PayPal Webhooks'); });
         });
-(function($){
-    'use strict';
-    // Load Stripe.js dynamically if not present
-    function loadStripeJs(cb){
-        if (window.Stripe) { cb(); return; }
-        var s = document.createElement('script');
-        s.src = 'https://js.stripe.com/v3/';
-        s.onload = cb; document.head.appendChild(s);
-    }
-    $(document).ready(function(){
-        var $container = $('#eao-payment-processing-container');
-        if (!$container.length) return;
         var $gatewaySummary = $("#eao-refunds-gateway-summary");
         var $gatewayLabel = $("#eao-refunds-gateway-label-text");
         var gatewayState = null;
@@ -114,8 +114,15 @@
             renderGatewayState();
         }
 
-        $('#eao-pp-gateway-settings').on('click', function(){
-            $('#eao-pp-settings-panel').slideToggle(150);
+        $('#eao-pp-gateway-settings').on('click', function(e){
+            e.preventDefault();
+            var $panel = $('#eao-pp-settings-panel');
+            var willShow = $panel.is(':hidden');
+            $panel.stop(true,true).slideToggle(150, function(){
+                if (willShow) {
+                    try { $('html,body').animate({ scrollTop: $panel.offset().top - 80 }, 200); } catch(_){ }
+                }
+            });
         });
         
         // Refresh Status
