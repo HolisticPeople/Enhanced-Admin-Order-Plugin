@@ -1822,10 +1822,24 @@ function eao_paypal_get_invoice_status() {
     }
     // Try to extract paid/total amount from response for UI and notes
     $paid_cents = 0; $currency = '';
-    if (!empty($body['amount']) && is_array($body['amount']) && isset($body['amount']['value'])) {
+    // payment_summary.paid_amount
+    if (!empty($body['payment_summary']['paid_amount']['value'])) {
+        $paid_cents = (int) round(((float) $body['payment_summary']['paid_amount']['value']) * 100);
+        $currency = isset($body['payment_summary']['paid_amount']['currency_code']) ? strtoupper((string) $body['payment_summary']['paid_amount']['currency_code']) : '';
+    }
+    // payments[0].amount
+    if ($paid_cents === 0 && !empty($body['payments']) && is_array($body['payments'])) {
+        $p = $body['payments'][0] ?? array();
+        if (!empty($p['amount']['value'])) {
+            $paid_cents = (int) round(((float) $p['amount']['value']) * 100);
+            $currency = isset($p['amount']['currency_code']) ? strtoupper((string) $p['amount']['currency_code']) : '';
+        }
+    }
+    // amount or total_amount fallbacks
+    if ($paid_cents === 0 && !empty($body['amount']) && is_array($body['amount']) && isset($body['amount']['value'])) {
         $paid_cents = (int) round(((float) $body['amount']['value']) * 100);
         $currency = isset($body['amount']['currency_code']) ? strtoupper((string) $body['amount']['currency_code']) : '';
-    } elseif (!empty($body['total_amount']) && is_array($body['total_amount']) && isset($body['total_amount']['value'])) {
+    } elseif ($paid_cents === 0 && !empty($body['total_amount']) && is_array($body['total_amount']) && isset($body['total_amount']['value'])) {
         $paid_cents = (int) round(((float) $body['total_amount']['value']) * 100);
         $currency = isset($body['total_amount']['currency_code']) ? strtoupper((string) $body['total_amount']['currency_code']) : '';
     }
