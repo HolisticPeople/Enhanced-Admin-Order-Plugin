@@ -1547,6 +1547,26 @@ function eao_stripe_get_invoice_status() {
     $url = (string) ($body['hosted_invoice_url'] ?? '');
     $order->update_meta_data('_eao_stripe_invoice_status', $status);
     if ($url !== '') { $order->update_meta_data('_eao_stripe_invoice_url', $url); }
+    // Try to persist payment intent and charge id for refunds
+    $pi_id = (string) ($body['payment_intent'] ?? '');
+    if ($pi_id !== '') {
+        $order->update_meta_data('_eao_stripe_payment_intent_id', $pi_id);
+        try {
+            $pi_resp = wp_remote_get('https://api.stripe.com/v1/payment_intents/' . rawurlencode($pi_id), array('headers' => array('Authorization' => 'Bearer ' . $secret)));
+            if (!is_wp_error($pi_resp)) {
+                $pi = json_decode(wp_remote_retrieve_body($pi_resp), true);
+                $charge_id = '';
+                if (!empty($pi['latest_charge'])) { $charge_id = (string) $pi['latest_charge']; }
+                if ($charge_id === '' && !empty($pi['charges']['data'][0]['id'])) { $charge_id = (string) $pi['charges']['data'][0]['id']; }
+                if ($charge_id !== '') {
+                    $order->update_meta_data('_eao_stripe_charge_id', $charge_id);
+                    if (method_exists($order, 'set_transaction_id')) { $order->set_transaction_id($charge_id); }
+                    $order->update_meta_data('_transaction_id', $charge_id);
+                    error_log('[EAO Stripe Refresh] Stored charge_id=' . $charge_id . ' for order ' . $order_id);
+                }
+            }
+        } catch (Exception $e) { /* noop */ }
+    }
     $order->save();
     if (strtolower($status) === 'paid') {
         $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
@@ -2079,6 +2099,28 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
                     if (!empty($object['amount_paid'])) {
                         $order->update_meta_data('_eao_last_charged_amount_cents', (int) $object['amount_paid']);
                         if (!empty($object['currency'])) { $order->update_meta_data('_eao_last_charged_currency', strtoupper((string)$object['currency'])); }
+                    }
+                    // Try to fetch charge id from payment_intent
+                    $pi_id = (string) ($object['payment_intent'] ?? '');
+                    $settings2 = get_option('eao_stripe_settings', array());
+                    $secret2 = (string) ($settings2['live_secret'] ?? '');
+                    if ($pi_id !== '' && $secret2 !== '') {
+                        try {
+                            $pi_resp2 = wp_remote_get('https://api.stripe.com/v1/payment_intents/' . rawurlencode($pi_id), array('headers' => array('Authorization' => 'Bearer ' . $secret2)));
+                            if (!is_wp_error($pi_resp2)) {
+                                $pi2 = json_decode(wp_remote_retrieve_body($pi_resp2), true);
+                                $charge_id2 = '';
+                                if (!empty($pi2['latest_charge'])) { $charge_id2 = (string) $pi2['latest_charge']; }
+                                if ($charge_id2 === '' && !empty($pi2['charges']['data'][0]['id'])) { $charge_id2 = (string) $pi2['charges']['data'][0]['id']; }
+                                if ($charge_id2 !== '') {
+                                    $order->update_meta_data('_eao_stripe_payment_intent_id', $pi_id);
+                                    $order->update_meta_data('_eao_stripe_charge_id', $charge_id2);
+                                    if (method_exists($order, 'set_transaction_id')) { $order->set_transaction_id($charge_id2); }
+                                    $order->update_meta_data('_transaction_id', $charge_id2);
+                                    error_log('[EAO Stripe WH] Stored charge_id=' . $charge_id2 . ' for order ' . $order_id);
+                                }
+                            }
+                        } catch (Exception $e) { /* noop */ }
                     }
                     $order->save();
                     $paid_text = '';
