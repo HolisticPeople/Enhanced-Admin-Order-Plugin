@@ -1456,7 +1456,6 @@ function eao_stripe_send_payment_request() {
     if ($allow_ach) { $pm_types[] = 'us_bank_account'; }
     foreach ($pm_types as $i => $t) { $body['payment_settings[payment_method_types]['.$i.']'] = $t; }
 
-    if ($email) { $body['customer_email'] = $email; }
     $inv_create = wp_remote_post('https://api.stripe.com/v1/invoices', array('headers' => $headers, 'body' => $body, 'timeout' => 25));
     if (is_wp_error($inv_create)) { wp_send_json_error(array('message' => 'Stripe: invoice create failed: '.$inv_create->get_error_message())); }
     $invoice = json_decode(wp_remote_retrieve_body($inv_create), true);
