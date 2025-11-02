@@ -1852,7 +1852,14 @@ function eao_paypal_get_invoice_status() {
         $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
         $is_pending_like = in_array($current, array('pending','pending-payment'), true);
         if ($is_pending_like) {
-            try { $order->update_status('processing', 'PayPal invoice paid (manual refresh).'); } catch (Exception $e) { /* noop */ }
+            try {
+                $order->update_status('processing', 'PayPal invoice paid (manual refresh).');
+                error_log('[EAO PayPal Refresh] Flip to processing: order=' . $order_id . ' prev=' . $current);
+            } catch (Exception $e) {
+                error_log('[EAO PayPal Refresh] Flip failed: order=' . $order_id . ' err=' . $e->getMessage());
+            }
+        } else {
+            error_log('[EAO PayPal Refresh] No flip (status not pending-like): order=' . $order_id . ' current=' . $current);
         }
     }
     wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => $status, 'url' => (string) $order->get_meta('_eao_paypal_invoice_url', true), 'paid_cents' => $paid_cents, 'currency' => $currency));
@@ -1862,7 +1869,7 @@ function eao_paypal_get_invoice_status() {
 function eao_find_order_id_by_meta($meta_key, $value) {
     if ($meta_key === '' || $value === '') { return 0; }
     $q = new WP_Query(array(
-        'post_type' => 'shop_order',
+        'post_type' => array('shop_order','shop_order_placehold'),
         'post_status' => 'any',
         'meta_query' => array(
             array('key' => $meta_key, 'value' => $value)
@@ -2005,7 +2012,7 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                 $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
                 $is_pending_like = in_array($current, array('pending','pending-payment'), true);
                 if ($is_pending_like) {
-                    try { $order->update_status('processing', 'PayPal invoice paid.'); } catch (Exception $e) { /* noop */ }
+                    try { $order->update_status('processing', 'PayPal invoice paid.'); error_log('[EAO PayPal WH] Flip to processing: order=' . $order_id . ' prev=' . $current); } catch (Exception $e) { error_log('[EAO PayPal WH] Flip failed: order=' . $order_id . ' err=' . $e->getMessage()); }
                 }
                 // Attempt to fetch and persist paid amount
                 $token2 = eao_paypal_get_oauth_token();
