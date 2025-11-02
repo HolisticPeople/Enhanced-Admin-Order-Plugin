@@ -994,8 +994,9 @@ function eao_process_address_updates($order, $post_data) {
                         $setter = 'set_billing_' . $key;
                         if (method_exists($order, $setter)) {
                             try {
-                                $old_value = $order->{'get_billing_' . $key}();
                                 $new_value = sanitize_text_field($value);
+                                if ($new_value === '' || $new_value === null) { continue; }
+                                $old_value = $order->{'get_billing_' . $key}();
                                 if ($old_value !== $new_value) {
                                     $order->{$setter}($new_value);
                                     $result['address_updated'] = true;
@@ -1017,8 +1018,9 @@ function eao_process_address_updates($order, $post_data) {
                     $setter = 'set_billing_' . $key;
                     if (method_exists($order, $setter)) {
                         try {
-                            $old_value = $order->{'get_billing_' . $key}();
                             $new_value = sanitize_text_field($value);
+                            if ($new_value === '' || $new_value === null) { continue; }
+                            $old_value = $order->{'get_billing_' . $key}();
                             if ($old_value !== $new_value) {
                                 $order->{$setter}($new_value);
                                 $result['address_updated'] = true;
@@ -1230,8 +1232,9 @@ function eao_process_address_updates($order, $post_data) {
                 $result['individual_fields_processed']++;
             } elseif (method_exists($order, $setter)) {
                 try {
-                    $old_value = $order->{'get_billing_' . $field_key}();
                     $new_value = sanitize_text_field(wp_unslash($post_value));
+                    if ($new_value === '' || $new_value === null) { continue; }
+                    $old_value = $order->{'get_billing_' . $field_key}();
                     if ($old_value !== $new_value) {
                         $order->{$setter}($new_value);
                         $result['address_updated'] = true;
@@ -1271,6 +1274,7 @@ function eao_process_address_updates($order, $post_data) {
                 : substr($post_key, strlen('shipping_'));
             $setter = 'set_shipping_' . $field_key;
             $new_value = sanitize_text_field(wp_unslash($post_value));
+            if ($new_value === '' || $new_value === null) { continue; }
 
             if ($is_thwma_shipping_key && class_exists('THWMA_Utils')) {
                 $shipping_updates_for_thwma[$field_key] = $new_value;
