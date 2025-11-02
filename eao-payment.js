@@ -188,7 +188,10 @@
                 action: 'eao_payment_webhooks_save_settings',
                 nonce: $('#eao_payment_mockup_nonce').val(),
                 stripe_webhook_signing_secret_live: $('#eao-pp-stripe-webhook-secret').val(),
-                paypal_webhook_id_live: $('#eao-pp-paypal-webhook-id').val()
+                stripe_webhook_signing_secret_staging: $('#eao-pp-stripe-webhook-secret-staging').val(),
+                paypal_webhook_id_live: $('#eao-pp-paypal-webhook-id').val(),
+                paypal_webhook_id_staging: $('#eao-pp-paypal-webhook-id-staging').val(),
+                webhook_env: $('#eao-webhook-env').val()
             }, function(resp){
                 if (resp && resp.success) {
                     $msg.html('<div class="notice notice-success"><p>Webhook settings saved.</p></div>');

@@ -190,6 +190,24 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                     <th>PayPal Webhook URL</th>
                     <td><code><?php echo esc_html( get_rest_url(null, 'eao/v1/paypal/webhook') ); ?></code></td>
                 </tr>
+                <?php $wh_env = get_option('eao_webhook_env', 'live'); ?>
+                <tr>
+                    <th>Active Environment</th>
+                    <td>
+                        <select id="eao-webhook-env">
+                            <option value="live"<?php echo ($wh_env==='live')?' selected':''; ?>>Production</option>
+                            <option value="staging"<?php echo ($wh_env==='staging')?' selected':''; ?>>Staging</option>
+                        </select>
+                    </td>
+                </tr>
+                <tr>
+                    <th>Stripe Signing Secret (Staging)</th>
+                    <td><input type="text" id="eao-pp-stripe-webhook-secret-staging" value="<?php echo esc_attr($opts['webhook_signing_secret_staging'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
+                <tr>
+                    <th>PayPal Webhook ID (Staging)</th>
+                    <td><input type="text" id="eao-pp-paypal-webhook-id-staging" value="<?php echo esc_attr($pp_opts['webhook_id_staging'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
             </table>
             <p><button type="button" id="eao-pp-save-webhooks" class="button">Save Webhook Settings</button></p>
         </div>
@@ -1625,17 +1643,24 @@ function eao_payment_webhooks_save_settings() {
         wp_send_json_error(array('message' => 'Permission denied.'));
     }
     $stripe_secret = isset($_POST['stripe_webhook_signing_secret_live']) ? sanitize_text_field(wp_unslash($_POST['stripe_webhook_signing_secret_live'])) : '';
+    $stripe_secret_stg = isset($_POST['stripe_webhook_signing_secret_staging']) ? sanitize_text_field(wp_unslash($_POST['stripe_webhook_signing_secret_staging'])) : '';
     $paypal_webhook_id = isset($_POST['paypal_webhook_id_live']) ? sanitize_text_field(wp_unslash($_POST['paypal_webhook_id_live'])) : '';
+    $paypal_webhook_id_stg = isset($_POST['paypal_webhook_id_staging']) ? sanitize_text_field(wp_unslash($_POST['paypal_webhook_id_staging'])) : '';
+    $env = isset($_POST['webhook_env']) ? sanitize_text_field(wp_unslash($_POST['webhook_env'])) : '';
 
     // Update Stripe option
     $s = get_option('eao_stripe_settings', array());
     if ($stripe_secret !== '') { $s['webhook_signing_secret_live'] = $stripe_secret; }
+    if ($stripe_secret_stg !== '') { $s['webhook_signing_secret_staging'] = $stripe_secret_stg; }
     update_option('eao_stripe_settings', $s, false);
 
     // Update PayPal option
     $p = get_option('eao_paypal_settings', array());
     if ($paypal_webhook_id !== '') { $p['webhook_id_live'] = $paypal_webhook_id; }
+    if ($paypal_webhook_id_stg !== '') { $p['webhook_id_staging'] = $paypal_webhook_id_stg; }
     update_option('eao_paypal_settings', $p, false);
+
+    if (in_array($env, array('live','staging'), true)) { update_option('eao_webhook_env', $env, false); }
 
     wp_send_json_success(array('saved' => true));
 }
@@ -2052,7 +2077,8 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
     $payload = $request->get_body();
     $sig_header = $request->get_header('stripe-signature');
     $settings = get_option('eao_stripe_settings', array());
-    $secret = (string) ($settings['webhook_signing_secret_live'] ?? '');
+    $env = get_option('eao_webhook_env', 'live');
+    $secret = (string) (($env === 'staging') ? ($settings['webhook_signing_secret_staging'] ?? '') : ($settings['webhook_signing_secret_live'] ?? ''));
     
 
     // Basic signature verification (tolerance 5 minutes)
@@ -2157,7 +2183,8 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
     $body = $request->get_body();
     $headers = array_change_key_case($request->get_headers(), CASE_LOWER);
     $pp = get_option('eao_paypal_settings', array());
-    $webhook_id = (string) ($pp['webhook_id_live'] ?? '');
+    $env = get_option('eao_webhook_env', 'live');
+    $webhook_id = (string) (($env === 'staging') ? ($pp['webhook_id_staging'] ?? '') : ($pp['webhook_id_live'] ?? ''));
     
     if (!empty($body)) { error_log('[EAO PayPal WH] payload sample=' . substr($body, 0, 600)); }
 
