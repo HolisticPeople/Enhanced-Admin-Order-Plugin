@@ -945,6 +945,11 @@ function eao_process_address_updates($order, $post_data) {
         $pending_billing_address_data = eao_decode_json_safely($pending_billing_address_json, 'pending_billing_address');
 
         if ($pending_billing_address_data !== null && is_array($pending_billing_address_data)) {
+            if (isset($pending_billing_address_data['email'])) {
+                eao_log_save_operation('Billing email present in pending JSON', 'value=' . (string)$pending_billing_address_data['email']);
+            } else {
+                eao_log_save_operation('Billing email missing in pending JSON', '');
+            }
             eao_log_save_operation('Processing pending billing address', 'Found ' . count($pending_billing_address_data) . ' fields');
             
             // If a THWMA address key provided, update that entry directly
@@ -1003,6 +1008,9 @@ function eao_process_address_updates($order, $post_data) {
                                     $result['billing_updated'] = true;
                                     $result['pending_billing_processed'] = true;
                                     eao_log_save_operation('Updated billing_' . $key, 'From "' . $old_value . '" to "' . $new_value . '"');
+                                    if ($key === 'email') {
+                                        eao_log_save_operation('Billing email set from pending JSON', 'new=' . $new_value);
+                                    }
                                 }
                             } catch (WC_Data_Exception $e) {
                                 $error_msg = 'WC_Data_Exception setting billing ' . $key + ': ' . $e->getMessage();
@@ -1027,6 +1035,9 @@ function eao_process_address_updates($order, $post_data) {
                                 $result['billing_updated'] = true;
                                 $result['pending_billing_processed'] = true;
                                 eao_log_save_operation('Updated billing_' . $key, 'From "' . $old_value . '" to "' . $new_value . '"');
+                                if ($key === 'email') {
+                                    eao_log_save_operation('Billing email set from pending JSON (no key)', 'new=' . $new_value);
+                                }
                             }
                         } catch (WC_Data_Exception $e) {
                             $error_msg = 'WC_Data_Exception setting billing ' . $key . ': ' . $e->getMessage();
@@ -1225,6 +1236,9 @@ function eao_process_address_updates($order, $post_data) {
                 ? substr($post_key, strlen('eao_billing_'))
                 : substr($post_key, strlen('billing_'));
             $setter = 'set_billing_' . $field_key;
+            if ($field_key === 'email') {
+                eao_log_save_operation('Incoming individual billing_email field', 'raw=' . (string)wp_unslash($post_value));
+            }
             if ($is_thwma_billing_key && class_exists('THWMA_Utils')) {
                 $billing_updates_for_thwma[$field_key] = sanitize_text_field(wp_unslash($post_value));
                 $result['address_updated'] = true;
@@ -1241,6 +1255,9 @@ function eao_process_address_updates($order, $post_data) {
                         $result['billing_updated'] = true;
                         $result['individual_fields_processed']++;
                         eao_log_save_operation('Updated billing_' . $field_key, 'From "' . $old_value . '" to "' . $new_value . '"');
+                        if ($field_key === 'email') {
+                            eao_log_save_operation('Billing email set from individual field', 'new=' . $new_value);
+                        }
                     }
                 } catch (WC_Data_Exception $e) {
                     $error_msg = 'WC_Data_Exception setting billing ' . $field_key . ': ' . $e->getMessage();
@@ -1431,6 +1448,7 @@ function eao_process_basic_order_details($order, $post_data) {
         // --- Ensure billing email is populated when saving ---
         try {
             $current_email = method_exists($order, 'get_billing_email') ? (string) $order->get_billing_email() : '';
+        eao_log_save_operation('Ensure billing email - current value', $current_email ?: '(empty)');
             if ($current_email === '') {
                 $candidate_id = $order->get_customer_id() ? $order->get_customer_id() : $customer_id;
                 if ($candidate_id) {
@@ -1452,6 +1470,8 @@ function eao_process_basic_order_details($order, $post_data) {
                         eao_log_save_operation('Filled missing billing email from order meta', 'email=' . $meta_email);
                     }
                 }
+        } else {
+            eao_log_save_operation('Billing email present; no fill needed', $current_email);
             }
         } catch (Exception $e) { /* no-op */ }
 
