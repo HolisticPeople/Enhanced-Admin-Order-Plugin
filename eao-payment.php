@@ -2010,8 +2010,13 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
     if (!is_array($event) || empty($event['event_type'])) { return new WP_REST_Response(array('ok' => false), 400); }
     $type = (string) $event['event_type'];
     $resource = isset($event['resource']) ? $event['resource'] : array();
-    $invoice_id = (string) ($resource['id'] ?? '');
-    $reference = (string) ($resource['detail']['reference'] ?? '');
+    // Handle both shapes: resource.id/detail and resource.invoice.id/detail
+    $invoice_id = '';
+    $reference = '';
+    if (!empty($resource['id'])) { $invoice_id = (string) $resource['id']; }
+    if (!empty($resource['detail']['reference'])) { $reference = (string) $resource['detail']['reference']; }
+    if (empty($invoice_id) && !empty($resource['invoice']['id'])) { $invoice_id = (string) $resource['invoice']['id']; }
+    if (empty($reference) && !empty($resource['invoice']['detail']['reference'])) { $reference = (string) $resource['invoice']['detail']['reference']; }
     error_log('[EAO PayPal WH] type=' . $type . ' invoice=' . $invoice_id . ' ref=' . $reference);
 
     // If verification failed, reject the request (no fallback in any environment)
