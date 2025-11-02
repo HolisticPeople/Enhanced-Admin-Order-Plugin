@@ -187,19 +187,31 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
             <table class="form-table">
                 <tr>
                     <th>Webhook URL (Production)</th>
-                    <td><input type="text" id="eao-stripe-webhook-url-live" style="width:560px;" value="<?php echo esc_attr($stripe_opts['webhook_url_live'] ?? get_rest_url(null, 'eao/v1/stripe/webhook')); ?>" /></td>
+                    <td>
+                        <input type="text" id="eao-stripe-webhook-url-live" style="width:560px;" value="<?php echo esc_attr($stripe_opts['webhook_url_live'] ?? get_rest_url(null, 'eao/v1/stripe/webhook')); ?>" />
+                        <p class="description">Stripe Dashboard → Developers → Webhooks → Add endpoint (copy this URL).</p>
+                    </td>
                 </tr>
                 <tr>
                     <th>Signing Secret (Production)</th>
-                    <td><input type="text" id="eao-stripe-webhook-secret-live" style="width:420px;" value="<?php echo esc_attr($stripe_opts['webhook_signing_secret_live'] ?? ''); ?>" /></td>
+                    <td>
+                        <input type="text" id="eao-stripe-webhook-secret-live" style="width:420px;" value="<?php echo esc_attr($stripe_opts['webhook_signing_secret_live'] ?? ''); ?>" />
+                        <p class="description">From the Stripe endpoint details (Reveal secret).</p>
+                    </td>
                 </tr>
                 <tr>
                     <th>Webhook URL (Staging)</th>
-                    <td><input type="text" id="eao-stripe-webhook-url-stg" style="width:560px;" value="<?php echo esc_attr($stripe_opts['webhook_url_staging'] ?? get_rest_url(null, 'eao/v1/stripe/webhook')); ?>" /></td>
+                    <td>
+                        <input type="text" id="eao-stripe-webhook-url-stg" style="width:560px;" value="<?php echo esc_attr($stripe_opts['webhook_url_staging'] ?? get_rest_url(null, 'eao/v1/stripe/webhook')); ?>" />
+                        <p class="description">Use your staging URL endpoint.</p>
+                    </td>
                 </tr>
                 <tr>
                     <th>Signing Secret (Staging)</th>
-                    <td><input type="text" id="eao-pp-stripe-webhook-secret-staging" style="width:420px;" value="<?php echo esc_attr($stripe_opts['webhook_signing_secret_staging'] ?? ''); ?>" /></td>
+                    <td>
+                        <input type="text" id="eao-pp-stripe-webhook-secret-staging" style="width:420px;" value="<?php echo esc_attr($stripe_opts['webhook_signing_secret_staging'] ?? ''); ?>" />
+                        <p class="description">From the Stripe staging endpoint (Reveal secret).</p>
+                    </td>
                 </tr>
                 <tr>
                     <th>Active Environment</th>
@@ -218,19 +230,31 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
             <table class="form-table">
                 <tr>
                     <th>Webhook URL (Production)</th>
-                    <td><input type="text" id="eao-paypal-webhook-url-live" style="width:560px;" value="<?php echo esc_attr($paypal_opts['webhook_url_live'] ?? get_rest_url(null, 'eao/v1/paypal/webhook')); ?>" /></td>
+                    <td>
+                        <input type="text" id="eao-paypal-webhook-url-live" style="width:560px;" value="<?php echo esc_attr($paypal_opts['webhook_url_live'] ?? get_rest_url(null, 'eao/v1/paypal/webhook')); ?>" />
+                        <p class="description">PayPal Developer → Webhooks → Add Webhook (paste this URL).</p>
+                    </td>
                 </tr>
                 <tr>
                     <th>Webhook ID (Production)</th>
-                    <td><input type="text" id="eao-pp-paypal-webhook-id-live2" style="width:420px;" value="<?php echo esc_attr($paypal_opts['webhook_id_live'] ?? ''); ?>" /></td>
+                    <td>
+                        <input type="text" id="eao-pp-paypal-webhook-id-live2" style="width:420px;" value="<?php echo esc_attr($paypal_opts['webhook_id_live'] ?? ''); ?>" />
+                        <p class="description">From the PayPal webhook details page.</p>
+                    </td>
                 </tr>
                 <tr>
                     <th>Webhook URL (Staging)</th>
-                    <td><input type="text" id="eao-paypal-webhook-url-stg" style="width:560px;" value="<?php echo esc_attr($paypal_opts['webhook_url_staging'] ?? get_rest_url(null, 'eao/v1/paypal/webhook')); ?>" /></td>
+                    <td>
+                        <input type="text" id="eao-paypal-webhook-url-stg" style="width:560px;" value="<?php echo esc_attr($paypal_opts['webhook_url_staging'] ?? get_rest_url(null, 'eao/v1/paypal/webhook')); ?>" />
+                        <p class="description">Use your staging URL endpoint.</p>
+                    </td>
                 </tr>
                 <tr>
                     <th>Webhook ID (Staging)</th>
-                    <td><input type="text" id="eao-pp-paypal-webhook-id-staging" style="width:420px;" value="<?php echo esc_attr($paypal_opts['webhook_id_staging'] ?? ''); ?>" /></td>
+                    <td>
+                        <input type="text" id="eao-pp-paypal-webhook-id-staging" style="width:420px;" value="<?php echo esc_attr($paypal_opts['webhook_id_staging'] ?? ''); ?>" />
+                        <p class="description">From the PayPal webhook details page.</p>
+                    </td>
                 </tr>
                 <tr>
                     <th>Active Environment</th>
