@@ -20174,10 +20174,400 @@ Tool use: **apply_patch**
       
 
 ```diff
-
+<<'PATCH'
+*** Begin Patch
+*** Update File: eao-ajax-save-core.php
+@@
+     if (isset($post_data['eao_pending_billing_address']) && !empty($post_data['eao_pending_billing_address'])) {
+         $pending_billing_address_json = sanitize_text_field(wp_unslash($post_data['eao_pending_billing_address']));
+         $pending_billing_address_data = eao_decode_json_safely($pending_billing_address_json, 'pending_billing_address');
+ 
+         if ($pending_billing_address_data !== null && is_array($pending_billing_address_data)) {
++            if (isset($pending_billing_address_data['email'])) {
++                eao_log_save_operation('Billing email present in pending JSON', 'value=' . (string)$pending_billing_address_data['email']);
++            } else {
++                eao_log_save_operation('Billing email missing in pending JSON', '');
++            }
+             eao_log_save_operation('Processing pending billing address', 'Found ' . count($pending_billing_address_data) . ' fields');
+@@
+                     foreach ($pending_billing_address_data as $key => $value) {
+                         $setter = 'set_billing_' . $key;
+                         if (method_exists($order, $setter)) {
+                             try {
+                                 $new_value = sanitize_text_field($value);
+                                 if ($new_value === '' || $new_value === null) { continue; }
+                                 $old_value = $order->{'get_billing_' . $key}();
+                                 if ($old_value !== $new_value) {
+                                     $order->{$setter}($new_value);
+                                     $result['address_updated'] = true;
+                                     $result['billing_updated'] = true;
+                                     $result['pending_billing_processed'] = true;
+                                     eao_log_save_operation('Updated billing_' . $key, 'From "' . $old_value . '" to "' . $new_value . '"');
++                                    if ($key === 'email') {
++                                        eao_log_save_operation('Billing email set from pending JSON', 'new=' . $new_value);
++                                    }
+                                 }
+                             } catch (WC_Data_Exception $e) {
+                                 $error_msg = 'WC_Data_Exception setting billing ' . $key + ': ' . $e->getMessage();
+                                 eao_log_save_operation($error_msg, 'JSON processing error');
+                                 $result['address_errors'][] = $error_msg;
+                             }
+                         }
+                     }
+@@
+                 foreach ($pending_billing_address_data as $key => $value) {
+                     $setter = 'set_billing_' . $key;
+                     if (method_exists($order, $setter)) {
+                         try {
+                             $new_value = sanitize_text_field($value);
+                             if ($new_value === '' || $new_value === null) { continue; }
+                             $old_value = $order->{'get_billing_' . $key}();
+                             if ($old_value !== $new_value) {
+                                 $order->{$setter}($new_value);
+                                 $result['address_updated'] = true;
+                                 $result['billing_updated'] = true;
+                                 $result['pending_billing_processed'] = true;
+                                 eao_log_save_operation('Updated billing_' . $key, 'From "' . $old_value . '" to "' . $new_value . '"');
++                                if ($key === 'email') {
++                                    eao_log_save_operation('Billing email set from pending JSON (no key)', 'new=' . $new_value);
++                                }
+                             }
+                         } catch (WC_Data_Exception $e) {
+                             $error_msg = 'WC_Data_Exception setting billing ' . $key . ': ' . $e->getMessage();
+                             eao_log_save_operation($error_msg, 'JSON processing error');
+                             $result['address_errors'][] = $error_msg;
+                         }
+                     }
+                 }
+@@
+     foreach ($post_data as $post_key => $post_value) {
+         if (strpos($post_key, 'eao_billing_') === 0 || strpos($post_key, 'billing_') === 0) {
+             $field_key = strpos($post_key, 'eao_billing_') === 0
+                 ? substr($post_key, strlen('eao_billing_'))
+                 : substr($post_key, strlen('billing_'));
+             $setter = 'set_billing_' . $field_key;
++            if ($field_key === 'email') {
++                eao_log_save_operation('Incoming individual billing_email field', 'raw=' . (string)wp_unslash($post_value));
++            }
+             if ($is_thwma_billing_key && class_exists('THWMA_Utils')) {
+                 $billing_updates_for_thwma[$field_key] = sanitize_text_field(wp_unslash($post_value));
+                 $result['address_updated'] = true;
+                 $result['billing_updated'] = true;
+                 $result['individual_fields_processed']++;
+             } elseif (method_exists($order, $setter)) {
+                 try {
+                     $new_value = sanitize_text_field(wp_unslash($post_value));
+                     if ($new_value === '' || $new_value === null) { continue; }
+                     $old_value = $order->{'get_billing_' . $field_key}();
+                     if ($old_value !== $new_value) {
+                         $order->{$setter}($new_value);
+                         $result['address_updated'] = true;
+                         $result['billing_updated'] = true;
+                         $result['individual_fields_processed']++;
+                         eao_log_save_operation('Updated billing_' . $field_key, 'From "' . $old_value . '" to "' . $new_value . '"');
++                        if ($field_key === 'email') {
++                            eao_log_save_operation('Billing email set from individual field', 'new=' . $new_value);
++                        }
+                     }
+                 } catch (WC_Data_Exception $e) {
+                     $error_msg = 'WC_Data_Exception setting billing ' . $field_key . ': ' . $e->getMessage();
+                     eao_log_save_operation($error_msg, 'Individual field processing error');
+                     $result['address_errors'][] = $error_msg;
+                 }
+             }
+         }
+     }
+@@
+     try {
+         $current_email = method_exists($order, 'get_billing_email') ? (string) $order->get_billing_email() : '';
++        eao_log_save_operation('Ensure billing email - current value', $current_email ?: '(empty)');
+         if ($current_email === '') {
+             $candidate_id = $order->get_customer_id() ? $order->get_customer_id() : $customer_id;
+             if ($candidate_id) {
+                 $u = get_user_by('id', $candidate_id);
+                 if ($u && !empty($u->user_email)) {
+                     if (method_exists($order, 'set_billing_email')) {
+                         $order->set_billing_email($u->user_email);
+                         $result['basics_updated'] = true;
+                         eao_log_save_operation('Filled missing billing email from customer', 'email=' . $u->user_email);
+                     }
+                 }
+             }
+             // Fallback to existing order meta if present
+             if ($current_email === '' && method_exists($order, 'get_meta')) {
+                 $meta_email = (string) $order->get_meta('_billing_email', true);
+                 if ($meta_email !== '' && method_exists($order, 'set_billing_email')) {
+                     $order->set_billing_email($meta_email);
+                     $result['basics_updated'] = true;
+                     eao_log_save_operation('Filled missing billing email from order meta', 'email=' . $meta_email);
+                 }
+             }
++        } else {
++            eao_log_save_operation('Billing email present; no fill needed', $current_email);
+         }
+     } catch (Exception $e) { /* no-op */ }
+*** End Patch
+PATCH
 ```
 
 ---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for eao-payment.php</summary>
+      
+
+```diff
+<<'PATCH'
+*** Begin Patch
+*** Update File: eao-payment.php
+@@
+ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = array()) {
+@@
+-    $first_name = method_exists($order,'get_billing_first_name') ? (string)$order->get_billing_first_name() : '';
+-    $last_name  = method_exists($order,'get_billing_last_name') ? (string)$order->get_billing_last_name() : '';
+-    $billing_email = method_exists($order,'get_billing_email') ? (string)$order->get_billing_email() : '';
++    $first_name = method_exists($order,'get_billing_first_name') ? (string)$order->get_billing_first_name() : '';
++    $last_name  = method_exists($order,'get_billing_last_name') ? (string)$order->get_billing_last_name() : '';
++    $billing_email = method_exists($order,'get_billing_email') ? (string)$order->get_billing_email() : '';
++    if ($billing_email === '') { error_log('[EAO DEBUG] render_metabox: order billing_email empty for order #' . $order_id); }
+     if ($billing_email === '' && method_exists($order,'get_user_id')) {
+         $uid = (int) $order->get_user_id();
+-        if ($uid) { $u = get_user_by('id', $uid); if ($u && !empty($u->user_email)) { $billing_email = (string) $u->user_email; } }
++        if ($uid) { $u = get_user_by('id', $uid); if ($u && !empty($u->user_email)) { $billing_email = (string) $u->user_email; error_log('[EAO DEBUG] render_metabox: filled email from user #' . $uid . ' = ' . $billing_email); } }
+     }
+     if ($billing_email === '') {
+         // Fallback to raw meta in case billing email not stored on the order object yet
+         $meta_email = '';
+-        if (method_exists($order, 'get_meta')) { $meta_email = (string) $order->get_meta('_billing_email', true); }
++        if (method_exists($order, 'get_meta')) { $meta_email = (string) $order->get_meta('_billing_email', true); }
+         if ($meta_email !== '') { $billing_email = $meta_email; }
++        error_log('[EAO DEBUG] render_metabox: fallback meta _billing_email = ' . ($meta_email !== '' ? $meta_email : '(empty)'));
+     }
+*** End Patch
+PATCH
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for eao-payment.php</summary>
+      
+
+```diff
+<<'PATCH'
+*** Begin Patch
+*** Update File: eao-payment.php
+@@
+-        } else if (isset($is_eao_paypal) && $is_eao_paypal && (!$located_gateway || !method_exists($located_gateway, 'supports') || !$located_gateway->supports('refunds'))) {
++        } else if (isset($is_eao_paypal) && $is_eao_paypal && (!$located_gateway || !method_exists($located_gateway, 'supports') || !$located_gateway->supports('refunds'))) {
+             // Remote refund via PayPal APIs using capture or sale/transaction id
+             $gateway_label = 'PayPal (EAO Invoice)';
+             $token3 = eao_paypal_get_oauth_token();
+             if (is_wp_error($token3)) {
+                 $refund->delete(true);
+                 wp_send_json_error(array('message' => 'PayPal auth failed: ' . $token3->get_error_message()));
+             }
+             $capture_id = (string) $order->get_meta('_eao_paypal_capture_id', true);
++            error_log('[EAO DEBUG] PayPal refund start for order #' . $order_id . ' capture_meta=' . ($capture_id ?: '(empty)'));
+             if ($capture_id === '') {
+                 // Attempt to derive capture id from invoice detail
+                 $invoice_id = (string) $order->get_meta('_eao_paypal_invoice_id', true);
++                error_log('[EAO DEBUG] PayPal refund: deriving capture from invoice ' . ($invoice_id ?: '(none)'));
+                 if ($invoice_id !== '') {
+-                    $det = wp_remote_get('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($invoice_id), array('headers' => array('Authorization' => 'Bearer ' . $token3, 'Accept' => 'application/json'), 'timeout' => 15));
++                    $det = wp_remote_get('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($invoice_id), array('headers' => array('Authorization' => 'Bearer ' . $token3, 'Accept' => 'application/json'), 'timeout' => 15));
+                     if (!is_wp_error($det)) {
+                         $dx = json_decode(wp_remote_retrieve_body($det), true);
++                        error_log('[EAO DEBUG] PayPal refund: invoice details payments present=' . (!empty($dx['payments']) ? 'yes' : 'no'));
+                         if (!empty($dx['payments']) && is_array($dx['payments'])) {
+                             // Newer invoices may return an array of payment objects
+                             foreach ($dx['payments'] as $p) {
+                                 if (!empty($p['transaction_id'])) { $capture_id = (string)$p['transaction_id']; break; }
+                                 if (!$capture_id && !empty($p['paypal_transaction_id'])) { $capture_id = (string)$p['paypal_transaction_id']; break; }
+                                 if (!$capture_id && !empty($p['payment_id'])) { $capture_id = (string)$p['payment_id']; break; }
+                                 if (!$capture_id && !empty($p['id'])) { $capture_id = (string)$p['id']; break; }
+                                 if (!$capture_id && !empty($p['reference_id'])) { $capture_id = (string)$p['reference_id']; break; }
+                             }
+                         }
+                         if (!$capture_id && !empty($dx['payments']) && is_array($dx['payments']) === false && is_array($dx['payments']['transactions'] ?? null)) {
+                             // Older invoices may return an object with a transactions array
+                             foreach ($dx['payments']['transactions'] as $tx) {
+                                 if (!empty($tx['payment_id'])) { $capture_id = (string)$tx['payment_id']; break; }
+                                 if (!$capture_id && !empty($tx['transaction_id'])) { $capture_id = (string)$tx['transaction_id']; break; }
+                                 if (!$capture_id && !empty($tx['id'])) { $capture_id = (string)$tx['id']; break; }
+                             }
+                         }
+                         if ($capture_id !== '') { $order->update_meta_data('_eao_paypal_capture_id', $capture_id); $order->save(); }
++                        error_log('[EAO DEBUG] PayPal refund: derived capture=' . ($capture_id ?: '(empty)'));
+                     }
+                 }
+             }
+             if ($capture_id === '') {
+                 $refund->delete(true);
+                 wp_send_json_error(array('message' => 'PayPal capture reference not found for this invoice.'));
+             }
+             $currency = (string) $order->get_meta('_eao_last_charged_currency', true);
+             if ($currency === '') { $currency = strtoupper(method_exists($order,'get_currency') ? (string)$order->get_currency() : 'USD'); }
+             $rf_headers = array('Authorization' => 'Bearer ' . $token3, 'Content-Type' => 'application/json', 'Accept' => 'application/json');
+             $rf_body_v2 = array('amount' => array('value' => wc_format_decimal($amount_total, 2), 'currency_code' => $currency));
+             $rf_resp = null;
+             // Heuristic: 17-char alnum or starting with PAYID indicates a sale/transaction id → use v1 sale refund
+             if (preg_match('/^[A-Z0-9]{17}$/', $capture_id) || strpos($capture_id, 'PAYID-') === 0) {
+-                $rf_resp = wp_remote_post('https://api-m.paypal.com/v1/payments/sale/' . rawurlencode($capture_id) . '/refund', array('headers' => $rf_headers, 'body' => wp_json_encode(array('amount' => array('total' => wc_format_decimal($amount_total, 2), 'currency' => $currency))), 'timeout' => 25));
++                error_log('[EAO DEBUG] PayPal refund using V1 sale API for capture=' . $capture_id);
++                $rf_resp = wp_remote_post('https://api-m.paypal.com/v1/payments/sale/' . rawurlencode($capture_id) . '/refund', array('headers' => $rf_headers, 'body' => wp_json_encode(array('amount' => array('total' => wc_format_decimal($amount_total, 2), 'currency' => $currency))), 'timeout' => 25));
+             } else {
+-                $rf_resp = wp_remote_post('https://api-m.paypal.com/v2/payments/captures/' . rawurlencode($capture_id) . '/refund', array('headers' => $rf_headers, 'body' => wp_json_encode($rf_body_v2), 'timeout' => 25));
++                error_log('[EAO DEBUG] PayPal refund using V2 capture API for capture=' . $capture_id);
++                $rf_resp = wp_remote_post('https://api-m.paypal.com/v2/payments/captures/' . rawurlencode($capture_id) . '/refund', array('headers' => $rf_headers, 'body' => wp_json_encode($rf_body_v2), 'timeout' => 25));
+             }
+             if (is_wp_error($rf_resp)) { $refund->delete(true); wp_send_json_error(array('message' => 'PayPal refund error: ' . $rf_resp->get_error_message())); }
+             $rf_code = (int) wp_remote_retrieve_response_code($rf_resp);
+             $rf_dbg = wp_remote_retrieve_header($rf_resp, 'paypal-debug-id');
+             $rf_json = json_decode(wp_remote_retrieve_body($rf_resp), true);
++            error_log('[EAO DEBUG] PayPal refund response code=' . $rf_code . ' debug_id=' . ($rf_dbg ?: '(none)'));
+             if ($rf_code >= 400 || !is_array($rf_json) || empty($rf_json['id'])) {
+                 $refund->delete(true);
+                 $msg = 'PayPal refund failed' . ($rf_dbg ? ' ['.$rf_dbg.']' : '');
+                 if (is_array($rf_json) && !empty($rf_json['message'])) { $msg .= ': ' . $rf_json['message']; }
+                 wp_send_json_error(array('message' => $msg, 'paypal' => $rf_json));
+             }
+*** End Patch
+PATCH
+```
+
+---
+
+Tool use: **apply_patch**
+
+<details>
+        <summary>Apply patch for enhanced-admin-order-plugin.php</summary>
+      
+
+```diff
+<<'PATCH'
+*** Begin Patch
+*** Update File: enhanced-admin-order-plugin.php
+@@
+- * Version: 5.2.48
++ * Version: 5.2.49
+@@
+-define('EAO_PLUGIN_VERSION', '5.2.48');
++define('EAO_PLUGIN_VERSION', '5.2.49');
+*** End Patch
+PATCH
+```
+
+---
+
+Tool use: **read_lints**
+
+<details>
+          <summary>Read lints for 3 files</summary>
+      
+Lint paths:
+
+- `eao-payment.php`
+- `eao-ajax-save-core.php`
+- `enhanced-admin-order-plugin.php`
+
+Lint results
+
+
+**No lint errors found**
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: add
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_add_or_commit**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_add_or_commit: Add file contents to the index (git add <pathspec>) OR record changes to the repository (git commit -m <message> [files...]). Use the 'action' parameter to specify which action to perform.
+
+*Parameters*:
+  * action: commit
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+  * message: debug: add targeted logs for billing email flow during save and render; add PayPal refund capture derivation + refund path diagnostics; bump to 5.2.49
+
+*Result*:
+{"data":{"output":"[dev 52abe4e] debug: add targeted logs for billing email flow during save and render; add PayPal refund capture derivation + refund path diagnostics; bump to 5.2.49\n 4 files changed, 431 insertions(+), 4 deletions(-)\n"}}
+</details>
+
+---
+
+Tool use: **mcp_GitKraken_git_push**
+
+<details>
+          <summary>MCP tool call</summary>
+      
+*Called tool*: GitKraken - git_push: Update remote refs along with associated objects (git push).
+
+*Parameters*:
+  * directory: C:\DEV\WC Plugins\My Plugins\enhanced-admin-order-plugin
+
+*Result*:
+{"data":{"output":""}}
+</details>
+
+---
+
+- I added focused debug logs and bumped/deployed 5.2.49.
+
+What’s instrumented now
+- Billing email path:
+  - On save (pending JSON + individual fields): logs if billing_email is present, skipped, or set; shows values before/after.
+  - “Ensure billing email” step: logs current value; logs when we fill from customer or from `_billing_email` meta; logs when no fill is needed.
+  - On render of the Payment Processing metabox: logs the order’s billing email, whether we filled from the user, and the fallback meta value.
+- PayPal refund path:
+  - Logs when refund starts, current `_eao_paypal_capture_id`, and invoice id.
+  - Logs presence of payments in invoice details and the derived capture/sale id.
+  - Logs which API is used (V2 capture vs V1 sale) and the HTTP code/debug-id from PayPal.
+
+How to capture
+- Reproduce the issue, then check `wp-content/debug.log` on staging for lines prefixed with:
+  - [EAO DEBUG] render_metabox
+  - [EAO Plugin v... ] SAVE PIPELINE / eao_log_save_operation entries mentioning “Billing email …”
+  - [EAO DEBUG] PayPal refund …
+
+Next steps
+- Try again:
+  1) Create/save a new Pending order with a customer; reload the page. If the email is still empty, I’ll read the new logs to pinpoint where it gets cleared.
+  2) For PayPal refunds, attempt “Process refund” without Refresh; if it fails, I’ll use the new refund logs to adjust the capture-id extraction for your specific invoice payload.
+
+- Version deployed: 5.2.49.
+
+---
+
+_**User (2025-11-02 07:27Z)**_
+
+failed. check logs
+
+---
+
+_**Assistant (gpt-5-high)**_
 
 
 

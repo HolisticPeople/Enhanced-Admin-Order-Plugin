@@ -1161,16 +1161,17 @@ function eao_payment_process_refund() {
             $capture_id = (string) $order->get_meta('_eao_paypal_capture_id', true);
             error_log('[EAO DEBUG] PayPal refund start for order #' . $order_id . ' capture_meta=' . ($capture_id ?: '(empty)'));
             if ($capture_id === '') {
-                // Attempt to derive capture id from invoice detail
+                // Attempt to derive capture id from invoice detail (with short retries and fallback endpoint)
                 $invoice_id = (string) $order->get_meta('_eao_paypal_invoice_id', true);
                 error_log('[EAO DEBUG] PayPal refund: deriving capture from invoice ' . ($invoice_id ?: '(none)'));
-                if ($invoice_id !== '') {
-                    $det = wp_remote_get('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($invoice_id), array('headers' => array('Authorization' => 'Bearer ' . $token3, 'Accept' => 'application/json'), 'timeout' => 15));
+                $headers_det = array('Authorization' => 'Bearer ' . $token3, 'Accept' => 'application/json');
+                for ($attempt = 1; $attempt <= 4 && $capture_id === '' && $invoice_id !== ''; $attempt++) {
+                    error_log('[EAO DEBUG] PayPal refund: derive attempt #' . $attempt);
+                    $det = wp_remote_get('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($invoice_id), array('headers' => $headers_det, 'timeout' => 15));
                     if (!is_wp_error($det)) {
                         $dx = json_decode(wp_remote_retrieve_body($det), true);
                         error_log('[EAO DEBUG] PayPal refund: invoice details payments present=' . (!empty($dx['payments']) ? 'yes' : 'no'));
                         if (!empty($dx['payments']) && is_array($dx['payments'])) {
-                            // Newer invoices may return an array of payment objects
                             foreach ($dx['payments'] as $p) {
                                 if (!empty($p['transaction_id'])) { $capture_id = (string)$p['transaction_id']; break; }
                                 if (!$capture_id && !empty($p['paypal_transaction_id'])) { $capture_id = (string)$p['paypal_transaction_id']; break; }
@@ -1180,17 +1181,32 @@ function eao_payment_process_refund() {
                             }
                         }
                         if (!$capture_id && !empty($dx['payments']) && is_array($dx['payments']) === false && is_array($dx['payments']['transactions'] ?? null)) {
-                            // Older invoices may return an object with a transactions array
                             foreach ($dx['payments']['transactions'] as $tx) {
                                 if (!empty($tx['payment_id'])) { $capture_id = (string)$tx['payment_id']; break; }
                                 if (!$capture_id && !empty($tx['transaction_id'])) { $capture_id = (string)$tx['transaction_id']; break; }
                                 if (!$capture_id && !empty($tx['id'])) { $capture_id = (string)$tx['id']; break; }
                             }
                         }
-                        if ($capture_id !== '') { $order->update_meta_data('_eao_paypal_capture_id', $capture_id); $order->save(); }
-                        error_log('[EAO DEBUG] PayPal refund: derived capture=' . ($capture_id ?: '(empty)'));
                     }
+                    if ($capture_id === '') {
+                        // Fallback endpoint: explicit payments listing for invoice
+                        $det2 = wp_remote_get('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($invoice_id) . '/payments', array('headers' => $headers_det, 'timeout' => 15));
+                        if (!is_wp_error($det2)) {
+                            $dx2 = json_decode(wp_remote_retrieve_body($det2), true);
+                            if (is_array($dx2)) {
+                                foreach ($dx2 as $p2) {
+                                    if (!empty($p2['transaction_id'])) { $capture_id = (string)$p2['transaction_id']; break; }
+                                    if (!$capture_id && !empty($p2['paypal_transaction_id'])) { $capture_id = (string)$p2['paypal_transaction_id']; break; }
+                                    if (!$capture_id && !empty($p2['payment_id'])) { $capture_id = (string)$p2['payment_id']; break; }
+                                    if (!$capture_id && !empty($p2['id'])) { $capture_id = (string)$p2['id']; break; }
+                                }
+                            }
+                        }
+                    }
+                    if ($capture_id === '') { sleep(1); }
                 }
+                if ($capture_id !== '') { $order->update_meta_data('_eao_paypal_capture_id', $capture_id); $order->save(); }
+                error_log('[EAO DEBUG] PayPal refund: derived capture=' . ($capture_id ?: '(empty)'));
             }
             if ($capture_id === '') {
                 $refund->delete(true);
