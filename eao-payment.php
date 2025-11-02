@@ -2013,25 +2013,8 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
     $reference = (string) ($resource['detail']['reference'] ?? '');
     error_log('[EAO PayPal WH] type=' . $type . ' invoice=' . $invoice_id . ' ref=' . $reference);
 
-    // Staging fallback: if verification failed but payload is clearly our invoice, accept
-    if (!$verified) {
-        $home = function_exists('home_url') ? (string) home_url('/') : '';
-        $is_staging = (strpos($home, '.kinsta.cloud') !== false);
-        if ($is_staging && strpos($reference, 'EAO-') === 0) {
-            $fallback_order_id = (int) substr($reference, 4);
-            if ($fallback_order_id > 0) {
-                $order_try = wc_get_order($fallback_order_id);
-                if ($order_try) {
-                    $stored_inv = (string) $order_try->get_meta('_eao_paypal_invoice_id', true);
-                    if ($stored_inv !== '' && $stored_inv === $invoice_id) {
-                        $verified = true;
-                        error_log('[EAO PayPal WH] STAGING FALLBACK: accepting event by invoice/reference match for order=' . $fallback_order_id);
-                    }
-                }
-            }
-        }
-        if (!$verified) { return new WP_REST_Response(array('ok' => false, 'reason' => 'verification_failed'), 400); }
-    }
+    // If verification failed, reject the request (no fallback in any environment)
+    if (!$verified) { return new WP_REST_Response(array('ok' => false, 'reason' => 'verification_failed'), 400); }
     $order_id = 0;
     if (strpos($reference, 'EAO-') === 0) { $order_id = (int) substr($reference, 4); }
     if (!$order_id && $invoice_id !== '') { $order_id = eao_find_order_id_by_meta('_eao_paypal_invoice_id', $invoice_id); }
