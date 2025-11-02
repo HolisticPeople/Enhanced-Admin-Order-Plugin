@@ -780,9 +780,11 @@
                             try {
                                 var sentTo = (resp && resp.data && resp.data.sent_to) ? String(resp.data.sent_to) : ($('#eao-pp-request-email').val() || '');
                                 var $input = $('#eao-pp-request-email');
+                                var $label = $('#eao-pp-request-options label').first();
                                 $input.hide().prop('disabled', true);
+                                $label.hide();
                                 if (!$('#eao-pp-email-sent-note').length) {
-                                    $('<span id="eao-pp-email-sent-note" style="margin-left:6px;"></span>').insertAfter($input);
+                                    $('<span id="eao-pp-email-sent-note" style="margin-right:12px;"></span>').insertAfter($label);
                                 }
                                 $('#eao-pp-email-sent-note').text(sentTo ? ('Email was sent to ' + sentTo) : 'Email was sent.');
                             } catch(_){}
@@ -843,9 +845,11 @@
                             try {
                                 var sentTo = (resp && resp.data && resp.data.sent_to) ? String(resp.data.sent_to) : ($('#eao-pp-request-email').val() || '');
                                 var $input = $('#eao-pp-request-email');
+                                var $label = $('#eao-pp-request-options label').first();
                                 $input.hide().prop('disabled', true);
+                                $label.hide();
                                 if (!$('#eao-pp-email-sent-note').length) {
-                                    $('<span id="eao-pp-email-sent-note" style="margin-left:6px;"></span>').insertAfter($input);
+                                    $('<span id="eao-pp-email-sent-note" style="margin-right:12px;"></span>').insertAfter($label);
                                 }
                                 $('#eao-pp-email-sent-note').text(sentTo ? ('Email was sent to ' + sentTo) : 'Email was sent.');
                             } catch(_){}
