@@ -1250,7 +1250,7 @@ function eao_stripe_send_payment_request() {
                         $order->update_meta_data('_eao_stripe_invoice_url', (string) ($send_body['hosted_invoice_url'] ?? ''));
                         $order->save();
                         $order->add_order_note('Stripe payment request re-sent. Invoice #' . ($send_body['number'] ?? $send_body['id']));
-                        wp_send_json_success(array('invoice_id' => $send_body['id'], 'status' => $send_body['status'], 'url' => ($send_body['hosted_invoice_url'] ?? ''), 'message' => 'Payment request sent.'));
+                        wp_send_json_success(array('invoice_id' => $send_body['id'], 'status' => $send_body['status'], 'url' => ($send_body['hosted_invoice_url'] ?? ''), 'message' => 'Payment request sent.', 'sent_to' => $email));
                     }
                 }
             }
@@ -1385,7 +1385,7 @@ function eao_stripe_send_payment_request() {
     $order->save();
     $order->add_order_note('Stripe payment request sent. Invoice #' . ($sent['number'] ?? $sent['id']));
 
-    wp_send_json_success(array('invoice_id' => $sent['id'], 'status' => $sent['status'] ?? 'open', 'url' => ($sent['hosted_invoice_url'] ?? '')));
+    wp_send_json_success(array('invoice_id' => $sent['id'], 'status' => $sent['status'] ?? 'open', 'url' => ($sent['hosted_invoice_url'] ?? ''), 'sent_to' => $email));
 }
 
 /** Void a previously created invoice */
@@ -1758,7 +1758,7 @@ function eao_paypal_send_payment_request() {
     $order->save();
     $order->add_order_note('PayPal payment request sent. Invoice ' . $inv_id);
 
-    wp_send_json_success(array('invoice_id' => $inv_id, 'status' => $status, 'url' => $payer_url));
+    wp_send_json_success(array('invoice_id' => $inv_id, 'status' => $status, 'url' => $payer_url, 'sent_to' => $email));
 }
 
 /** Cancel a PayPal invoice */

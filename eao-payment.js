@@ -778,7 +778,7 @@
                         eaoUpdateRequestButtons();
                             // Replace email input with a note indicating where the email was sent
                             try {
-                                var sentTo = $('#eao-pp-request-email').val() || '';
+                                var sentTo = (resp && resp.data && resp.data.sent_to) ? String(resp.data.sent_to) : ($('#eao-pp-request-email').val() || '');
                                 var $input = $('#eao-pp-request-email');
                                 $input.hide().prop('disabled', true);
                                 if (!$('#eao-pp-email-sent-note').length) {
@@ -841,7 +841,7 @@
                         eaoUpdateRequestButtons();
                             // Replace email input with a note indicating where the email was sent
                             try {
-                                var sentTo = $('#eao-pp-request-email').val() || '';
+                                var sentTo = (resp && resp.data && resp.data.sent_to) ? String(resp.data.sent_to) : ($('#eao-pp-request-email').val() || '');
                                 var $input = $('#eao-pp-request-email');
                                 $input.hide().prop('disabled', true);
                                 if (!$('#eao-pp-email-sent-note').length) {
