@@ -1065,7 +1065,7 @@ function eao_payment_process_refund() {
             update_post_meta($refund->get_id(), '_eao_refund_reference', $gateway_reference_value);
             $remote_processed = true;
         } else if (isset($is_eao_paypal) && $is_eao_paypal && (!$located_gateway || !method_exists($located_gateway, 'supports') || !$located_gateway->supports('refunds'))) {
-            // Remote refund via PayPal Payments API using capture id
+            // Remote refund via PayPal APIs using capture or sale/transaction id
             $gateway_label = 'PayPal (EAO Invoice)';
             $token3 = eao_paypal_get_oauth_token();
             if (is_wp_error($token3)) {
@@ -1098,8 +1098,14 @@ function eao_payment_process_refund() {
             $currency = (string) $order->get_meta('_eao_last_charged_currency', true);
             if ($currency === '') { $currency = strtoupper(method_exists($order,'get_currency') ? (string)$order->get_currency() : 'USD'); }
             $rf_headers = array('Authorization' => 'Bearer ' . $token3, 'Content-Type' => 'application/json', 'Accept' => 'application/json');
-            $rf_body = array('amount' => array('value' => wc_format_decimal($amount_total, 2), 'currency_code' => $currency));
-            $rf_resp = wp_remote_post('https://api-m.paypal.com/v2/payments/captures/' . rawurlencode($capture_id) . '/refund', array('headers' => $rf_headers, 'body' => wp_json_encode($rf_body), 'timeout' => 25));
+            $rf_body_v2 = array('amount' => array('value' => wc_format_decimal($amount_total, 2), 'currency_code' => $currency));
+            $rf_resp = null;
+            // Heuristic: 17-char alnum or starting with PAYID indicates a sale/transaction id → use v1 sale refund
+            if (preg_match('/^[A-Z0-9]{17}$/', $capture_id) || strpos($capture_id, 'PAYID-') === 0) {
+                $rf_resp = wp_remote_post('https://api-m.paypal.com/v1/payments/sale/' . rawurlencode($capture_id) . '/refund', array('headers' => $rf_headers, 'body' => wp_json_encode(array('amount' => array('total' => wc_format_decimal($amount_total, 2), 'currency' => $currency))), 'timeout' => 25));
+            } else {
+                $rf_resp = wp_remote_post('https://api-m.paypal.com/v2/payments/captures/' . rawurlencode($capture_id) . '/refund', array('headers' => $rf_headers, 'body' => wp_json_encode($rf_body_v2), 'timeout' => 25));
+            }
             if (is_wp_error($rf_resp)) { $refund->delete(true); wp_send_json_error(array('message' => 'PayPal refund error: ' . $rf_resp->get_error_message())); }
             $rf_code = (int) wp_remote_retrieve_response_code($rf_resp);
             $rf_dbg = wp_remote_retrieve_header($rf_resp, 'paypal-debug-id');
@@ -2147,6 +2153,7 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                                 if (!$capture_id && !empty($pay['id'])) { $capture_id = (string)$pay['id']; break; }
                                 if (!$capture_id && !empty($pay['reference_id'])) { $capture_id = (string)$pay['reference_id']; break; }
                                 if (!$capture_id && !empty($pay['paypal_reference_id'])) { $capture_id = (string)$pay['paypal_reference_id']; break; }
+                                if (!$capture_id && !empty($pay['payment_id'])) { $capture_id = (string)$pay['payment_id']; break; }
                             }
                         }
                         if ($capture_id !== '') { $order->update_meta_data('_eao_paypal_capture_id', $capture_id); $order->save(); }
