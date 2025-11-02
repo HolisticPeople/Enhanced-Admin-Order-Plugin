@@ -157,10 +157,6 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                     <th>Live Publishable</th>
                     <td><input type="text" id="eao-pp-stripe-live-publishable" value="<?php echo esc_attr($opts['live_publishable'] ?? ''); ?>" style="width:420px;" /></td>
                 </tr>
-                <tr>
-                    <th>Webhook Signing Secret (Live)</th>
-                    <td><input type="text" id="eao-pp-stripe-webhook-secret" value="<?php echo esc_attr($opts['webhook_signing_secret_live'] ?? ''); ?>" style="width:420px;" /></td>
-                </tr>
             </table>
             <p><button type="button" id="eao-pp-save-stripe" class="button">Save Stripe Keys</button></p>
 
@@ -175,15 +171,25 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                     <th>Live Secret</th>
                     <td><input type="text" id="eao-pp-paypal-live-secret" value="<?php echo esc_attr($pp_opts['live_secret'] ?? ''); ?>" style="width:420px;" /></td>
                 </tr>
-                <tr>
-                    <th>Webhook ID (Live)</th>
-                    <td><input type="text" id="eao-pp-paypal-webhook-id" value="<?php echo esc_attr($pp_opts['webhook_id_live'] ?? ''); ?>" style="width:420px;" /></td>
-                </tr>
             </table>
             <p><button type="button" id="eao-pp-save-paypal" class="button">Save PayPal Settings</button></p>
 
+            <h4 style="margin-top:18px;">Webhook Environment</h4>
+            <?php $global_env = get_option('eao_webhook_env', 'live'); ?>
+            <table class="form-table">
+                <tr>
+                    <th>Active Environment (Stripe & PayPal)</th>
+                    <td>
+                        <select id="eao-webhook-env-global">
+                            <option value="live"<?php echo ($global_env==='live')?' selected':''; ?>>Production</option>
+                            <option value="staging"<?php echo ($global_env==='staging')?' selected':''; ?>>Staging</option>
+                        </select>
+                    </td>
+                </tr>
+            </table>
+
             <h4 style="margin-top:18px;">Stripe Webhook Settings</h4>
-            <?php $stripe_opts = get_option('eao_stripe_settings', array()); $stripe_env = get_option('eao_webhook_env_stripe', get_option('eao_webhook_env','live')); ?>
+            <?php $stripe_opts = get_option('eao_stripe_settings', array()); $stripe_env = get_option('eao_webhook_env','live'); ?>
             <table class="form-table">
                 <tr>
                     <th>Webhook URL (Production)</th>
@@ -213,20 +219,11 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                         <p class="description">From the Stripe staging endpoint (Reveal secret).</p>
                     </td>
                 </tr>
-                <tr>
-                    <th>Active Environment</th>
-                    <td>
-                        <select id="eao-webhook-env-stripe">
-                            <option value="live"<?php echo ($stripe_env==='live')?' selected':''; ?>>Production</option>
-                            <option value="staging"<?php echo ($stripe_env==='staging')?' selected':''; ?>>Staging</option>
-                        </select>
-                    </td>
-                </tr>
             </table>
             <p><button type="button" id="eao-pp-save-stripe-webhooks" class="button">Save Stripe Webhooks</button></p>
 
             <h4 style="margin-top:18px;">PayPal Webhook Settings</h4>
-            <?php $paypal_opts = get_option('eao_paypal_settings', array()); $paypal_env = get_option('eao_webhook_env_paypal', get_option('eao_webhook_env','live')); ?>
+            <?php $paypal_opts = get_option('eao_paypal_settings', array()); $paypal_env = get_option('eao_webhook_env', 'live'); ?>
             <table class="form-table">
                 <tr>
                     <th>Webhook URL (Production)</th>
@@ -254,15 +251,6 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                     <td>
                         <input type="text" id="eao-pp-paypal-webhook-id-staging" style="width:420px;" value="<?php echo esc_attr($paypal_opts['webhook_id_staging'] ?? ''); ?>" />
                         <p class="description">From the PayPal webhook details page.</p>
-                    </td>
-                </tr>
-                <tr>
-                    <th>Active Environment</th>
-                    <td>
-                        <select id="eao-webhook-env-paypal">
-                            <option value="live"<?php echo ($paypal_env==='live')?' selected':''; ?>>Production</option>
-                            <option value="staging"<?php echo ($paypal_env==='staging')?' selected':''; ?>>Staging</option>
-                        </select>
                     </td>
                 </tr>
             </table>
@@ -1739,7 +1727,7 @@ function eao_payment_stripe_webhooks_save() {
     if ($live_secret !== '') { $s['webhook_signing_secret_live'] = $live_secret; }
     if ($stg_secret !== '') { $s['webhook_signing_secret_staging'] = $stg_secret; }
     update_option('eao_stripe_settings', $s, false);
-    if (in_array($env, array('live','staging'), true)) { update_option('eao_webhook_env_stripe', $env, false); }
+    if (in_array($env, array('live','staging'), true)) { update_option('eao_webhook_env', $env, false); }
     wp_send_json_success(array('saved' => true));
 }
 
@@ -1760,7 +1748,7 @@ function eao_payment_paypal_webhooks_save() {
     if ($live_id !== '') { $p['webhook_id_live'] = $live_id; }
     if ($stg_id !== '') { $p['webhook_id_staging'] = $stg_id; }
     update_option('eao_paypal_settings', $p, false);
-    if (in_array($env, array('live','staging'), true)) { update_option('eao_webhook_env_paypal', $env, false); }
+    if (in_array($env, array('live','staging'), true)) { update_option('eao_webhook_env', $env, false); }
     wp_send_json_success(array('saved' => true));
 }
 
