@@ -1981,7 +1981,8 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                 'auth_algo' => $request->get_header('paypal-auth-algo'),
                 'transmission_sig' => $request->get_header('paypal-transmission-sig'),
                 'webhook_id' => $webhook_id,
-                'webhook_event' => json_decode($body, true)
+                // Use object form, as PayPal examples expect JSON object semantics
+                'webhook_event' => json_decode($body, false)
             );
             $resp = wp_remote_post('https://api-m.paypal.com/v1/notifications/verify-webhook-signature', array(
                 'headers' => array('Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'),
