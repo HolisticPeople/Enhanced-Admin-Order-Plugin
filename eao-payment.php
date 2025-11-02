@@ -1959,6 +1959,7 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
     $pp = get_option('eao_paypal_settings', array());
     $webhook_id = (string) ($pp['webhook_id_live'] ?? '');
     error_log('[EAO PayPal WH] Received');
+    if (!empty($body)) { error_log('[EAO PayPal WH] payload sample=' . substr($body, 0, 600)); }
 
     // Log essential header presence for troubleshooting
     $tid  = (string) $request->get_header('paypal-transmission-id');
