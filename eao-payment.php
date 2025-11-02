@@ -1924,6 +1924,28 @@ function eao_paypal_get_invoice_status() {
         $order->update_meta_data('_eao_last_charged_amount_cents', $paid_cents);
         if ($currency !== '') { $order->update_meta_data('_eao_last_charged_currency', $currency); }
     }
+    // Extract and store a refund reference (capture/sale id) when available
+    if (!empty($body['payments'])) {
+        $cap = '';
+        $p = $body['payments'];
+        if (is_array($p)) {
+            if (!empty($p['transactions']) && is_array($p['transactions'])) {
+                foreach ($p['transactions'] as $tx) {
+                    if (!empty($tx['payment_id'])) { $cap = (string)$tx['payment_id']; break; }
+                    if (!$cap && !empty($tx['transaction_id'])) { $cap = (string)$tx['transaction_id']; break; }
+                    if (!$cap && !empty($tx['id'])) { $cap = (string)$tx['id']; break; }
+                }
+            } else {
+                foreach ($p as $tx) {
+                    if (!is_array($tx)) { continue; }
+                    if (!empty($tx['payment_id'])) { $cap = (string)$tx['payment_id']; break; }
+                    if (!$cap && !empty($tx['transaction_id'])) { $cap = (string)$tx['transaction_id']; break; }
+                    if (!$cap && !empty($tx['id'])) { $cap = (string)$tx['id']; break; }
+                }
+            }
+        }
+        if ($cap !== '') { $order->update_meta_data('_eao_paypal_capture_id', $cap); }
+    }
     $order->save();
     if (strtoupper($status) === 'PAID') {
         $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
