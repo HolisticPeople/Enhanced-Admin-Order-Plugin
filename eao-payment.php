@@ -84,17 +84,15 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
     $first_name = method_exists($order,'get_billing_first_name') ? (string)$order->get_billing_first_name() : '';
     $last_name  = method_exists($order,'get_billing_last_name') ? (string)$order->get_billing_last_name() : '';
     $billing_email = method_exists($order,'get_billing_email') ? (string)$order->get_billing_email() : '';
-    if ($billing_email === '') { error_log('[EAO DEBUG] render_metabox: order billing_email empty for order #' . $order_id); }
     if ($billing_email === '' && method_exists($order,'get_user_id')) {
         $uid = (int) $order->get_user_id();
-        if ($uid) { $u = get_user_by('id', $uid); if ($u && !empty($u->user_email)) { $billing_email = (string) $u->user_email; error_log('[EAO DEBUG] render_metabox: filled email from user #' . $uid . ' = ' . $billing_email); } }
+        if ($uid) { $u = get_user_by('id', $uid); if ($u && !empty($u->user_email)) { $billing_email = (string) $u->user_email; } }
     }
     if ($billing_email === '') {
         // Fallback to raw meta in case billing email not stored on the order object yet
         $meta_email = '';
         if (method_exists($order, 'get_meta')) { $meta_email = (string) $order->get_meta('_billing_email', true); }
         if ($meta_email !== '') { $billing_email = $meta_email; }
-        error_log('[EAO DEBUG] render_metabox: fallback meta _billing_email = ' . ($meta_email !== '' ? $meta_email : '(empty)'));
     }
 
     $opts = get_option('eao_stripe_settings', array(
@@ -1159,18 +1157,16 @@ function eao_payment_process_refund() {
                 wp_send_json_error(array('message' => 'PayPal auth failed: ' . $token3->get_error_message()));
             }
             $capture_id = (string) $order->get_meta('_eao_paypal_capture_id', true);
-            error_log('[EAO DEBUG] PayPal refund start for order #' . $order_id . ' capture_meta=' . ($capture_id ?: '(empty)'));
             if ($capture_id === '') {
                 // Attempt to derive capture id from invoice detail (with short retries and fallback endpoint)
                 $invoice_id = (string) $order->get_meta('_eao_paypal_invoice_id', true);
-                error_log('[EAO DEBUG] PayPal refund: deriving capture from invoice ' . ($invoice_id ?: '(none)'));
+                
                 $headers_det = array('Authorization' => 'Bearer ' . $token3, 'Accept' => 'application/json');
                 for ($attempt = 1; $attempt <= 4 && $capture_id === '' && $invoice_id !== ''; $attempt++) {
-                    error_log('[EAO DEBUG] PayPal refund: derive attempt #' . $attempt);
+                    
                     $det = wp_remote_get('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($invoice_id), array('headers' => $headers_det, 'timeout' => 15));
                     if (!is_wp_error($det)) {
                         $dx = json_decode(wp_remote_retrieve_body($det), true);
-                        error_log('[EAO DEBUG] PayPal refund: invoice details payments present=' . (!empty($dx['payments']) ? 'yes' : 'no'));
                         if (!empty($dx['payments']) && is_array($dx['payments'])) {
                             foreach ($dx['payments'] as $p) {
                                 if (!empty($p['transaction_id'])) { $capture_id = (string)$p['transaction_id']; break; }
@@ -1207,7 +1203,6 @@ function eao_payment_process_refund() {
                     if ($capture_id === '') { sleep(1); }
                 }
                 if ($capture_id !== '') { $order->update_meta_data('_eao_paypal_capture_id', $capture_id); $order->save(); }
-                error_log('[EAO DEBUG] PayPal refund: derived capture=' . ($capture_id ?: '(empty)'));
             }
             if ($capture_id === '') {
                 $refund->delete(true);
@@ -1220,17 +1215,16 @@ function eao_payment_process_refund() {
             $rf_resp = null;
             // Heuristic: 17-char alnum or starting with PAYID indicates a sale/transaction id → use v1 sale refund
             if (preg_match('/^[A-Z0-9]{17}$/', $capture_id) || strpos($capture_id, 'PAYID-') === 0) {
-                error_log('[EAO DEBUG] PayPal refund using V1 sale API for capture=' . $capture_id);
+                
                 $rf_resp = wp_remote_post('https://api-m.paypal.com/v1/payments/sale/' . rawurlencode($capture_id) . '/refund', array('headers' => $rf_headers, 'body' => wp_json_encode(array('amount' => array('total' => wc_format_decimal($amount_total, 2), 'currency' => $currency))), 'timeout' => 25));
             } else {
-                error_log('[EAO DEBUG] PayPal refund using V2 capture API for capture=' . $capture_id);
+                
                 $rf_resp = wp_remote_post('https://api-m.paypal.com/v2/payments/captures/' . rawurlencode($capture_id) . '/refund', array('headers' => $rf_headers, 'body' => wp_json_encode($rf_body_v2), 'timeout' => 25));
             }
             if (is_wp_error($rf_resp)) { $refund->delete(true); wp_send_json_error(array('message' => 'PayPal refund error: ' . $rf_resp->get_error_message())); }
             $rf_code = (int) wp_remote_retrieve_response_code($rf_resp);
             $rf_dbg = wp_remote_retrieve_header($rf_resp, 'paypal-debug-id');
             $rf_json = json_decode(wp_remote_retrieve_body($rf_resp), true);
-            error_log('[EAO DEBUG] PayPal refund response code=' . $rf_code . ' debug_id=' . ($rf_dbg ?: '(none)'));
             if ($rf_code >= 400 || !is_array($rf_json) || empty($rf_json['id'])) {
                 $refund->delete(true);
                 $msg = 'PayPal refund failed' . ($rf_dbg ? ' ['.$rf_dbg.']' : '');
@@ -1669,7 +1663,6 @@ function eao_stripe_get_invoice_status() {
                     $order->update_meta_data('_eao_stripe_charge_id', $charge_id);
                     if (method_exists($order, 'set_transaction_id')) { $order->set_transaction_id($charge_id); }
                     $order->update_meta_data('_transaction_id', $charge_id);
-                    error_log('[EAO Stripe Refresh] Stored charge_id=' . $charge_id . ' for order ' . $order_id);
                 }
             }
         } catch (Exception $e) { /* noop */ }
@@ -1808,7 +1801,6 @@ function eao_paypal_get_oauth_token() {
     $client_id = isset($pp['live_client_id']) ? trim((string) $pp['live_client_id']) : '';
     $secret    = isset($pp['live_secret']) ? trim((string) $pp['live_secret']) : '';
     if ($client_id === '' || $secret === '') {
-        error_log('[EAO PayPal] Missing live client id/secret');
         return new WP_Error('missing_keys', 'PayPal live client id/secret missing');
     }
     $cached = get_transient('eao_paypal_access_token_live');
@@ -1825,15 +1817,9 @@ function eao_paypal_get_oauth_token() {
         'body'    => 'grant_type=client_credentials',
         'timeout' => 25,
     ));
-    if (is_wp_error($resp)) {
-        error_log('[EAO PayPal] OAuth request error: ' . $resp->get_error_message());
-        return $resp;
-    }
+    if (is_wp_error($resp)) { return $resp; }
     $body = json_decode(wp_remote_retrieve_body($resp), true);
-    if (!is_array($body) || empty($body['access_token'])) {
-        error_log('[EAO PayPal] OAuth failed. Body: ' . substr(wp_remote_retrieve_body($resp), 0, 500));
-        return new WP_Error('oauth_failed', 'PayPal OAuth failed');
-    }
+    if (!is_array($body) || empty($body['access_token'])) { return new WP_Error('oauth_failed', 'PayPal OAuth failed'); }
     $token = (string) $body['access_token'];
     $ttl   = isset($body['expires_in']) ? max(60, (int) $body['expires_in'] - 60) : 300;
     set_transient('eao_paypal_access_token_live', array('token' => $token, 'exp' => time() + $ttl), $ttl);
@@ -1953,16 +1939,12 @@ function eao_paypal_send_payment_request() {
     );
 
     $create_url = 'https://api-m.paypal.com/v2/invoicing/invoices';
-    error_log('[EAO PayPal] Create invoice: order=' . $order_id . ' amount=' . number_format($amount_value,2,'.','') . ' ' . $currency . ' email=' . $email);
     $resp = wp_remote_post($create_url, array(
         'headers' => $headers,
         'body'    => wp_json_encode($create_body),
         'timeout' => 25,
     ));
-    if (is_wp_error($resp)) {
-        error_log('[EAO PayPal] Create error: ' . $resp->get_error_message());
-        wp_send_json_error(array('message' => 'PayPal create failed: ' . $resp->get_error_message()));
-    }
+    if (is_wp_error($resp)) { wp_send_json_error(array('message' => 'PayPal create failed: ' . $resp->get_error_message())); }
     $http_code = (int) wp_remote_retrieve_response_code($resp);
     $created = json_decode(wp_remote_retrieve_body($resp), true);
     $inv_id = '';
@@ -1992,7 +1974,6 @@ function eao_paypal_send_payment_request() {
             if ($name || $m) { $msg .= ': ' . trim($name . ' ' . $m); }
             if ($dbg) { $msg .= ' ['.$dbg.']'; }
         }
-        error_log('[EAO PayPal] Create ambiguous (HTTP '.$http_code.'): ' . substr(wp_remote_retrieve_body($resp), 0, 800));
         wp_send_json_error(array('message' => $msg, 'paypal' => $created, 'http' => $http_code));
     }
 
@@ -2001,20 +1982,15 @@ function eao_paypal_send_payment_request() {
     // Send invoice
     $send_url = 'https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($inv_id) . '/send';
     $send_headers = $headers; unset($send_headers['Prefer']);
-    error_log('[EAO PayPal] Send attempt invoice=' . $inv_id);
     $send = wp_remote_post($send_url, array(
         'headers' => $send_headers,
         'body'    => wp_json_encode(array('send_to_recipient' => true)),
         'timeout' => 25,
     ));
-    if (is_wp_error($send)) {
-        error_log('[EAO PayPal] Send failed: ' . $send->get_error_message());
-        wp_send_json_error(array('message' => 'PayPal send failed: ' . $send->get_error_message()));
-    }
+    if (is_wp_error($send)) { wp_send_json_error(array('message' => 'PayPal send failed: ' . $send->get_error_message())); }
     $send_http = (int) wp_remote_retrieve_response_code($send);
     if ($send_http >= 400) {
         $dbg = wp_remote_retrieve_header($send, 'paypal-debug-id');
-        error_log('[EAO PayPal] Send failed HTTP '.$send_http.' dbg=' . $dbg . ' body=' . substr(wp_remote_retrieve_body($send), 0, 500));
         wp_send_json_error(array('message' => 'PayPal send failed (HTTP '.$send_http.')' . ($dbg ? ' ['.$dbg.']' : '')));
     }
     $sent = json_decode(wp_remote_retrieve_body($send), true);
@@ -2100,7 +2076,7 @@ function eao_paypal_get_invoice_status() {
     if (is_wp_error($resp)) { wp_send_json_error(array('message' => 'PayPal: status fetch failed: ' . $resp->get_error_message())); }
     $body = json_decode(wp_remote_retrieve_body($resp), true);
     if (!is_array($body) || empty($body['status'])) { wp_send_json_error(array('message' => 'PayPal: status fetch failed')); }
-    if (!empty($body['payments'])) { error_log('[EAO PayPal] Invoice detail payments sample: ' . substr(wp_json_encode($body['payments']), 0, 400)); }
+    
     $status = (string) $body['status'];
     $order->update_meta_data('_eao_paypal_invoice_status', $status);
     if (!empty($body['links']) && is_array($body['links'])) {
@@ -2272,7 +2248,6 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
                                     $order->update_meta_data('_eao_stripe_charge_id', $charge_id2);
                                     if (method_exists($order, 'set_transaction_id')) { $order->set_transaction_id($charge_id2); }
                                     $order->update_meta_data('_transaction_id', $charge_id2);
-                                    error_log('[EAO Stripe WH] Stored charge_id=' . $charge_id2 . ' for order ' . $order_id);
                                 }
                             }
                         } catch (Exception $e) { /* noop */ }
@@ -2317,16 +2292,10 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
     $env = get_option('eao_webhook_env', 'live');
     $webhook_id = (string) (($env === 'staging') ? ($pp['webhook_id_staging'] ?? '') : ($pp['webhook_id_live'] ?? ''));
     
-    if (!empty($body)) { error_log('[EAO PayPal WH] payload sample=' . substr($body, 0, 600)); }
+    
 
-    // Log essential header presence for troubleshooting
+    // Obtain headers if needed in the future (no logging in production)
     $tid  = (string) $request->get_header('paypal-transmission-id');
-    $tt   = (string) $request->get_header('paypal-transmission-time');
-    $algo = (string) $request->get_header('paypal-auth-algo');
-    $sig  = (string) $request->get_header('paypal-transmission-sig');
-    $cert = (string) $request->get_header('paypal-cert-url');
-    error_log('[EAO PayPal WH] hdr tid=' . ($tid ?: '[empty]') . ' time=' . ($tt ?: '[empty]') . ' algo=' . ($algo ?: '[empty]') . ' siglen=' . (strlen($sig)) . ' cert=' . ($cert ? 'set' : 'empty'));
-    error_log('[EAO PayPal WH] using webhook_id=' . ($webhook_id ?: '[empty]'));
 
     $verified = false;
     // Verify via PayPal API if webhook id is set
@@ -2351,17 +2320,11 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
             if (!is_wp_error($resp)) {
                 $res = json_decode(wp_remote_retrieve_body($resp), true);
                 $http = (int) wp_remote_retrieve_response_code($resp);
-                error_log('[EAO PayPal WH] verify http=' . $http . ' body=' . substr(wp_remote_retrieve_body($resp), 0, 400));
                 if (!empty($res['verification_status']) && $res['verification_status'] === 'SUCCESS') {
-                    error_log('[EAO PayPal WH] verification success');
                     $verified = true;
-                } else {
-                    error_log('[EAO PayPal WH] verification failed');
                 }
             }
         }
-    } else {
-        error_log('[EAO PayPal WH] no webhook_id configured; skipping verification');
     }
 
     $event = json_decode($body, true);
@@ -2375,7 +2338,7 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
     if (!empty($resource['detail']['reference'])) { $reference = (string) $resource['detail']['reference']; }
     if (empty($invoice_id) && !empty($resource['invoice']['id'])) { $invoice_id = (string) $resource['invoice']['id']; }
     if (empty($reference) && !empty($resource['invoice']['detail']['reference'])) { $reference = (string) $resource['invoice']['detail']['reference']; }
-    error_log('[EAO PayPal WH] type=' . $type . ' invoice=' . $invoice_id . ' ref=' . $reference);
+    
 
     // If verification failed, reject the request (no fallback in any environment)
     if (!$verified) { return new WP_REST_Response(array('ok' => false, 'reason' => 'verification_failed'), 400); }
@@ -2401,7 +2364,7 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                     $detail_resp2 = wp_remote_get('https://api-m.paypal.com/v2/invoicing/invoices/' . rawurlencode($invoice_id), array('headers' => array('Authorization' => 'Bearer ' . $token2, 'Accept' => 'application/json'), 'timeout' => 15));
                 if (!is_wp_error($detail_resp2)) {
                         $d2 = json_decode(wp_remote_retrieve_body($detail_resp2), true);
-                    if (is_array($d2)) { error_log('[EAO PayPal WH] invoice detail keys: ' . implode(',', array_keys($d2))); }
+                    if (is_array($d2)) { /* no log in production */ }
                         if (!empty($d2['amount']['value'])) {
                             $order->update_meta_data('_eao_last_charged_amount_cents', (int) round(((float)$d2['amount']['value']) * 100));
                             if (!empty($d2['amount']['currency_code'])) { $order->update_meta_data('_eao_last_charged_currency', strtoupper((string)$d2['amount']['currency_code'])); }
@@ -2417,7 +2380,7 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                     if (empty($order->get_meta('_eao_paypal_capture_id', true))) {
                         $capture_id = '';
                         if (!empty($d2['payments']) && is_array($d2['payments'])) {
-                            error_log('[EAO PayPal WH] invoice payments sample: ' . substr(wp_json_encode($d2['payments']), 0, 400));
+                            
                             foreach ($d2['payments'] as $pay) {
                                 if (!is_array($pay)) { continue; }
                                 if (!empty($pay['transaction_id'])) { $capture_id = (string)$pay['transaction_id']; break; }
@@ -2445,7 +2408,7 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                 }
                 $note_text = 'PayPal invoice paid' . ($paid_text_note ? ' (' . $paid_text_note . ')' : '') . '.';
                 if ($is_pending_like) {
-                    try { $order->update_status('processing', $note_text); error_log('[EAO PayPal WH] Flip to processing: order=' . $order_id . ' prev=' . $current); } catch (Exception $e) { error_log('[EAO PayPal WH] Flip failed: order=' . $order_id . ' err=' . $e->getMessage()); }
+                    try { $order->update_status('processing', $note_text); } catch (Exception $e) { /* noop */ }
                 } else {
                     $order->add_order_note($note_text);
                 }
@@ -2484,7 +2447,7 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
     if ($type === 'PAYMENT.CAPTURE.COMPLETED') {
         $cap_id = (string) ($resource['id'] ?? '');
         $related_invoice = (string) ($resource['supplementary_data']['related_ids']['invoice_id'] ?? '');
-        error_log('[EAO PayPal WH] capture.completed id=' . $cap_id . ' inv=' . $related_invoice);
+        
         if ($cap_id !== '' && $related_invoice !== '') {
             $oid = eao_find_order_id_by_meta('_eao_paypal_invoice_id', $related_invoice);
             if ($oid) {
