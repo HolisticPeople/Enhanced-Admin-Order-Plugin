@@ -1960,6 +1960,15 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
     $webhook_id = (string) ($pp['webhook_id_live'] ?? '');
     error_log('[EAO PayPal WH] Received');
 
+    // Log essential header presence for troubleshooting
+    $tid  = (string) $request->get_header('paypal-transmission-id');
+    $tt   = (string) $request->get_header('paypal-transmission-time');
+    $algo = (string) $request->get_header('paypal-auth-algo');
+    $sig  = (string) $request->get_header('paypal-transmission-sig');
+    $cert = (string) $request->get_header('paypal-cert-url');
+    error_log('[EAO PayPal WH] hdr tid=' . ($tid ?: '[empty]') . ' time=' . ($tt ?: '[empty]') . ' algo=' . ($algo ?: '[empty]') . ' siglen=' . (strlen($sig)) . ' cert=' . ($cert ? 'set' : 'empty'));
+    error_log('[EAO PayPal WH] using webhook_id=' . ($webhook_id ?: '[empty]'));
+
     // Verify via PayPal API if webhook id is set
     if ($webhook_id !== '') {
         $token = eao_paypal_get_oauth_token();
@@ -1980,6 +1989,8 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
             ));
             if (!is_wp_error($resp)) {
                 $res = json_decode(wp_remote_retrieve_body($resp), true);
+                $http = (int) wp_remote_retrieve_response_code($resp);
+                error_log('[EAO PayPal WH] verify http=' . $http . ' body=' . substr(wp_remote_retrieve_body($resp), 0, 400));
                 if (empty($res['verification_status']) || $res['verification_status'] !== 'SUCCESS') {
                     error_log('[EAO PayPal WH] verification failed');
                     return new WP_REST_Response(array('ok' => false, 'reason' => 'verification_failed'), 400);
@@ -1987,6 +1998,8 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                 error_log('[EAO PayPal WH] verification success');
             }
         }
+    } else {
+        error_log('[EAO PayPal WH] no webhook_id configured; skipping verification');
     }
 
     $event = json_decode($body, true);
