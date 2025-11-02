@@ -1424,6 +1424,33 @@ function eao_process_basic_order_details($order, $post_data) {
             eao_log_save_operation('Updated customer ID', 'From: ' . $old_customer_id . ' To: ' . $customer_id);
         }
 
+        // --- Ensure billing email is populated when saving ---
+        try {
+            $current_email = method_exists($order, 'get_billing_email') ? (string) $order->get_billing_email() : '';
+            if ($current_email === '') {
+                $candidate_id = $order->get_customer_id() ? $order->get_customer_id() : $customer_id;
+                if ($candidate_id) {
+                    $u = get_user_by('id', $candidate_id);
+                    if ($u && !empty($u->user_email)) {
+                        if (method_exists($order, 'set_billing_email')) {
+                            $order->set_billing_email($u->user_email);
+                            $result['basics_updated'] = true;
+                            eao_log_save_operation('Filled missing billing email from customer', 'email=' . $u->user_email);
+                        }
+                    }
+                }
+                // Fallback to existing order meta if present
+                if ($current_email === '' && method_exists($order, 'get_meta')) {
+                    $meta_email = (string) $order->get_meta('_billing_email', true);
+                    if ($meta_email !== '' && method_exists($order, 'set_billing_email')) {
+                        $order->set_billing_email($meta_email);
+                        $result['basics_updated'] = true;
+                        eao_log_save_operation('Filled missing billing email from order meta', 'email=' . $meta_email);
+                    }
+                }
+            }
+        } catch (Exception $e) { /* no-op */ }
+
         // --- Process Global Discount Percentage ---
         if ($global_order_discount_percent > 0 && $global_order_discount_percent <= 100) {
             $old_discount = $order->get_meta('_eao_global_product_discount_percent');

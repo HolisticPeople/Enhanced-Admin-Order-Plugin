@@ -88,6 +88,12 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
         $uid = (int) $order->get_user_id();
         if ($uid) { $u = get_user_by('id', $uid); if ($u && !empty($u->user_email)) { $billing_email = (string) $u->user_email; } }
     }
+    if ($billing_email === '') {
+        // Fallback to raw meta in case billing email not stored on the order object yet
+        $meta_email = '';
+        if (method_exists($order, 'get_meta')) { $meta_email = (string) $order->get_meta('_billing_email', true); }
+        if ($meta_email !== '') { $billing_email = $meta_email; }
+    }
 
     $opts = get_option('eao_stripe_settings', array(
         'test_secret' => '', 'test_publishable' => '', 'live_secret' => '', 'live_publishable' => ''
@@ -976,8 +982,9 @@ function eao_payment_describe_order_gateway($order) {
     if (empty($result['label']) && !empty($result['id'])) {
         $result['label'] = ucfirst(str_replace('_', ' ', $result['id']));
     }
+    // If still no known label, return empty to hide the banner (no payment yet)
     if (empty($result['label'])) {
-        $result['label'] = 'Unknown / manual payment';
+        return $result;
     }
 
     $reference = (string) $order->get_transaction_id();
@@ -1158,10 +1165,21 @@ function eao_payment_process_refund() {
                     if (!is_wp_error($det)) {
                         $dx = json_decode(wp_remote_retrieve_body($det), true);
                         if (!empty($dx['payments']) && is_array($dx['payments'])) {
+                            // Newer invoices may return an array of payment objects
                             foreach ($dx['payments'] as $p) {
                                 if (!empty($p['transaction_id'])) { $capture_id = (string)$p['transaction_id']; break; }
                                 if (!$capture_id && !empty($p['paypal_transaction_id'])) { $capture_id = (string)$p['paypal_transaction_id']; break; }
+                                if (!$capture_id && !empty($p['payment_id'])) { $capture_id = (string)$p['payment_id']; break; }
                                 if (!$capture_id && !empty($p['id'])) { $capture_id = (string)$p['id']; break; }
+                                if (!$capture_id && !empty($p['reference_id'])) { $capture_id = (string)$p['reference_id']; break; }
+                            }
+                        }
+                        if (!$capture_id && !empty($dx['payments']) && is_array($dx['payments']) === false && is_array($dx['payments']['transactions'] ?? null)) {
+                            // Older invoices may return an object with a transactions array
+                            foreach ($dx['payments']['transactions'] as $tx) {
+                                if (!empty($tx['payment_id'])) { $capture_id = (string)$tx['payment_id']; break; }
+                                if (!$capture_id && !empty($tx['transaction_id'])) { $capture_id = (string)$tx['transaction_id']; break; }
+                                if (!$capture_id && !empty($tx['id'])) { $capture_id = (string)$tx['id']; break; }
                             }
                         }
                         if ($capture_id !== '') { $order->update_meta_data('_eao_paypal_capture_id', $capture_id); $order->save(); }

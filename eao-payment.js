@@ -22,7 +22,7 @@
                 webhook_url_staging: $('#eao-stripe-webhook-url-stg').val(),
                 webhook_signing_secret_live: $('#eao-stripe-webhook-secret-live').val() || $('#eao-pp-stripe-webhook-secret-live2').val(),
                 webhook_signing_secret_staging: $('#eao-pp-stripe-webhook-secret-staging').val(),
-                webhook_env: $('#eao-webhook-env-stripe').val()
+                webhook_env: $('#eao-webhook-env-global').val()
             }, function(resp){
                 if (resp && resp.success) {
                     $msg.html('<div class="notice notice-success"><p>Stripe webhook settings saved.</p></div>');
@@ -44,7 +44,7 @@
                 webhook_url_staging: $('#eao-paypal-webhook-url-stg').val(),
                 webhook_id_live: $('#eao-pp-paypal-webhook-id-live2').val(),
                 webhook_id_staging: $('#eao-pp-paypal-webhook-id-staging').val(),
-                webhook_env: $('#eao-webhook-env-paypal').val()
+                webhook_env: $('#eao-webhook-env-global').val()
             }, function(resp){
                 if (resp && resp.success) {
                     $msg.html('<div class="notice notice-success"><p>PayPal webhook settings saved.</p></div>');
