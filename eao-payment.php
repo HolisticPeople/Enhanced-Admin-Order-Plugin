@@ -851,6 +851,18 @@ function eao_payment_describe_order_gateway($order) {
         return $result;
     }
 
+    // EAO PayPal Invoice detection
+    $pp_inv_id = (string) $order->get_meta('_eao_paypal_invoice_id', true);
+    if ($pp_inv_id !== '') {
+        $result['id'] = 'eao_paypal_invoice';
+        $result['source'] = 'eao_paypal';
+        $result['label'] = 'PayPal (EAO Invoice)';
+        $result['mode'] = 'live';
+        $result['reference'] = $pp_inv_id;
+        $result['message'] = 'Gateway for this order: PayPal (EAO Invoice). Refunds will be recorded in WooCommerce only. Reference: ' . $pp_inv_id . '.';
+        return $result;
+    }
+
     $resolution = eao_payment_locate_wc_gateway_for_order($order);
     if (!empty($resolution['id'])) {
         $result['id'] = (string) $resolution['id'];
@@ -965,8 +977,11 @@ function eao_payment_process_refund() {
         $gateway_resolution = eao_payment_locate_wc_gateway_for_order($order);
         $located_gateway_id = isset($gateway_resolution['id']) ? (string) $gateway_resolution['id'] : '';
         $located_gateway = isset($gateway_resolution['gateway']) ? $gateway_resolution['gateway'] : null;
-        if (!$located_gateway || !is_object($located_gateway) || !method_exists($located_gateway, 'supports') || !$located_gateway->supports('refunds')) {
-            wp_send_json_error(array('message' => 'Unable to locate a refund-capable payment gateway for this order. Please process the refund on the native WooCommerce order screen or review the payment gateway configuration.'));
+        $is_eao_paypal = (string) $order->get_meta('_eao_paypal_invoice_id', true) !== '';
+        if (!$is_eao_paypal) {
+            if (!$located_gateway || !is_object($located_gateway) || !method_exists($located_gateway, 'supports') || !$located_gateway->supports('refunds')) {
+                wp_send_json_error(array('message' => 'Unable to locate a refund-capable payment gateway for this order. Please process the refund on the native WooCommerce order screen or review the payment gateway configuration.'));
+            }
         }
     }
 
@@ -1045,6 +1060,10 @@ function eao_payment_process_refund() {
             update_post_meta($refund->get_id(), '_eao_stripe_refund_id', $gateway_reference_value);
             update_post_meta($refund->get_id(), '_eao_refund_reference', $gateway_reference_value);
             $remote_processed = true;
+        } else if (isset($is_eao_paypal) && $is_eao_paypal && (!$located_gateway || !method_exists($located_gateway, 'supports') || !$located_gateway->supports('refunds'))) {
+            // Record-only refund path for EAO PayPal invoice payments
+            $gateway_label = 'PayPal (EAO Invoice)';
+            // No remote call
         } else {
             $gateway_amount = (float) wc_format_decimal($amount_total, 2);
             $gateway_result = $located_gateway->process_refund($order_id, $gateway_amount, $user_reason);
@@ -1851,16 +1870,26 @@ function eao_paypal_get_invoice_status() {
     if (strtoupper($status) === 'PAID') {
         $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
         $is_pending_like = in_array($current, array('pending','pending-payment'), true);
+        // Compose amount text if known
+        $paid_cents_meta = (int) $order->get_meta('_eao_last_charged_amount_cents', true);
+        $paid_text = $paid_cents ? ('$' . number_format($paid_cents/100, 2)) : ($paid_cents_meta ? ('$' . number_format($paid_cents_meta/100, 2)) : '');
+        $note = 'PayPal invoice paid' . ($paid_text ? ' (' . $paid_text . ')' : '') . '.';
         if ($is_pending_like) {
             try {
-                $order->update_status('processing', 'PayPal invoice paid (manual refresh).');
+                $order->update_status('processing', $note);
                 error_log('[EAO PayPal Refresh] Flip to processing: order=' . $order_id . ' prev=' . $current);
             } catch (Exception $e) {
                 error_log('[EAO PayPal Refresh] Flip failed: order=' . $order_id . ' err=' . $e->getMessage());
             }
         } else {
+            $order->add_order_note($note);
             error_log('[EAO PayPal Refresh] No flip (status not pending-like): order=' . $order_id . ' current=' . $current);
         }
+        // Persist gateway identity for refunds/labels
+        $order->update_meta_data('_eao_payment_gateway', 'paypal_invoice');
+        $order->update_meta_data('_payment_method', 'eao_paypal_invoice');
+        $order->update_meta_data('_payment_method_title', 'PayPal (EAO Invoice)');
+        $order->save();
     }
     wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => $status, 'url' => (string) $order->get_meta('_eao_paypal_invoice_url', true), 'paid_cents' => $paid_cents, 'currency' => $currency));
 }
@@ -2033,12 +2062,10 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                 if ($type === 'INVOICING.INVOICE.PAID') {
                 $order->update_meta_data('_eao_paypal_invoice_status', 'PAID');
                 $order->save();
-                $order->add_order_note('PayPal invoice paid via webhook.');
                 $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
                 $is_pending_like = in_array($current, array('pending','pending-payment'), true);
-                if ($is_pending_like) {
-                    try { $order->update_status('processing', 'PayPal invoice paid.'); error_log('[EAO PayPal WH] Flip to processing: order=' . $order_id . ' prev=' . $current); } catch (Exception $e) { error_log('[EAO PayPal WH] Flip failed: order=' . $order_id . ' err=' . $e->getMessage()); }
-                }
+                // Attempt to fetch and persist paid amount
+                $paid_text_note = '';
                 // Attempt to fetch and persist paid amount
                 $token2 = eao_paypal_get_oauth_token();
                 if (!is_wp_error($token2)) {
@@ -2049,13 +2076,30 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                             $order->update_meta_data('_eao_last_charged_amount_cents', (int) round(((float)$d2['amount']['value']) * 100));
                             if (!empty($d2['amount']['currency_code'])) { $order->update_meta_data('_eao_last_charged_currency', strtoupper((string)$d2['amount']['currency_code'])); }
                             $order->save();
+                            $paid_text_note = '$' . number_format((float)$d2['amount']['value'], 2);
                         } elseif (!empty($d2['total_amount']['value'])) {
                             $order->update_meta_data('_eao_last_charged_amount_cents', (int) round(((float)$d2['total_amount']['value']) * 100));
                             if (!empty($d2['total_amount']['currency_code'])) { $order->update_meta_data('_eao_last_charged_currency', strtoupper((string)$d2['total_amount']['currency_code'])); }
                             $order->save();
+                            $paid_text_note = '$' . number_format((float)$d2['total_amount']['value'], 2);
                         }
                     }
                 }
+                if ($paid_text_note === '') {
+                    $pc = (int) $order->get_meta('_eao_last_charged_amount_cents', true);
+                    if ($pc > 0) { $paid_text_note = '$' . number_format($pc/100, 2); }
+                }
+                $note_text = 'PayPal invoice paid' . ($paid_text_note ? ' (' . $paid_text_note . ')' : '') . '.';
+                if ($is_pending_like) {
+                    try { $order->update_status('processing', $note_text); error_log('[EAO PayPal WH] Flip to processing: order=' . $order_id . ' prev=' . $current); } catch (Exception $e) { error_log('[EAO PayPal WH] Flip failed: order=' . $order_id . ' err=' . $e->getMessage()); }
+                } else {
+                    $order->add_order_note($note_text);
+                }
+                // Persist gateway identity for refunds/labels
+                $order->update_meta_data('_eao_payment_gateway', 'paypal_invoice');
+                $order->update_meta_data('_payment_method', 'eao_paypal_invoice');
+                $order->update_meta_data('_payment_method_title', 'PayPal (EAO Invoice)');
+                $order->save();
             } elseif ($type === 'INVOICING.INVOICE.CANCELLED') {
                 $order->update_meta_data('_eao_paypal_invoice_status', 'CANCELLED');
                 $order->save();
