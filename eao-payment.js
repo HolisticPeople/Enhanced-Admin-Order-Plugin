@@ -184,12 +184,14 @@
             var $btn = $(this);
             var $msg = $('#eao-pp-messages');
             $btn.prop('disabled', true).text('Saving...');
+            var liveStripe = $('#eao-pp-stripe-webhook-secret-live2').val() || $('#eao-pp-stripe-webhook-secret').val();
+            var livePaypal = $('#eao-pp-paypal-webhook-id-live2').val() || $('#eao-pp-paypal-webhook-id').val();
             $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
                 action: 'eao_payment_webhooks_save_settings',
                 nonce: $('#eao_payment_mockup_nonce').val(),
-                stripe_webhook_signing_secret_live: $('#eao-pp-stripe-webhook-secret').val(),
+                stripe_webhook_signing_secret_live: liveStripe,
                 stripe_webhook_signing_secret_staging: $('#eao-pp-stripe-webhook-secret-staging').val(),
-                paypal_webhook_id_live: $('#eao-pp-paypal-webhook-id').val(),
+                paypal_webhook_id_live: livePaypal,
                 paypal_webhook_id_staging: $('#eao-pp-paypal-webhook-id-staging').val(),
                 webhook_env: $('#eao-webhook-env').val()
             }, function(resp){

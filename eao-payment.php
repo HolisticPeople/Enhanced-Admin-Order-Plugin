@@ -190,6 +190,14 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                     <th>PayPal Webhook URL</th>
                     <td><code><?php echo esc_html( get_rest_url(null, 'eao/v1/paypal/webhook') ); ?></code></td>
                 </tr>
+                <tr>
+                    <th>Stripe Signing Secret (Production)</th>
+                    <td><input type="text" id="eao-pp-stripe-webhook-secret-live2" value="<?php echo esc_attr($opts['webhook_signing_secret_live'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
+                <tr>
+                    <th>PayPal Webhook ID (Production)</th>
+                    <td><input type="text" id="eao-pp-paypal-webhook-id-live2" value="<?php echo esc_attr($pp_opts['webhook_id_live'] ?? ''); ?>" style="width:420px;" /></td>
+                </tr>
                 <?php $wh_env = get_option('eao_webhook_env', 'live'); ?>
                 <tr>
                     <th>Active Environment</th>
