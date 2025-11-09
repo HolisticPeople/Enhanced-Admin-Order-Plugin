@@ -129,6 +129,7 @@
                     var hasRequests = $('#eao-pp-requests-tbody tr').length > 0;
                     var $amt = $('#eao-pp-amount');
                     var autoOk = ($amt.data('auto-from-summary') !== false);
+                    dbg('ensureSync: grand=', grand, 'hasRequests=', hasRequests, 'autoOk=', autoOk);
                     if (!hasRequests && autoOk) {
                         $amt.val(grand.toFixed(2));
                         $('#eao-pp-remaining-cents').val(String(Math.round(grand*100)));
@@ -146,12 +147,12 @@
                 try {
                     var s = window.currentOrderSummaryData || {};
                     var gt = (typeof s.grand_total !== 'undefined') ? parseFloat(s.grand_total) : parseFloat(s.grand_total_raw);
-                    if (!isNaN(gt) && gt > 0) return gt;
+                    if (!isNaN(gt) && gt > 0) { dbg('seed: gt from summary=', gt); return gt; }
                 } catch(_){ }
                 try {
                     var txt = $('.eao-grand-total-line .eao-summary-monetary-value, .eao-grand-total-value, #eao-grand-total-value, .grand-total, [data-field="grand_total"]').first().text() || '';
                     var num = parseFloat(String(txt).replace(/[^0-9.\-]/g,''));
-                    if (!isNaN(num) && num > 0) return num;
+                    if (!isNaN(num) && num > 0) { dbg('seed: gt from DOM=', num, 'raw=', txt); return num; }
                 } catch(_){ }
                 return NaN;
             }
@@ -161,11 +162,14 @@
             var rc = parseInt($rc.val()||'', 10);
             var hasRequests = $('#eao-pp-requests-tbody').length && $('#eao-pp-requests-tbody tr').length;
             if ((isNaN(rc) || rc <= 0) && !hasRequests) {
-                $rc.val(Math.round(gt*100));
+                var rcCalc = Math.round(gt*100);
+                dbg('seed: setting remaining_cents from gt ->', rcCalc);
+                $rc.val(rcCalc);
             }
             var $amt = $('#eao-pp-amount');
             var amt = parseFloat($amt.val()||'');
             if (isNaN(amt) || amt <= 0) {
+                dbg('seed: setting amount from gt ->', gt);
                 $amt.val(gt.toFixed(2));
             }
         })();
@@ -932,6 +936,7 @@
                 displayCents = isNaN(val) ? 0 : Math.max(0, Math.round(val*100));
             }
             var displayAmt = (displayCents/100);
+            dbg('updateButtons: rc=', rc, 'val=', val, 'displayCents=', displayCents, 'stripeActive=', stripeActive, 'paypalActive=', paypalActive);
             if (!isNaN(displayAmt)) {
                 if ($btnStripe.length) $btnStripe.text('Send Stripe Payment Request ($' + displayAmt.toFixed(2) + ')');
                 if ($btnPayPal.length) $btnPayPal.text('Send PayPal Payment Request ($' + displayAmt.toFixed(2) + ')');
