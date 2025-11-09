@@ -1073,7 +1073,7 @@
                     if (resp.data && resp.data.invoice_id) {
                         // Ensure table exists
                         if (!$('#eao-pp-requests-tbody').length) {
-                            $('#eao-pp-requests-list').html('<table class="widefat fixed striped" style="margin-top:6px;"><thead><tr><th style="width:14%;">Gateway</th><th style="width:16%;">Amount</th><th style="width:14%;">Status</th><th style="width:20%;">Link</th><th>Invoice ID</th></tr></thead><tbody id="eao-pp-requests-tbody"></tbody></table>');
+                            $('#eao-pp-requests-list').html('<table class="widefat fixed striped" style="margin-top:6px;"><thead><tr><th style="width:10%;">Gateway</th><th style="width:12%;">Amount</th><th style="width:10%;">Status</th><th style="width:14%;">Link</th><th style="width:46%;">Invoice ID</th><th style="width:8%;">Actions</th></tr></thead><tbody id="eao-pp-requests-tbody"></tbody></table>');
                         }
                         var amtText = (typeof resp.data.amount_cents === 'number') ? ('$' + (resp.data.amount_cents/100).toFixed(2)) : '';
                         var row = '<tr data-gateway="stripe" data-invoice-id="'+resp.data.invoice_id+'">'+
@@ -1081,7 +1081,8 @@
                                   '<td>USD '+amtText+'</td>'+
                                   '<td class="eao-pp-req-state">'+(resp.data.status||'open').toUpperCase()+'</td>'+
                                   '<td>'+(url?('<a target="_blank" rel="noopener" href="'+encodeURI(url)+'">Open</a>'):'<span style="opacity:.7;">N/A</span>')+'</td>'+
-                                  '<td><small>'+resp.data.invoice_id+'</small></td>'+
+                                  '<td><small style="white-space:nowrap;">'+resp.data.invoice_id+'</small></td>'+
+                                  '<td><button type="button" class="button button-small eao-pp-void-row" data-gateway="stripe" data-invoice="'+resp.data.invoice_id+'">Void</button></td>'+
                                   '</tr>';
                         $('#eao-pp-requests-tbody').append(row);
                     }
@@ -1179,7 +1180,7 @@
                     }
                     if (resp.data && resp.data.invoice_id) {
                         if (!$('#eao-pp-requests-tbody').length) {
-                            $('#eao-pp-requests-list').html('<table class="widefat fixed striped" style="margin-top:6px;"><thead><tr><th style="width:14%;">Gateway</th><th style="width:16%;">Amount</th><th style="width:14%;">Status</th><th style="width:20%;">Link</th><th>Invoice ID</th></tr></thead><tbody id="eao-pp-requests-tbody"></tbody></table>');
+                            $('#eao-pp-requests-list').html('<table class="widefat fixed striped" style="margin-top:6px;"><thead><tr><th style="width:10%;">Gateway</th><th style="width:12%;">Amount</th><th style="width:10%;">Status</th><th style="width:14%;">Link</th><th style="width:46%;">Invoice ID</th><th style="width:8%;">Actions</th></tr></thead><tbody id="eao-pp-requests-tbody"></tbody></table>');
                         }
                         var amtText = (typeof resp.data.amount_cents === 'number') ? ('$' + (resp.data.amount_cents/100).toFixed(2)) : '';
                         var row = '<tr data-gateway="paypal" data-invoice-id="'+resp.data.invoice_id+'">'+
@@ -1187,7 +1188,8 @@
                                   '<td>USD '+amtText+'</td>'+
                                   '<td class="eao-pp-req-state">'+(resp.data.status||'SENT').toUpperCase()+'</td>'+
                                   '<td>'+(url?('<a target="_blank" rel="noopener" href="'+encodeURI(url)+'">Open</a>'):'<span style="opacity:.7;">N/A</span>')+'</td>'+
-                                  '<td><small>'+resp.data.invoice_id+'</small></td>'+
+                                  '<td><small style="white-space:nowrap;">'+resp.data.invoice_id+'</small></td>'+
+                                  '<td><button type="button" class="button button-small eao-pp-void-row" data-gateway="paypal" data-invoice="'+resp.data.invoice_id+'">Void</button></td>'+
                                   '</tr>';
                         $('#eao-pp-requests-tbody').append(row);
                     }

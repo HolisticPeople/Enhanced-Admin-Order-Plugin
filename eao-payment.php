@@ -372,12 +372,12 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                         <table class="widefat fixed striped" style="margin-top:6px;">
                             <thead>
                                 <tr>
-                                    <th style="width:14%;">Gateway</th>
-                                    <th style="width:16%;">Amount</th>
-                                    <th style="width:14%;">Status</th>
-                                    <th style="width:20%;">Link</th>
-                                    <th>Invoice ID</th>
-                                    <th style="width:10%;">Actions</th>
+                                    <th style="width:10%;">Gateway</th>
+                                    <th style="width:12%;">Amount</th>
+                                    <th style="width:10%;">Status</th>
+                                    <th style="width:14%;">Link</th>
+                                    <th style="width:46%;">Invoice ID</th>
+                                    <th style="width:8%;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="eao-pp-requests-tbody">
@@ -395,7 +395,7 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                                     <td><?php echo esc_html( ($cur?:'USD') . ' $' . number_format($amt_c/100, 2) ); ?></td>
                                     <td class="eao-pp-req-state"><?php echo esc_html($state); ?></td>
                                     <td><?php if ($url) : ?><a target="_blank" rel="noopener" href="<?php echo esc_url($url); ?>">Open</a><?php else: ?><span style="opacity:.7;">N/A</span><?php endif; ?></td>
-                                    <td><small><?php echo esc_html($inv); ?></small></td>
+                                    <td><small style="white-space:nowrap;"><?php echo esc_html($inv); ?></small></td>
                                     <td>
                                         <?php if ($voidable && $inv !== '') : ?>
                                             <button type="button" class="button button-small eao-pp-void-row" data-gateway="<?php echo esc_attr($gw); ?>" data-invoice="<?php echo esc_attr($inv); ?>">Void</button>
