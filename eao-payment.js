@@ -756,13 +756,24 @@
                 return NaN;
             }
             var val = getSelectedAmount();
-            // Cap the display amount by remaining balance
-            var remainingCents = parseInt($('#eao-pp-remaining-cents').val()||'0', 10) || 0;
-            var displayCents = isNaN(val) ? 0 : Math.min(Math.round(val*100), remainingCents > 0 ? remainingCents : Math.round(val*100));
+            // Cap the display amount strictly by remaining balance; if remaining is unknown, show typed
+            var rcStr = $('#eao-pp-remaining-cents').val();
+            var rc = parseInt(rcStr, 10);
+            var displayCents;
+            if (!isNaN(rc)) {
+                displayCents = isNaN(val) ? 0 : Math.max(0, Math.min(Math.round(val*100), rc));
+            } else {
+                displayCents = isNaN(val) ? 0 : Math.max(0, Math.round(val*100));
+            }
             var displayAmt = (displayCents/100);
             if (!isNaN(displayAmt)) {
                 if ($btnStripe.length) $btnStripe.text('Send Stripe Payment Request ($' + displayAmt.toFixed(2) + ')');
                 if ($btnPayPal.length) $btnPayPal.text('Send PayPal Payment Request ($' + displayAmt.toFixed(2) + ')');
+            }
+            // Disable send buttons if no remaining balance
+            if (!isNaN(rc) && rc <= 0) {
+                if ($btnStripe.length) $btnStripe.prop('disabled', true);
+                if ($btnPayPal.length) $btnPayPal.prop('disabled', true);
             }
 
             // Render existing link if available
@@ -836,9 +847,10 @@
             }
             var amountOverride = getSelectedAmount();
             // Cap by remaining balance to avoid server rejection
-            var remainingCents = parseInt($('#eao-pp-remaining-cents').val()||'0', 10) || 0;
-            if (!isNaN(amountOverride)) {
-                var capped = Math.min(Math.round(amountOverride*100), remainingCents || Math.round(amountOverride*100));
+            var rcStr1 = $('#eao-pp-remaining-cents').val();
+            var rc1 = parseInt(rcStr1, 10);
+            if (!isNaN(amountOverride) && !isNaN(rc1)) {
+                var capped = Math.min(Math.round(amountOverride*100), rc1);
                 amountOverride = capped/100;
             }
             $msg.html('<div class="notice notice-info"><p>Sending payment request...</p></div>');
@@ -933,9 +945,10 @@
                 return NaN;
             }
             var amountOverride = getSelectedAmount();
-            var remainingCents2 = parseInt($('#eao-pp-remaining-cents').val()||'0', 10) || 0;
-            if (!isNaN(amountOverride)) {
-                var capped2 = Math.min(Math.round(amountOverride*100), remainingCents2 || Math.round(amountOverride*100));
+            var rcStr2 = $('#eao-pp-remaining-cents').val();
+            var rc2 = parseInt(rcStr2, 10);
+            if (!isNaN(amountOverride) && !isNaN(rc2)) {
+                var capped2 = Math.min(Math.round(amountOverride*100), rc2);
                 amountOverride = capped2/100;
             }
             $msg.html('<div class="notice notice-info"><p>Sending PayPal payment request...</p></div>');

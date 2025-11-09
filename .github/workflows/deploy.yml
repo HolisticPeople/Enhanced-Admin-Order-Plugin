@@ -1,4 +1,4 @@
-name: Deploy EAO plugin to Kinsta
+name: Deploy Products Manager plugin to Kinsta
 
 on:
   push:
@@ -19,10 +19,10 @@ concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  PLUGIN_SLUG: products-manager
+
 jobs:
-  # ---------------------------
-  # STAGING (auto on dev push; also allowed via manual run if chosen)
-  # ---------------------------
   deploy-staging:
     if: |
       github.ref_name == 'dev' ||
@@ -44,7 +44,7 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan -p "${{ secrets.KINSTA_PORT }}" "${{ secrets.KINSTA_HOST }}" \
-            | sed -e "s/^${{ secrets.KINSTA_HOST }}/[${{ secrets.KINSTA_HOST }}]:${{ secrets.KINSTA_PORT }}/" \
+            | sed -e "s/^${{ secrets(KINSTA_HOST) }}/[${{ secrets.KINSTA_HOST }}]:${{ secrets.KINSTA_PORT }}/" \
             >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
@@ -56,30 +56,29 @@ jobs:
           username: ${{ secrets.KINSTA_USER }}
           key:      ${{ secrets.KINSTA_SSH_KEY }}
           script: |
-            mkdir -p "${{ secrets.KINSTA_PLUGIN_PATH }}"
+            mkdir -p "${{ format('{0}/{1}', secrets.KINSTA_PLUGINS_BASE, env.PLUGIN_SLUG) }}"
 
       - name: Rsync plugin files
         run: |
+          PLUGIN_PATH="${{ format('{0}/{1}', secrets.KINSTA_PLUGINS_BASE, env.PLUGIN_SLUG) }}"
           rsync -az --delete \
-            -e "ssh -p ${{ secrets.KINSTA_PORT }}" \
+            -e "ssh -p ${{ secrets(KINSTA_PORT) }}" \
             --exclude-from=".github/deploy-exclude.txt" \
-            ./ "${{ secrets.KINSTA_USER }}@${{ secrets.KINSTA_HOST }}:${{ secrets.KINSTA_PLUGIN_PATH }}"
+            ./ "${{ secrets.KINSTA_USER }}@${{ secrets.KINSTA_HOST }}:${PLUGIN_PATH}"
 
       - name: Post-deploy (wp-cli)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.KINSTA_HOST }}
-          port:     ${{ secrets.KINSTA_PORT }}
-          username: ${{ secrets.KINSTA_USER }}
-          key:      ${{ secrets.KINSTA_SSH_KEY }}
+          port:     ${{ secrets_KINSTA_PORT }}
+          username: ${{ secrets_KINSTA_USER }}
+          key:      ${{ secrets_KINSTA_SSH_KEY }}
           script: |
-            WP_PATH="$(dirname "$(dirname "${{ secrets.KINSTA_PLUGIN_PATH }}")")"
+            PLUGIN_PATH="${{ format('{0}/{1}', secrets.KINSTA_PLUGINS_BASE, env.PLUGIN_SLUG) }}"
+            WP_PATH="$(dirname "$(dirname "$PLUGIN_PATH")")"
             wp --path="$WP_PATH" cache flush || true
-            wp --path="$WP_PATH" plugin activate enhanced-admin-order-plugin || true
+            wp --path="$WP_PATH" plugin activate products-manager || true
 
-  # ---------------------------
-  # PRODUCTION (manual via workflow_dispatch only)
-  # ---------------------------
   deploy-production:
     if: github.event_name == 'workflow_dispatch' && inputs.deploy == 'production'
     name: Deploy to PRODUCTION
@@ -107,27 +106,29 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.KINSTAPROD_HOST }}
-          port:     ${{ secrets.KINSTAPROD_PORT }}
-          username: ${{ secrets.KINSTAPROD_USER }}
-          key:      ${{ secrets.KINSTAPROD_SSH_KEY }}
+          port:     ${{ secrets_KINSTAPROD_PORT }}
+          username: ${{ secrets_KINSTAPROD_USER }}
+          key:      ${{ secrets_KINSTAPROD_SSH_KEY }}
           script: |
-            mkdir -p "${{ secrets.KINSTAPROD_PLUGIN_PATH }}"
+            mkdir -p "${{ format('{0}/{1}', secrets.KINSTAPROD_PLUGINS_BASE, env.PLUGIN_SLUG) }}"
 
       - name: Rsync plugin files
         run: |
+          PLUGIN_PATH="${{ format('{0}/{1}', secrets.KINSTAPROD_PLUGINS_BASE, env.PLUGIN_SLUG) }}"
           rsync -az --delete \
-            -e "ssh -p ${{ secrets.KINSTAPROD_PORT }}" \
+            -e "ssh -p ${{ secrets_KINSTAPROD_PORT }}" \
             --exclude-from=".github/deploy-exclude.txt" \
-            ./ "${{ secrets.KINSTAPROD_USER }}@${{ secrets.KINSTAPROD_HOST }}:${{ secrets.KINSTAPROD_PLUGIN_PATH }}"
+            ./ "${{ secrets_KINSTAPROD_USER }}@${{ secrets_KINSTAPROD_HOST }}:${PLUGIN_PATH}"
 
       - name: Post-deploy (wp-cli)
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.KINSTAPROD_HOST }}
-          port:     ${{ secrets.KINSTAPROD_PORT }}
-          username: ${{ secrets.KINSTAPROD_USER }}
-          key:      ${{ secrets.KINSTAPROD_SSH_KEY }}
+          port:     ${{ secrets_KINSTAPROD_PORT }}
+          username: ${{ secrets_KINSTAPROD_USER }}
+          key:      ${{ secrets_KINSTAPROD_SSH_KEY }}
           script: |
-            WP_PATH="$(dirname "$(dirname "${{ secrets.KINSTAPROD_PLUGIN_PATH }}")")"
+            PLUGIN_PATH="${{ format('{0}/{1}', secrets.KINSTAPROD_PLUGINS_BASE, env.PLUGIN_SLUG) }}"
+            WP_PATH="$(dirname "$(dirname "$PLUGIN_PATH")")"
             wp --path="$WP_PATH" cache flush || true
-            wp --path="$WP_PATH" plugin activate enhanced-admin-order-plugin || true
+            wp --path="$WP_PATH" plugin activate products-manager || true
