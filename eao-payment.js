@@ -1258,7 +1258,11 @@
                     }
                     // Update row in requests table if exists
                     var $row = $('#eao-pp-requests-tbody tr[data-gateway="stripe"][data-invoice-id="'+invoiceId+'"]');
-                    if ($row.length) { $row.find('.eao-pp-req-state').text('VOID'); }
+                    if ($row.length) { 
+                        $row.find('.eao-pp-req-state').text('VOID'); 
+                        var $btnCell = $row.find('.eao-pp-void-row').closest('td');
+                        if ($btnCell.length) { $btnCell.html('—'); }
+                    }
                 } else {
                     var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to void payment request';
                     $msg.html('<div class="notice notice-error"><p>'+err+'</p></div>');
@@ -1298,7 +1302,11 @@
                         eaoUpdateRequestButtons();
                     }
                     var $row = $('#eao-pp-requests-tbody tr[data-gateway="paypal"][data-invoice-id="'+invoiceId+'"]');
-                    if ($row.length) { $row.find('.eao-pp-req-state').text('CANCELLED'); }
+                    if ($row.length) { 
+                        $row.find('.eao-pp-req-state').text('CANCELLED'); 
+                        var $btnCell = $row.find('.eao-pp-void-row').closest('td');
+                        if ($btnCell.length) { $btnCell.html('—'); }
+                    }
                 } else {
                     var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to void PayPal payment request';
                     $msg.html('<div class="notice notice-error"><p>'+err+'</p></div>');
@@ -1330,11 +1338,14 @@
                     gateway: $('#eao-pp-gateway').val()
                 }, function(resp){
                     if (resp && resp.success) {
-                        $btn.closest('tr').find('.eao-pp-req-state').text('VOID');
+                        var $tr = $btn.closest('tr');
+                        $tr.find('.eao-pp-req-state').text('VOID');
+                        // Remove the void button cell content
+                        $btn.closest('td').html('—');
                         if (resp.data && typeof resp.data.remaining_cents === 'number') {
                             $('#eao-pp-remaining-cents').val(resp.data.remaining_cents);
-                            if (typeof eaoUpdateRequestButtons === 'function') { eaoUpdateRequestButtons(); }
                         }
+                        if (typeof eaoUpdateRequestButtons === 'function') { eaoUpdateRequestButtons(); }
                         $msg.html('<div class="notice notice-success"><p>Payment request voided.</p></div>');
                     } else {
                         var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to void payment request';
@@ -1349,11 +1360,14 @@
                     invoice_id: invoiceId
                 }, function(resp){
                     if (resp && resp.success) {
-                        $btn.closest('tr').find('.eao-pp-req-state').text('CANCELLED');
+                        var $tr = $btn.closest('tr');
+                        $tr.find('.eao-pp-req-state').text('CANCELLED');
+                        // Remove the void button cell content
+                        $btn.closest('td').html('—');
                         if (resp.data && typeof resp.data.remaining_cents === 'number') {
                             $('#eao-pp-remaining-cents').val(resp.data.remaining_cents);
-                            if (typeof eaoUpdateRequestButtons === 'function') { eaoUpdateRequestButtons(); }
                         }
+                        if (typeof eaoUpdateRequestButtons === 'function') { eaoUpdateRequestButtons(); }
                         $msg.html('<div class="notice notice-success"><p>Payment request voided.</p></div>');
                     } else {
                         var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to void PayPal payment request';
