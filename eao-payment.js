@@ -69,6 +69,10 @@
                 if (!isNaN(gt) && isFinite(gt) && gt > 0) {
                     $('#eao-pp-remaining-cents').val(String(Math.round(gt*100)));
                 }
+            } else {
+                // No GT yet, log current conditions so we can see why
+                var openRows = $('#eao-pp-requests-tbody tr').length;
+                dbg('bootstrap: GT not available yet. rc=', rc, 'hasAnyRequests=', hasAnyRequests, 'openRows=', openRows);
             }
             // Default the Payment Amount to remaining (GT - pending) on load
             try {
@@ -123,7 +127,7 @@
             function trySync(){
                 try {
                     var s = window.currentOrderSummaryData || {};
-                    if (typeof s.grand_total === 'undefined') { return; }
+                    if (typeof s.grand_total === 'undefined') { dbg('ensureSync: summary.grand_total is undefined'); return; }
                     var grand = parseFloat(s.grand_total);
                     if (isNaN(grand) || !isFinite(grand)) { return; }
                     var hasRequests = $('#eao-pp-requests-tbody tr').length > 0;
