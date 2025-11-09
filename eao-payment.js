@@ -26,21 +26,46 @@
         }
         // Initialize remaining balance and default amount from DOM when server provided 0/empty
         (function bootstrapRemainingAndAmount(){
+            function parseMoneyToCents(txt){
+                var num = parseFloat(String(txt).replace(/[^0-9.\-]/g,''));
+                if (isNaN(num) || !isFinite(num)) return NaN;
+                return Math.round(num*100);
+            }
+            function computeOpenRequestsCents(){
+                var sum = 0;
+                try {
+                    $('#eao-pp-requests-tbody tr').each(function(){
+                        var $tr = $(this);
+                        var st = $.trim($tr.find('.eao-pp-req-state').text()||'').toUpperCase();
+                        if (st === 'OPEN') {
+                            var amtCell = $tr.find('td').eq(1).text() || '';
+                            var c = parseMoneyToCents(amtCell);
+                            if (!isNaN(c)) { sum += c; }
+                        }
+                    });
+                } catch(_){ }
+                return sum;
+            }
             var rcStr = $('#eao-pp-remaining-cents').val();
             var rc = parseInt(rcStr, 10);
             var hasAnyRequests = $('#eao-pp-requests-tbody tr').length > 0;
-            if ((!isFinite(rc) || isNaN(rc) || rc <= 0) && !hasAnyRequests) {
-                var gt = deriveGrandTotalFromDom();
+            var gt = deriveGrandTotalFromDom();
+            if (!isNaN(gt) && isFinite(gt) && gt >= 0) {
+                var pending = computeOpenRequestsCents();
+                var remaining = Math.max(0, Math.round(gt*100) - pending);
+                $('#eao-pp-remaining-cents').val(String(remaining));
+            } else if ((!isFinite(rc) || isNaN(rc) || rc <= 0) && !hasAnyRequests) {
+                // Fallback to previous behavior if GT missing
                 if (!isNaN(gt) && isFinite(gt) && gt > 0) {
                     $('#eao-pp-remaining-cents').val(String(Math.round(gt*100)));
                 }
             }
-            // Default the Payment Amount to grand total if it looks unset or equals 0
+            // Default the Payment Amount to remaining (GT - pending) on load
             try {
-                var gt2 = deriveGrandTotalFromDom();
-                if (!hasAnyRequests && !isNaN(gt2) && isFinite(gt2) && gt2 > 0) {
-                    $('#eao-pp-amount').val(gt2.toFixed(2));
-                }
+                var rcInit = parseInt($('#eao-pp-remaining-cents').val()||'0', 10);
+                if (isFinite(rcInit) && !isNaN(rcInit) && rcInit >= 0) {
+                    $('#eao-pp-amount').val((rcInit/100).toFixed(2)).data('auto-from-summary', true);
+                } 
             } catch(_){ }
         })();
 
@@ -58,12 +83,25 @@
                 var hasRequests = $('#eao-pp-requests-tbody tr').length > 0;
                 var $amt = $('#eao-pp-amount');
                 var autoOk = ($amt.data('auto-from-summary') !== false);
-                if (!hasRequests && autoOk) {
-                    $amt.val(grand.toFixed(2));
-                }
-                if (!hasRequests) {
-                    $('#eao-pp-remaining-cents').val(String(Math.round(grand*100)));
-                }
+                // Subtract pending OPEN requests from the grand total to compute remaining
+                (function applyRemainingFromSummary(){
+                    function parseMoneyToCents(txt){
+                        var num = parseFloat(String(txt).replace(/[^0-9.\-]/g,''));
+                        if (isNaN(num) || !isFinite(num)) return NaN;
+                        return Math.round(num*100);
+                    }
+                    var pending = 0;
+                    $('#eao-pp-requests-tbody tr').each(function(){
+                        var st = $.trim($(this).find('.eao-pp-req-state').text()||'').toUpperCase();
+                        if (st === 'OPEN') {
+                            var c = parseMoneyToCents($(this).find('td').eq(1).text()||'');
+                            if (!isNaN(c)) pending += c;
+                        }
+                    });
+                    var remaining = Math.max(0, Math.round(grand*100) - pending);
+                    $('#eao-pp-remaining-cents').val(String(remaining));
+                    if (autoOk) { $amt.val((remaining/100).toFixed(2)); }
+                })();
                 if (typeof eaoUpdateRequestButtons === 'function') { eaoUpdateRequestButtons(); }
             } catch(_){ }
         });
