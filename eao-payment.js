@@ -12,7 +12,8 @@
         function dbg(){
             try {
                 var args = Array.prototype.slice.call(arguments);
-                args.unshift('[EAO Payment]');
+                var TAG = '[payment request]';
+                args.unshift(TAG, '[EAO Payment]');
                 if (window.console && console.log) { console.log.apply(console, args); }
             } catch(_){}
         }
