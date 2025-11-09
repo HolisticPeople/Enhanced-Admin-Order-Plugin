@@ -21,6 +21,7 @@ concurrency:
 
 env:
   PLUGIN_SLUG: enhanced-admin-order-plugin
+  PLUGINS_BASE_DEFAULT: public/wp-content/plugins
 
 jobs:
   deploy-staging:
@@ -54,11 +55,15 @@ jobs:
           username: ${{ secrets.KINSTA_USER }}
           key:      ${{ secrets.KINSTA_SSH_KEY }}
           script: |
-            mkdir -p "${{ format('{0}/{1}', secrets.KINSTA_PLUGINS_BASE, env.PLUGIN_SLUG) }}"
+            PLUGIN_BASE="${{ secrets.KINSTA_PLUGINS_BASE }}"
+            if [ -z "$PLUGIN_BASE" ]; then PLUGIN_BASE="${{ env.PLUGINS_BASE_DEFAULT }}"; fi
+            mkdir -p "$PLUGIN_BASE/${{ env.PLUGIN_SLUG }}"
 
       - name: Rsync plugin files
         run: |
-          PLUGIN_PATH="${{ format('{0}/{1}', secrets.KINSTA_PLUGINS_BASE, env.PLUGIN_SLUG) }}"
+          PLUGIN_BASE="${{ secrets.KINSTA_PLUGINS_BASE }}"
+          if [ -z "$PLUGIN_BASE" ]; then PLUGIN_BASE="${{ env.PLUGINS_BASE_DEFAULT }}"; fi
+          PLUGIN_PATH="${PLUGIN_BASE}/${{ env.PLUGIN_SLUG }}"
           rsync -az --delete \
             -e "ssh -p ${{ secrets.KINSTA_PORT }}" \
             --exclude ".git/" --exclude ".github/" --exclude ".gitignore" \
@@ -72,7 +77,9 @@ jobs:
           username: ${{ secrets.KINSTA_USER }}
           key:      ${{ secrets.KINSTA_SSH_KEY }}
           script: |
-            PLUGIN_PATH="${{ format('{0}/{1}', secrets.KINSTA_PLUGINS_BASE, env.PLUGIN_SLUG) }}"
+            PLUGIN_BASE="${{ secrets.KINSTA_PLUGINS_BASE }}"
+            if [ -z "$PLUGIN_BASE" ]; then PLUGIN_BASE="${{ env.PLUGINS_BASE_DEFAULT }}"; fi
+            PLUGIN_PATH="$PLUGIN_BASE/${{ env.PLUGIN_SLUG }}"
             WP_PATH="$(dirname \"$(dirname \"$PLUGIN_PATH\")\")"
             wp --path="$WP_PATH" cache flush || true
             wp --path="$WP_PATH" plugin activate enhanced-admin-order-plugin || true
@@ -106,11 +113,15 @@ jobs:
           username: ${{ secrets.KINSTAPROD_USER }}
           key:      ${{ secrets.KINSTAPROD_SSH_KEY }}
           script: |
-            mkdir -p "${{ format('{0}/{1}', secrets.KINSTAPROD_PLUGINS_BASE, env.PLUGIN_SLUG) }}"
+            PLUGIN_BASE="${{ secrets.KINSTAPROD_PLUGINS_BASE }}"
+            if [ -z "$PLUGIN_BASE" ]; then PLUGIN_BASE="${{ env.PLUGINS_BASE_DEFAULT }}"; fi
+            mkdir -p "$PLUGIN_BASE/${{ env.PLUGIN_SLUG }}"
 
       - name: Rsync plugin files
         run: |
-          PLUGIN_PATH="${{ format('{0}/{1}', secrets.KINSTAPROD_PLUGINS_BASE, env.PLUGIN_SLUG) }}"
+          PLUGIN_BASE="${{ secrets.KINSTAPROD_PLUGINS_BASE }}"
+          if [ -z "$PLUGIN_BASE" ]; then PLUGIN_BASE="${{ env.PLUGINS_BASE_DEFAULT }}"; fi
+          PLUGIN_PATH="${PLUGIN_BASE}/${{ env.PLUGIN_SLUG }}"
           rsync -az --delete \
             -e "ssh -p ${{ secrets.KINSTAPROD_PORT }}" \
             --exclude ".git/" --exclude ".github/" --exclude ".gitignore" \
@@ -124,7 +135,9 @@ jobs:
           username: ${{ secrets.KINSTAPROD_USER }}
           key:      ${{ secrets.KINSTAPROD_SSH_KEY }}
           script: |
-            PLUGIN_PATH="${{ format('{0}/{1}', secrets.KINSTAPROD_PLUGINS_BASE, env.PLUGIN_SLUG) }}"
+            PLUGIN_BASE="${{ secrets.KINSTAPROD_PLUGINS_BASE }}"
+            if [ -z "$PLUGIN_BASE" ]; then PLUGIN_BASE="${{ env.PLUGINS_BASE_DEFAULT }}"; fi
+            PLUGIN_PATH="$PLUGIN_BASE/${{ env.PLUGIN_SLUG }}"
             WP_PATH="$(dirname \"$(dirname \"$PLUGIN_PATH\")\")"
             wp --path="$WP_PATH" cache flush || true
             wp --path="$WP_PATH" plugin activate enhanced-admin-order-plugin || true
