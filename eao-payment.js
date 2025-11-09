@@ -939,6 +939,15 @@
                 return NaN;
             }
             var amountOverride = getSelectedAmount();
+            // Provide current staged grand total to server for remaining-balance validation
+            var gtSend = (function(){
+                try {
+                    var s = window.currentOrderSummaryData || {};
+                    var gt = (typeof s.grand_total !== 'undefined') ? parseFloat(s.grand_total) : parseFloat(s.grand_total_raw);
+                    if (!isNaN(gt)) return gt;
+                } catch(_){ }
+                return deriveGrandTotalFromDom();
+            })();
             // Cap by remaining balance to avoid server rejection
             var rcStr1 = $('#eao-pp-remaining-cents').val();
             var rc1 = parseInt(rcStr1, 10);
@@ -955,6 +964,7 @@
                 mode: mode,
                 gateway: gateway,
                 amount_override: isNaN(amountOverride) ? '' : amountOverride,
+                grand_total_override_cents: (!isNaN(gtSend) && isFinite(gtSend) && gtSend >= 0) ? Math.round(gtSend*100) : '',
                 auto_process: $('#eao-pp-auto-process').is(':checked') ? 1 : 0
             }, function(resp){
                 if (resp && resp.success) {
@@ -1038,6 +1048,15 @@
                 return NaN;
             }
             var amountOverride = getSelectedAmount();
+            // Provide staged grand total to server
+            var gtSend2 = (function(){
+                try {
+                    var s = window.currentOrderSummaryData || {};
+                    var gt = (typeof s.grand_total !== 'undefined') ? parseFloat(s.grand_total) : parseFloat(s.grand_total_raw);
+                    if (!isNaN(gt)) return gt;
+                } catch(_){ }
+                return deriveGrandTotalFromDom();
+            })();
             var rcStr2 = $('#eao-pp-remaining-cents').val();
             var rc2 = parseInt(rcStr2, 10);
             if (!isNaN(amountOverride) && !isNaN(rc2)) {
@@ -1052,6 +1071,7 @@
                 email: email,
                 mode: mode,
                 amount_override: isNaN(amountOverride) ? '' : amountOverride,
+                grand_total_override_cents: (!isNaN(gtSend2) && isFinite(gtSend2) && gtSend2 >= 0) ? Math.round(gtSend2*100) : '',
                 auto_process: $('#eao-pp-auto-process').is(':checked') ? 1 : 0
             }, function(resp){
                 if (resp && resp.success) {

@@ -1560,7 +1560,8 @@ function eao_stripe_send_payment_request() {
 
     // Validate against remaining balance across all existing requests (non-void)
     $reqs = eao_requests_load($order);
-    $order_total_cents = (int) round(((float) $order->get_total()) * 100);
+    $gt_override_cents = isset($_POST['grand_total_override_cents']) ? (int) $_POST['grand_total_override_cents'] : 0;
+    $order_total_cents = $gt_override_cents > 0 ? $gt_override_cents : (int) round(((float) $order->get_total()) * 100);
     $already_requested_cents = eao_requests_sum_requested_cents($reqs);
     $requested_cents_target = ($amount_override > 0.0)
         ? (int) round($amount_override * 100)
@@ -1743,7 +1744,7 @@ function eao_stripe_send_payment_request() {
     $order->save();
 
     // Remaining after this request
-    $order_total_cents2 = (int) round(((float) $order->get_total()) * 100);
+    $order_total_cents2 = $gt_override_cents > 0 ? $gt_override_cents : (int) round(((float) $order->get_total()) * 100);
     $remaining_after = max(0, $order_total_cents2 - eao_requests_sum_requested_cents($reqs));
 
     wp_send_json_success(array(
@@ -2033,7 +2034,8 @@ function eao_paypal_send_payment_request() {
     $amount_value = ($amount_override > 0.0) ? $amount_override : (float) $order->get_total();
     // Validate requested amount against remaining balance
     $reqs = eao_requests_load($order);
-    $order_total_cents = (int) round(((float) $order->get_total()) * 100);
+    $gt_override_cents = isset($_POST['grand_total_override_cents']) ? (int) $_POST['grand_total_override_cents'] : 0;
+    $order_total_cents = $gt_override_cents > 0 ? $gt_override_cents : (int) round(((float) $order->get_total()) * 100);
     $already_requested_cents = eao_requests_sum_requested_cents($reqs);
     $requested_cents_target = (int) round($amount_value * 100);
     $remaining_cents = max(0, $order_total_cents - $already_requested_cents);
@@ -2224,7 +2226,7 @@ function eao_paypal_send_payment_request() {
     $order->save();
 
     // Remaining after this request
-    $order_total_cents2 = (int) round(((float) $order->get_total()) * 100);
+    $order_total_cents2 = $gt_override_cents > 0 ? $gt_override_cents : (int) round(((float) $order->get_total()) * 100);
     $remaining_after = max(0, $order_total_cents2 - eao_requests_sum_requested_cents($reqs));
 
     wp_send_json_success(array(
