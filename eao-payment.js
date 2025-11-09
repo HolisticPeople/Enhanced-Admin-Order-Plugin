@@ -43,6 +43,30 @@
                 }
             } catch(_){ }
         })();
+
+        // If user edits the amount manually, stop auto-updating from summary
+        $(document).on('input change', '#eao-pp-amount', function(){
+            $(this).data('auto-from-summary', false);
+        });
+
+        // Tie into the unified summary update pipeline so GT-driven changes propagate here
+        $(document).on('eaoSummaryUpdated', function(_ev, summary){
+            try {
+                if (!summary || typeof summary.grand_total === 'undefined') { return; }
+                var grand = parseFloat(summary.grand_total);
+                if (isNaN(grand) || !isFinite(grand)) { return; }
+                var hasRequests = $('#eao-pp-requests-tbody tr').length > 0;
+                var $amt = $('#eao-pp-amount');
+                var autoOk = ($amt.data('auto-from-summary') !== false);
+                if (!hasRequests && autoOk) {
+                    $amt.val(grand.toFixed(2));
+                }
+                if (!hasRequests) {
+                    $('#eao-pp-remaining-cents').val(String(Math.round(grand*100)));
+                }
+                if (typeof eaoUpdateRequestButtons === 'function') { eaoUpdateRequestButtons(); }
+            } catch(_){ }
+        });
         // Seed remaining balance and amount from the current UI grand total when server total isn't ready yet
         (function seedFromGrandTotalIfEmpty(){
             function computeGT(){
