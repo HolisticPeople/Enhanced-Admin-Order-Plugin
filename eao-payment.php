@@ -373,11 +373,11 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                             <thead>
                                 <tr>
                                     <th style="width:10%;">Gateway</th>
-                                    <th style="width:12%;">Amount</th>
+                                    <th style="width:17%;">Amount</th>
                                     <th style="width:10%;">Status</th>
                                     <th style="width:14%;">Link</th>
-                                    <th style="width:46%;">Invoice ID</th>
-                                    <th style="width:8%;">Actions</th>
+                                    <th style="width:40%;">Invoice ID</th>
+                                    <th style="width:9%; white-space:nowrap;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="eao-pp-requests-tbody">
