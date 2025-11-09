@@ -10,6 +10,35 @@
     $(document).ready(function(){
         var $container = $('#eao-payment-processing-container');
         if (!$container.length) return;
+        // Seed remaining balance and amount from the current UI grand total when server total isn't ready yet
+        (function seedFromGrandTotalIfEmpty(){
+            function computeGT(){
+                try {
+                    var s = window.currentOrderSummaryData || {};
+                    var gt = (typeof s.grand_total !== 'undefined') ? parseFloat(s.grand_total) : parseFloat(s.grand_total_raw);
+                    if (!isNaN(gt) && gt > 0) return gt;
+                } catch(_){ }
+                try {
+                    var txt = $('.eao-grand-total-line .eao-summary-monetary-value, .eao-grand-total-value, #eao-grand-total-value, .grand-total, [data-field="grand_total"]').first().text() || '';
+                    var num = parseFloat(String(txt).replace(/[^0-9.\-]/g,''));
+                    if (!isNaN(num) && num > 0) return num;
+                } catch(_){ }
+                return NaN;
+            }
+            var gt = computeGT();
+            if (isNaN(gt) || gt <= 0) return;
+            var $rc = $('#eao-pp-remaining-cents');
+            var rc = parseInt($rc.val()||'', 10);
+            var hasRequests = $('#eao-pp-requests-tbody').length && $('#eao-pp-requests-tbody tr').length;
+            if ((isNaN(rc) || rc <= 0) && !hasRequests) {
+                $rc.val(Math.round(gt*100));
+            }
+            var $amt = $('#eao-pp-amount');
+            var amt = parseFloat($amt.val()||'');
+            if (isNaN(amt) || amt <= 0) {
+                $amt.val(gt.toFixed(2));
+            }
+        })();
         // Save Stripe-only webhook settings (delegate to ensure handler binds even if panel is hidden)
         $(document).on('click', '#eao-pp-save-stripe-webhooks', function(){
             var $btn = $(this);
