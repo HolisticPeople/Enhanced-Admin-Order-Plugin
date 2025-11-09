@@ -67,6 +67,29 @@
                 if (typeof eaoUpdateRequestButtons === 'function') { eaoUpdateRequestButtons(); }
             } catch(_){ }
         });
+
+        // Fallback: ensure amount matches GT shortly after load in case summary fired before our handler attached
+        (function ensureAmountFromSummaryOnce(){
+            function trySync(){
+                try {
+                    var s = window.currentOrderSummaryData || {};
+                    if (typeof s.grand_total === 'undefined') { return; }
+                    var grand = parseFloat(s.grand_total);
+                    if (isNaN(grand) || !isFinite(grand)) { return; }
+                    var hasRequests = $('#eao-pp-requests-tbody tr').length > 0;
+                    var $amt = $('#eao-pp-amount');
+                    var autoOk = ($amt.data('auto-from-summary') !== false);
+                    if (!hasRequests && autoOk) {
+                        $amt.val(grand.toFixed(2));
+                        $('#eao-pp-remaining-cents').val(String(Math.round(grand*100)));
+                        if (typeof eaoUpdateRequestButtons === 'function') { eaoUpdateRequestButtons(); }
+                    }
+                } catch(_){ }
+            }
+            setTimeout(trySync, 200);
+            setTimeout(trySync, 900);
+            setTimeout(trySync, 1800);
+        })();
         // Seed remaining balance and amount from the current UI grand total when server total isn't ready yet
         (function seedFromGrandTotalIfEmpty(){
             function computeGT(){
@@ -1213,6 +1236,58 @@
                     eaoUpdateRequestButtons();
                 }
             }, 'json');
+        });
+
+        // Row-level void buttons (per request)
+        $(document).on('click', '.eao-pp-void-row', function(){
+            var $btn = $(this);
+            var gw = ($btn.data('gateway')||'').toString();
+            var invoiceId = ($btn.data('invoice')||'').toString();
+            var orderId = $('#eao-pp-order-id').val();
+            var $msg = $('#eao-pp-request-messages');
+            if (!invoiceId) { return; }
+            if (!window.confirm('Void this ' + (gw.indexOf('paypal')>-1?'PayPal':'Stripe') + ' payment request?')) { return; }
+            $btn.prop('disabled', true);
+            if (gw.indexOf('stripe') === 0) {
+                $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
+                    action: 'eao_stripe_void_invoice',
+                    nonce: $('#eao_payment_mockup_nonce').val(),
+                    order_id: orderId,
+                    invoice_id: invoiceId,
+                    gateway: $('#eao-pp-gateway').val()
+                }, function(resp){
+                    if (resp && resp.success) {
+                        $btn.closest('tr').find('.eao-pp-req-state').text('VOID');
+                        if (resp.data && typeof resp.data.remaining_cents === 'number') {
+                            $('#eao-pp-remaining-cents').val(resp.data.remaining_cents);
+                            if (typeof eaoUpdateRequestButtons === 'function') { eaoUpdateRequestButtons(); }
+                        }
+                        $msg.html('<div class="notice notice-success"><p>Payment request voided.</p></div>');
+                    } else {
+                        var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to void payment request';
+                        $msg.html('<div class="notice notice-error"><p>'+err+'</p></div>');
+                    }
+                }, 'json').always(function(){ $btn.prop('disabled', false); });
+            } else {
+                $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
+                    action: 'eao_paypal_void_invoice',
+                    nonce: $('#eao_payment_mockup_nonce').val(),
+                    order_id: orderId,
+                    invoice_id: invoiceId
+                }, function(resp){
+                    if (resp && resp.success) {
+                        $btn.closest('tr').find('.eao-pp-req-state').text('CANCELLED');
+                        if (resp.data && typeof resp.data.remaining_cents === 'number') {
+                            $('#eao-pp-remaining-cents').val(resp.data.remaining_cents);
+                            if (typeof eaoUpdateRequestButtons === 'function') { eaoUpdateRequestButtons(); }
+                        }
+                        $msg.html('<div class="notice notice-success"><p>Payment request voided.</p></div>');
+                    } else {
+                        var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to void PayPal payment request';
+                        $msg.html('<div class="notice notice-error"><p>'+err+'</p></div>');
+                    }
+                }, 'json').always(function(){ $btn.prop('disabled', false); });
+            }
         });
     });
 })(jQuery);

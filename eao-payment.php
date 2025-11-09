@@ -378,6 +378,7 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                                     <th style="width:14%;">Status</th>
                                     <th style="width:20%;">Link</th>
                                     <th>Invoice ID</th>
+                                    <th style="width:10%;">Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="eao-pp-requests-tbody">
@@ -388,6 +389,7 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                                 $cur = isset($r['currency']) ? strtoupper((string) $r['currency']) : 'USD';
                                 $state = isset($r['state']) ? strtoupper((string) $r['state']) : 'OPEN';
                                 $url = isset($r['url']) ? (string) $r['url'] : '';
+                                $voidable = !in_array($state, array('PAID','VOID','CANCELLED','CANCELED'), true);
                             ?>
                                 <tr data-gateway="<?php echo esc_attr($gw); ?>" data-invoice-id="<?php echo esc_attr($inv); ?>">
                                     <td><?php echo esc_html( ucfirst(str_replace('_',' ',$gw)) ); ?></td>
@@ -395,6 +397,13 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                                     <td class="eao-pp-req-state"><?php echo esc_html($state); ?></td>
                                     <td><?php if ($url) : ?><a target="_blank" rel="noopener" href="<?php echo esc_url($url); ?>">Open</a><?php else: ?><span style="opacity:.7;">N/A</span><?php endif; ?></td>
                                     <td><small><?php echo esc_html($inv); ?></small></td>
+                                    <td>
+                                        <?php if ($voidable && $inv !== '') : ?>
+                                            <button type="button" class="button button-small eao-pp-void-row" data-gateway="<?php echo esc_attr($gw); ?>" data-invoice="<?php echo esc_attr($inv); ?>">Void</button>
+                                        <?php else: ?>
+                                            <span style="opacity:.6;">—</span>
+                                        <?php endif; ?>
+                                    </td>
                                 </tr>
                             <?php endforeach; ?>
                             </tbody>
