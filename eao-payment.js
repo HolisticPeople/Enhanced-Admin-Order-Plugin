@@ -37,9 +37,8 @@
             }
             // Default the Payment Amount to grand total if it looks unset or equals 0
             try {
-                var amt = parseFloat($('#eao-pp-amount').val()||'');
                 var gt2 = deriveGrandTotalFromDom();
-                if ((!isFinite(amt) || isNaN(amt) || Math.abs(amt) < 0.001) && !isNaN(gt2) && gt2 > 0) {
+                if (!hasAnyRequests && !isNaN(gt2) && isFinite(gt2) && gt2 > 0) {
                     $('#eao-pp-amount').val(gt2.toFixed(2));
                 }
             } catch(_){ }
