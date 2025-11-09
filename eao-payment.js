@@ -756,9 +756,13 @@
                 return NaN;
             }
             var val = getSelectedAmount();
-            if (!isNaN(val)) {
-                if ($btnStripe.length) $btnStripe.text('Send Stripe Payment Request ($' + val.toFixed(2) + ')');
-                if ($btnPayPal.length) $btnPayPal.text('Send PayPal Payment Request ($' + val.toFixed(2) + ')');
+            // Cap the display amount by remaining balance
+            var remainingCents = parseInt($('#eao-pp-remaining-cents').val()||'0', 10) || 0;
+            var displayCents = isNaN(val) ? 0 : Math.min(Math.round(val*100), remainingCents > 0 ? remainingCents : Math.round(val*100));
+            var displayAmt = (displayCents/100);
+            if (!isNaN(displayAmt)) {
+                if ($btnStripe.length) $btnStripe.text('Send Stripe Payment Request ($' + displayAmt.toFixed(2) + ')');
+                if ($btnPayPal.length) $btnPayPal.text('Send PayPal Payment Request ($' + displayAmt.toFixed(2) + ')');
             }
 
             // Render existing link if available
@@ -831,6 +835,12 @@
                 return NaN;
             }
             var amountOverride = getSelectedAmount();
+            // Cap by remaining balance to avoid server rejection
+            var remainingCents = parseInt($('#eao-pp-remaining-cents').val()||'0', 10) || 0;
+            if (!isNaN(amountOverride)) {
+                var capped = Math.min(Math.round(amountOverride*100), remainingCents || Math.round(amountOverride*100));
+                amountOverride = capped/100;
+            }
             $msg.html('<div class="notice notice-info"><p>Sending payment request...</p></div>');
             $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
                 action: 'eao_stripe_send_payment_request',
@@ -846,6 +856,26 @@
                     var url = resp.data && resp.data.url ? resp.data.url : '';
                     var html = '<div class="notice notice-success"><p>Payment request sent.' + (url ? ' <a target="_blank" rel="noopener" href="'+encodeURI(url)+'">Open invoice</a>' : '') + '</p></div>';
                     $msg.html(html);
+                    // Update remaining balance and requests list
+                    if (resp.data && typeof resp.data.remaining_cents === 'number') {
+                        $('#eao-pp-remaining-cents').val(resp.data.remaining_cents);
+                    }
+                    if (resp.data && resp.data.invoice_id) {
+                        // Ensure table exists
+                        if (!$('#eao-pp-requests-tbody').length) {
+                            $('#eao-pp-requests-list').html('<table class="widefat fixed striped" style="margin-top:6px;"><thead><tr><th style="width:14%;">Gateway</th><th style="width:16%;">Amount</th><th style="width:14%;">Status</th><th style="width:20%;">Link</th><th>Invoice ID</th></tr></thead><tbody id="eao-pp-requests-tbody"></tbody></table>');
+                        }
+                        var amtText = (typeof resp.data.amount_cents === 'number') ? ('$' + (resp.data.amount_cents/100).toFixed(2)) : '';
+                        var row = '<tr data-gateway="stripe" data-invoice-id="'+resp.data.invoice_id+'">'+
+                                  '<td>Stripe</td>'+
+                                  '<td>USD '+amtText+'</td>'+
+                                  '<td class="eao-pp-req-state">'+(resp.data.status||'open').toUpperCase()+'</td>'+
+                                  '<td>'+(url?('<a target="_blank" rel="noopener" href="'+encodeURI(url)+'">Open</a>'):'<span style="opacity:.7;">N/A</span>')+'</td>'+
+                                  '<td><small>'+resp.data.invoice_id+'</small></td>'+
+                                  '</tr>';
+                        $('#eao-pp-requests-tbody').append(row);
+                    }
+                    eaoUpdateRequestButtons();
                     if (resp.data && resp.data.invoice_id) {
                         $('#eao-pp-invoice-id').val(resp.data.invoice_id);
                         $('#eao-pp-invoice-status').val(resp.data.status || 'open');
@@ -903,6 +933,11 @@
                 return NaN;
             }
             var amountOverride = getSelectedAmount();
+            var remainingCents2 = parseInt($('#eao-pp-remaining-cents').val()||'0', 10) || 0;
+            if (!isNaN(amountOverride)) {
+                var capped2 = Math.min(Math.round(amountOverride*100), remainingCents2 || Math.round(amountOverride*100));
+                amountOverride = capped2/100;
+            }
             $msg.html('<div class="notice notice-info"><p>Sending PayPal payment request...</p></div>');
             $.post((window.eao_ajax && eao_ajax.ajax_url) || window.ajaxurl, {
                 action: 'eao_paypal_send_payment_request',
@@ -917,6 +952,24 @@
                     var url = resp.data && resp.data.url ? resp.data.url : '';
                     var html = '<div class="notice notice-success"><p>PayPal payment request sent.' + (url ? ' <a target="_blank" rel="noopener" href="'+encodeURI(url)+'">Open invoice</a>' : '') + '</p></div>';
                     $msg.html(html);
+                    if (resp.data && typeof resp.data.remaining_cents === 'number') {
+                        $('#eao-pp-remaining-cents').val(resp.data.remaining_cents);
+                    }
+                    if (resp.data && resp.data.invoice_id) {
+                        if (!$('#eao-pp-requests-tbody').length) {
+                            $('#eao-pp-requests-list').html('<table class="widefat fixed striped" style="margin-top:6px;"><thead><tr><th style="width:14%;">Gateway</th><th style="width:16%;">Amount</th><th style="width:14%;">Status</th><th style="width:20%;">Link</th><th>Invoice ID</th></tr></thead><tbody id="eao-pp-requests-tbody"></tbody></table>');
+                        }
+                        var amtText = (typeof resp.data.amount_cents === 'number') ? ('$' + (resp.data.amount_cents/100).toFixed(2)) : '';
+                        var row = '<tr data-gateway="paypal" data-invoice-id="'+resp.data.invoice_id+'">'+
+                                  '<td>PayPal</td>'+
+                                  '<td>USD '+amtText+'</td>'+
+                                  '<td class="eao-pp-req-state">'+(resp.data.status||'SENT').toUpperCase()+'</td>'+
+                                  '<td>'+(url?('<a target="_blank" rel="noopener" href="'+encodeURI(url)+'">Open</a>'):'<span style="opacity:.7;">N/A</span>')+'</td>'+
+                                  '<td><small>'+resp.data.invoice_id+'</small></td>'+
+                                  '</tr>';
+                        $('#eao-pp-requests-tbody').append(row);
+                    }
+                    eaoUpdateRequestButtons();
                     if (resp.data && resp.data.invoice_id) {
                         $('#eao-pp-paypal-invoice-id').val(resp.data.invoice_id);
                         $('#eao-pp-paypal-invoice-status').val(resp.data.status || 'SENT');
@@ -977,6 +1030,13 @@
             }, function(resp){
                 if (resp && resp.success) {
                     $msg.html('<div class="notice notice-success"><p>Payment request voided.</p></div>');
+                    if (resp.data && typeof resp.data.remaining_cents === 'number') {
+                        $('#eao-pp-remaining-cents').val(resp.data.remaining_cents);
+                        eaoUpdateRequestButtons();
+                    }
+                    // Update row in requests table if exists
+                    var $row = $('#eao-pp-requests-tbody tr[data-gateway="stripe"][data-invoice-id="'+invoiceId+'"]');
+                    if ($row.length) { $row.find('.eao-pp-req-state').text('VOID'); }
                 } else {
                     var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to void payment request';
                     $msg.html('<div class="notice notice-error"><p>'+err+'</p></div>');
@@ -1011,6 +1071,12 @@
             }, function(resp){
                 if (resp && resp.success) {
                     $msg.html('<div class="notice notice-success"><p>PayPal payment request voided.</p></div>');
+                    if (resp.data && typeof resp.data.remaining_cents === 'number') {
+                        $('#eao-pp-remaining-cents').val(resp.data.remaining_cents);
+                        eaoUpdateRequestButtons();
+                    }
+                    var $row = $('#eao-pp-requests-tbody tr[data-gateway="paypal"][data-invoice-id="'+invoiceId+'"]');
+                    if ($row.length) { $row.find('.eao-pp-req-state').text('CANCELLED'); }
                 } else {
                     var err = (resp && resp.data && resp.data.message) ? resp.data.message : 'Failed to void PayPal payment request';
                     $msg.html('<div class="notice notice-error"><p>'+err+'</p></div>');

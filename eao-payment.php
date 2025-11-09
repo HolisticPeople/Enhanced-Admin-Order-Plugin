@@ -358,6 +358,49 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                 <input type="hidden" id="eao-pp-paypal-invoice-url" value="<?php echo esc_attr($pp_existing_invoice_url); ?>" />
                 <input type="hidden" id="eao-pp-paid-cents" value="<?php echo esc_attr($last_paid_cents); ?>" />
                 <input type="hidden" id="eao-pp-paid-currency" value="<?php echo esc_attr($last_paid_currency); ?>" />
+                <?php
+                // Render requests ledger and remaining balance
+                $reqs_list = function_exists('eao_requests_load') ? eao_requests_load($order) : array();
+                $order_total_cents = (int) round(((float) $order->get_total()) * 100);
+                $already_req_cents = function_exists('eao_requests_sum_requested_cents') ? eao_requests_sum_requested_cents($reqs_list) : 0;
+                $remaining_cents = max(0, $order_total_cents - $already_req_cents);
+                ?>
+                <input type="hidden" id="eao-pp-remaining-cents" value="<?php echo esc_attr($remaining_cents); ?>" />
+                <div id="eao-pp-requests-list" style="margin-top:10px;">
+                    <?php if (empty($reqs_list)) : ?>
+                        <em>No payment requests yet.</em>
+                    <?php else : ?>
+                        <table class="widefat fixed striped" style="margin-top:6px;">
+                            <thead>
+                                <tr>
+                                    <th style="width:14%;">Gateway</th>
+                                    <th style="width:16%;">Amount</th>
+                                    <th style="width:14%;">Status</th>
+                                    <th style="width:20%;">Link</th>
+                                    <th>Invoice ID</th>
+                                </tr>
+                            </thead>
+                            <tbody id="eao-pp-requests-tbody">
+                            <?php foreach ($reqs_list as $r) : 
+                                $gw = isset($r['gateway']) ? (string) $r['gateway'] : '';
+                                $inv = isset($r['invoice_id']) ? (string) $r['invoice_id'] : '';
+                                $amt_c = isset($r['amount_cents']) ? (int) $r['amount_cents'] : 0;
+                                $cur = isset($r['currency']) ? strtoupper((string) $r['currency']) : 'USD';
+                                $state = isset($r['state']) ? strtoupper((string) $r['state']) : 'OPEN';
+                                $url = isset($r['url']) ? (string) $r['url'] : '';
+                            ?>
+                                <tr data-gateway="<?php echo esc_attr($gw); ?>" data-invoice-id="<?php echo esc_attr($inv); ?>">
+                                    <td><?php echo esc_html( ucfirst(str_replace('_',' ',$gw)) ); ?></td>
+                                    <td><?php echo esc_html( ($cur?:'USD') . ' $' . number_format($amt_c/100, 2) ); ?></td>
+                                    <td class="eao-pp-req-state"><?php echo esc_html($state); ?></td>
+                                    <td><?php if ($url) : ?><a target="_blank" rel="noopener" href="<?php echo esc_url($url); ?>">Open</a><?php else: ?><span style="opacity:.7;">N/A</span><?php endif; ?></td>
+                                    <td><small><?php echo esc_html($inv); ?></small></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php endif; ?>
+                </div>
             </div>
             <div id="eao-pp-request-messages"></div>
         </div>
@@ -1692,13 +1735,26 @@ function eao_stripe_send_payment_request() {
         'amount_cents' => (int) $expected_cents,
         'currency' => strtoupper($currency),
         'state' => 'open',
+        'url' => (string) ($sent['hosted_invoice_url'] ?? ''),
         'auto_process_on_full' => $auto_process ? true : false,
         'created_at' => time(),
     );
     eao_requests_save($order, $reqs);
     $order->save();
 
-    wp_send_json_success(array('invoice_id' => $sent['id'], 'status' => $sent['status'] ?? 'open', 'url' => ($sent['hosted_invoice_url'] ?? ''), 'sent_to' => $email));
+    // Remaining after this request
+    $order_total_cents2 = (int) round(((float) $order->get_total()) * 100);
+    $remaining_after = max(0, $order_total_cents2 - eao_requests_sum_requested_cents($reqs));
+
+    wp_send_json_success(array(
+        'invoice_id' => $sent['id'],
+        'status' => $sent['status'] ?? 'open',
+        'url' => ($sent['hosted_invoice_url'] ?? ''),
+        'sent_to' => $email,
+        'amount_cents' => (int) $expected_cents,
+        'currency' => strtoupper($currency),
+        'remaining_cents' => $remaining_after
+    ));
 }
 
 /** Void a previously created invoice */
@@ -1731,7 +1787,10 @@ function eao_stripe_void_invoice() {
     $reqs = eao_requests_load($order);
     $idx = eao_requests_find_index($reqs, 'stripe', $invoice_id);
     if ($idx >= 0) { $reqs[$idx]['state'] = 'void'; eao_requests_save($order, $reqs); $order->save(); }
-    wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => ($body['status'] ?? 'void')));
+    // Remaining after void
+    $order_total_cents2 = (int) round(((float) $order->get_total()) * 100);
+    $remaining_after = max(0, $order_total_cents2 - eao_requests_sum_requested_cents($reqs));
+    wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => ($body['status'] ?? 'void'), 'remaining_cents' => $remaining_after));
 }
 
 /** Fetch Stripe invoice status and update order meta */
@@ -1758,7 +1817,13 @@ function eao_stripe_get_invoice_status() {
     $status = (string) ($body['status'] ?? 'open');
     $url = (string) ($body['hosted_invoice_url'] ?? '');
     $order->update_meta_data('_eao_stripe_invoice_status', $status);
-    if ($url !== '') { $order->update_meta_data('_eao_stripe_invoice_url', $url); }
+    if ($url !== '') { 
+        $order->update_meta_data('_eao_stripe_invoice_url', $url);
+        // Update ledger entry with url
+        $reqs = eao_requests_load($order);
+        $idx = eao_requests_find_index($reqs, 'stripe', $invoice_id);
+        if ($idx >= 0) { $reqs[$idx]['url'] = $url; eao_requests_save($order, $reqs); }
+    }
     // Try to persist payment intent and charge id for refunds
     $pi_id = (string) ($body['payment_intent'] ?? '');
     if ($pi_id !== '') {
@@ -2151,13 +2216,26 @@ function eao_paypal_send_payment_request() {
         'amount_cents' => $requested_cents_target,
         'currency' => strtoupper($currency),
         'state' => 'open',
+        'url' => $payer_url,
         'auto_process_on_full' => $auto_process ? true : false,
         'created_at' => time(),
     );
     eao_requests_save($order, $reqs);
     $order->save();
 
-    wp_send_json_success(array('invoice_id' => $inv_id, 'status' => $status, 'url' => $payer_url, 'sent_to' => $email));
+    // Remaining after this request
+    $order_total_cents2 = (int) round(((float) $order->get_total()) * 100);
+    $remaining_after = max(0, $order_total_cents2 - eao_requests_sum_requested_cents($reqs));
+
+    wp_send_json_success(array(
+        'invoice_id' => $inv_id,
+        'status' => $status,
+        'url' => $payer_url,
+        'sent_to' => $email,
+        'amount_cents' => $requested_cents_target,
+        'currency' => strtoupper($currency),
+        'remaining_cents' => $remaining_after
+    ));
 }
 
 /** Cancel a PayPal invoice */
@@ -2190,7 +2268,10 @@ function eao_paypal_void_invoice() {
     $reqs = eao_requests_load($order);
     $idx = eao_requests_find_index($reqs, 'paypal', $invoice_id);
     if ($idx >= 0) { $reqs[$idx]['state'] = 'void'; eao_requests_save($order, $reqs); $order->save(); }
-    wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => 'CANCELLED'));
+    // Remaining after void
+    $order_total_cents2 = (int) round(((float) $order->get_total()) * 100);
+    $remaining_after = max(0, $order_total_cents2 - eao_requests_sum_requested_cents($reqs));
+    wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => 'CANCELLED', 'remaining_cents' => $remaining_after));
 }
 
 /** Fetch PayPal invoice status */
@@ -2223,6 +2304,13 @@ function eao_paypal_get_invoice_status() {
                 break;
             }
         }
+    }
+    // Also mirror URL into ledger if we have one stored
+    $ledger_url = (string) $order->get_meta('_eao_paypal_invoice_url', true);
+    if ($ledger_url !== '') {
+        $reqs = eao_requests_load($order);
+        $idx2 = eao_requests_find_index($reqs, 'paypal', $invoice_id);
+        if ($idx2 >= 0) { $reqs[$idx2]['url'] = $ledger_url; eao_requests_save($order, $reqs); }
     }
     // Try to extract paid/total amount from response for UI and notes
     $paid_cents = 0; $currency = '';
