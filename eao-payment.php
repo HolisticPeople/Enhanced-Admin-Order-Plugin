@@ -135,7 +135,6 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                 <th><label for="eao-pp-amount">Payment Amount</label></th>
                 <td>
                     <input type="number" id="eao-pp-amount" step="0.01" min="0.01" value="<?php echo esc_attr(number_format((float)$amount,2,'.','')); ?>" />
-                    <button type="button" id="eao-pp-copy-gt" class="button" style="margin-left:6px;">Copy grand total</button>
                     <button type="button" id="eao-pp-gateway-settings" class="button" title="Payment Settings" style="margin-left:6px;">
                         <span class="dashicons dashicons-admin-generic"></span>
                     </button>

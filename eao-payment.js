@@ -8,15 +8,8 @@
         s.onload = cb; document.head.appendChild(s);
     }
     $(document).ready(function(){
-        // Always-on debug logs (will be removed after verification)
-        function dbg(){
-            try {
-                var args = Array.prototype.slice.call(arguments);
-                var TAG = '[payment request]';
-                args.unshift(TAG, '[EAO Payment]');
-                if (window.console && console.log) { console.log.apply(console, args); }
-            } catch(_){}
-        }
+        // Production: no-op debug function
+        function dbg(){}
         var $container = $('#eao-payment-processing-container');
         if (!$container.length) return;
         // Helper to derive Grand Total from the live DOM (not yet saved order)
@@ -517,22 +510,7 @@
         toggleCardForm();
         $('#eao-pp-gateway').on('change', toggleCardForm);
 
-        // Manual copy action â€“ always correct
-        $('#eao-pp-copy-gt').on('click', function(){
-            try {
-                var s = window.currentOrderSummaryData || {};
-                var amt = (typeof s.grand_total !== 'undefined') ? parseFloat(s.grand_total) : parseFloat(s.grand_total_raw);
-                if (isNaN(amt)) {
-                    // DOM fallback
-                    var txt = $('.eao-grand-total-line .eao-summary-monetary-value, .eao-grand-total-value, #eao-grand-total-value, .grand-total, [data-field="grand_total"]').first().text() || '';
-                    var num = parseFloat(String(txt).replace(/[^0-9.\-]/g,''));
-                    if (!isNaN(num)) { amt = num; }
-                }
-                if (!isNaN(amt)) { $('#eao-pp-amount').val(amt.toFixed(2)); }
-                // Update request button labels if available
-                try { if (typeof eaoUpdateRequestButtons === 'function') { eaoUpdateRequestButtons(); } } catch(_){ }
-            } catch(_){ }
-        });
+        // Removed: manual "Copy grand total" button (now auto-synced)
 
         function clearPaymentForm(){
             try { if (cardElement && typeof cardElement.clear === 'function') { cardElement.clear(); } } catch(_){ }
@@ -1009,7 +987,7 @@
         }
         eaoUpdateRequestButtons();
         $(document).on('change keyup', '#eao-pp-amount', eaoUpdateRequestButtons);
-        $(document).on('click', '#eao-pp-copy-gt', eaoUpdateRequestButtons);
+        // Removed: manual copy button click hook
         $(document).on('change', 'input[name="eao-pp-line-mode"], #eao-pp-request-email', eaoUpdateRequestButtons);
         setTimeout(eaoUpdateRequestButtons, 600);
         setTimeout(eaoUpdateRequestButtons, 1500);
