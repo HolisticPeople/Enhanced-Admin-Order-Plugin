@@ -8,6 +8,14 @@
         s.onload = cb; document.head.appendChild(s);
     }
     $(document).ready(function(){
+        // Always-on debug logs (will be removed after verification)
+        function dbg(){
+            try {
+                var args = Array.prototype.slice.call(arguments);
+                args.unshift('[EAO Payment]');
+                if (window.console && console.log) { console.log.apply(console, args); }
+            } catch(_){}
+        }
         var $container = $('#eao-payment-processing-container');
         if (!$container.length) return;
         // Helper to derive Grand Total from the live DOM (not yet saved order)
@@ -15,12 +23,12 @@
             try {
                 var s = window.currentOrderSummaryData || {};
                 var gt = (typeof s.grand_total !== 'undefined') ? parseFloat(s.grand_total) : parseFloat(s.grand_total_raw);
-                if (!isNaN(gt) && isFinite(gt) && gt >= 0) return gt;
+                if (!isNaN(gt) && isFinite(gt) && gt >= 0) { dbg('deriveGT from summary:', gt); return gt; }
             } catch(_){ }
             try {
                 var txt = $('.eao-grand-total-line .eao-summary-monetary-value, .eao-grand-total-value, #eao-grand-total-value, .grand-total, [data-field=\"grand_total\"]').first().text() || '';
                 var num = parseFloat(String(txt).replace(/[^0-9.\\-]/g,''));
-                if (!isNaN(num) && isFinite(num) && num >= 0) return num;
+                if (!isNaN(num) && isFinite(num) && num >= 0) { dbg('deriveGT from DOM:', num, 'raw:', txt); return num; }
             } catch(_){ }
             return NaN;
         }
@@ -53,6 +61,7 @@
             if (!isNaN(gt) && isFinite(gt) && gt >= 0) {
                 var pending = computeOpenRequestsCents();
                 var remaining = Math.max(0, Math.round(gt*100) - pending);
+                dbg('bootstrap: gt=', gt, 'pending_cents=', pending, 'remaining_cents=', remaining);
                 $('#eao-pp-remaining-cents').val(String(remaining));
             } else if ((!isFinite(rc) || isNaN(rc) || rc <= 0) && !hasAnyRequests) {
                 // Fallback to previous behavior if GT missing
@@ -64,6 +73,7 @@
             try {
                 var rcInit = parseInt($('#eao-pp-remaining-cents').val()||'0', 10);
                 if (isFinite(rcInit) && !isNaN(rcInit) && rcInit >= 0) {
+                    dbg('bootstrap: set amount from remaining_cents=', rcInit);
                     $('#eao-pp-amount').val((rcInit/100).toFixed(2)).data('auto-from-summary', true);
                 } 
             } catch(_){ }
@@ -99,6 +109,7 @@
                         }
                     });
                     var remaining = Math.max(0, Math.round(grand*100) - pending);
+                    dbg('summaryUpdated: grand=', grand, 'pending_cents=', pending, 'remaining_cents=', remaining, 'autoOk=', autoOk);
                     $('#eao-pp-remaining-cents').val(String(remaining));
                     if (autoOk) { $amt.val((remaining/100).toFixed(2)); }
                 })();
@@ -1009,6 +1020,7 @@
                 } catch(_){ }
                 return deriveGrandTotalFromDom();
             })();
+            dbg('send-stripe: amountOverride=', amountOverride, 'gtSend=', gtSend);
             // Cap by remaining balance to avoid server rejection
             var rcStr1 = $('#eao-pp-remaining-cents').val();
             var rc1 = parseInt(rcStr1, 10);
@@ -1118,6 +1130,7 @@
                 } catch(_){ }
                 return deriveGrandTotalFromDom();
             })();
+            dbg('send-paypal: amountOverride=', amountOverride, 'gtSend=', gtSend2);
             var rcStr2 = $('#eao-pp-remaining-cents').val();
             var rc2 = parseInt(rcStr2, 10);
             if (!isNaN(amountOverride) && !isNaN(rc2)) {
