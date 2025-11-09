@@ -734,8 +734,9 @@
                 paypalActive = !!(pId && pSt !== 'void' && pSt !== 'cancelled' && pSt !== 'canceled');
                 var paypalVoidEligible = !!(paypalActive && pSt !== 'paid');
             } catch(_){}
-            if ($btnStripe.length) $btnStripe.prop('disabled', stripeActive || paypalActive);
-            if ($btnPayPal.length) $btnPayPal.prop('disabled', stripeActive || paypalActive);
+            // Allow multiple concurrent payment requests up to remaining balance; do not disable send buttons
+            if ($btnStripe.length) $btnStripe.prop('disabled', false);
+            if ($btnPayPal.length) $btnPayPal.prop('disabled', false);
             $('#eao-pp-void-stripe').toggle(!!stripeVoidEligible);
             $('#eao-pp-void-paypal').toggle(!!paypalVoidEligible);
 
@@ -838,7 +839,8 @@
                 email: email,
                 mode: mode,
                 gateway: gateway,
-                amount_override: isNaN(amountOverride) ? '' : amountOverride
+                amount_override: isNaN(amountOverride) ? '' : amountOverride,
+                auto_process: $('#eao-pp-auto-process').is(':checked') ? 1 : 0
             }, function(resp){
                 if (resp && resp.success) {
                     var url = resp.data && resp.data.url ? resp.data.url : '';
@@ -908,7 +910,8 @@
                 order_id: orderId,
                 email: email,
                 mode: mode,
-                amount_override: isNaN(amountOverride) ? '' : amountOverride
+                amount_override: isNaN(amountOverride) ? '' : amountOverride,
+                auto_process: $('#eao-pp-auto-process').is(':checked') ? 1 : 0
             }, function(resp){
                 if (resp && resp.success) {
                     var url = resp.data && resp.data.url ? resp.data.url : '';

@@ -335,8 +335,8 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
         <h3 style="margin:6px 0 8px;">Request Payment</h3>
         <div id="eao-pp-request-panel" style="margin-top:8px;">
             <p style="margin:6px 0 8px 0; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-                <button type="button" id="eao-pp-send-stripe" class="button"<?php echo ($has_active_invoice || $pp_has_active_invoice) ? ' disabled="disabled"' : ''; ?>>Send Stripe Payment Request</button>
-                <button type="button" id="eao-pp-send-paypal" class="button"<?php echo ($has_active_invoice || $pp_has_active_invoice) ? ' disabled="disabled"' : ''; ?>>Send PayPal Payment Request</button>
+                <button type="button" id="eao-pp-send-stripe" class="button">Send Stripe Payment Request</button>
+                <button type="button" id="eao-pp-send-paypal" class="button">Send PayPal Payment Request</button>
                 <button type="button" id="eao-pp-void-stripe" class="button button-secondary" style="<?php echo $has_active_invoice ? '' : 'display:none;'; ?>">Void Stripe Request</button>
                 <button type="button" id="eao-pp-void-paypal" class="button button-secondary" style="<?php echo $pp_has_active_invoice ? '' : 'display:none;'; ?>">Void PayPal Request</button>
                 <button type="button" id="eao-pp-refresh-status" class="button">Refresh Status</button>
@@ -346,6 +346,10 @@ function eao_render_payment_processing_metabox($post_or_order, $meta_box_args = 
                 <span style="margin-left:12px;">Amount source:</span>
                 <label style="margin-left:6px;"><input type="radio" name="eao-pp-line-mode" value="grand" checked /> Grand total</label>
                 <label style="margin-left:6px;"><input type="radio" name="eao-pp-line-mode" value="itemized" /> Itemized</label>
+                <label style="margin-left:12px;display:inline-flex;align-items:center;gap:6px;">
+                    <input type="checkbox" id="eao-pp-auto-process" checked />
+                    <span>Change Order Status to Processing when paid</span>
+                </label>
                 <input type="hidden" id="eao-pp-invoice-id" value="<?php echo esc_attr($existing_invoice_id); ?>" />
                 <input type="hidden" id="eao-pp-invoice-status" value="<?php echo esc_attr($existing_invoice_status); ?>" />
                 <input type="hidden" id="eao-pp-invoice-url" value="<?php echo esc_attr($existing_invoice_url); ?>" />
@@ -1348,6 +1352,84 @@ function eao_payment_process_refund() {
  */
 
 /**
+ * Internal helpers for tracking multiple payment requests (Stripe/PayPal) per order.
+ * We persist an array of request records in order meta under `_eao_requests` as JSON.
+ * Each record:
+ *  - gateway: 'stripe' | 'paypal'
+ *  - invoice_id: string
+ *  - amount_cents: int
+ *  - currency: string
+ *  - state: 'open' | 'paid' | 'void'
+ *  - auto_process_on_full: bool
+ *  - created_at: int (unix)
+ *  - paid_at?: int (unix)
+ */
+function eao_requests_load($order) {
+    $raw = (string) $order->get_meta('_eao_requests', true);
+    if ($raw === '') { return array(); }
+    $arr = json_decode($raw, true);
+    return is_array($arr) ? $arr : array();
+}
+function eao_requests_save($order, $list) {
+    $order->update_meta_data('_eao_requests', wp_json_encode(array_values($list)));
+}
+function eao_requests_sum_requested_cents($list) {
+    $sum = 0;
+    foreach ($list as $r) {
+        if (!is_array($r)) { continue; }
+        if (!isset($r['state']) || $r['state'] === 'void') { continue; }
+        $sum += isset($r['amount_cents']) ? (int) $r['amount_cents'] : 0;
+    }
+    return max(0, (int) $sum);
+}
+function eao_requests_sum_paid_cents($list) {
+    $sum = 0;
+    foreach ($list as $r) {
+        if (!is_array($r)) { continue; }
+        if (isset($r['state']) && $r['state'] === 'paid') {
+            $sum += isset($r['amount_cents']) ? (int) $r['amount_cents'] : 0;
+        }
+    }
+    return max(0, (int) $sum);
+}
+function eao_requests_find_index($list, $gateway, $invoice_id) {
+    foreach ($list as $i => $r) {
+        if (!is_array($r)) { continue; }
+        if (($r['gateway'] ?? '') === $gateway && ($r['invoice_id'] ?? '') === $invoice_id) { return (int) $i; }
+    }
+    return -1;
+}
+/**
+ * After any invoice paid/void update, evaluate whether the order should auto-advance.
+ * Rule:
+ * - If there are any outstanding (state != paid/void) requests with auto_process_on_full=true, do not advance yet.
+ * - When total paid (across all requests) >= order total AND there are no outstanding auto_process requests, advance to Processing if in a pending-like state; else add a note.
+ */
+function eao_requests_maybe_auto_advance_status($order) {
+    $total_cents = (int) round(((float) $order->get_total()) * 100);
+    $list = eao_requests_load($order);
+    $paid_cents = eao_requests_sum_paid_cents($list);
+    $has_outstanding_auto = false;
+    foreach ($list as $r) {
+        if (!is_array($r)) { continue; }
+        $auto = !empty($r['auto_process_on_full']);
+        $state = isset($r['state']) ? $r['state'] : 'open';
+        if ($auto && $state !== 'paid' && $state !== 'void') { $has_outstanding_auto = true; break; }
+    }
+    if ($paid_cents >= $total_cents && !$has_outstanding_auto) {
+        $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
+        $is_pending_like = in_array($current, array('pending','pending-payment'), true);
+        $paid_text = '$' . number_format($paid_cents/100, 2);
+        if ($is_pending_like) {
+            try { $order->update_status('processing', 'Payment requests fully paid (' . $paid_text . ').'); } catch (Exception $e) { /* noop */ }
+        } else {
+            $order->add_order_note('Payment requests fully paid (' . $paid_text . ').');
+        }
+        $order->save();
+    }
+}
+
+/**
  * Create and send a Stripe invoice email (Hosted Invoice Page) for the order.
  * - Due date: immediate
  * - ACH is allowed automatically for US orders in USD (if enabled on account)
@@ -1371,6 +1453,7 @@ function eao_stripe_send_payment_request() {
     $mode  = in_array(($_POST['mode'] ?? 'grand'), array('grand','itemized'), true) ? $_POST['mode'] : 'grand';
     $gw    = isset($_POST['gateway']) ? sanitize_text_field($_POST['gateway']) : 'stripe_live';
     $amount_override = isset($_POST['amount_override']) ? floatval($_POST['amount_override']) : 0.0;
+    $auto_process = !empty($_POST['auto_process']);
 
     $opts = get_option('eao_stripe_settings', array());
     $secret = ($gw === 'stripe_live') ? ($opts['live_secret'] ?? '') : ($opts['test_secret'] ?? '');
@@ -1432,11 +1515,24 @@ function eao_stripe_send_payment_request() {
         }
     } catch (Exception $e) { /* swallow */ }
 
-    // Optional: reuse open invoice with same remaining amount
-    $existing_invoice_id = (string) $order->get_meta('_eao_stripe_invoice_id', true);
-    $expected_cents = ($amount_override > 0.0)
+    // Validate against remaining balance across all existing requests (non-void)
+    $reqs = eao_requests_load($order);
+    $order_total_cents = (int) round(((float) $order->get_total()) * 100);
+    $already_requested_cents = eao_requests_sum_requested_cents($reqs);
+    $requested_cents_target = ($amount_override > 0.0)
         ? (int) round($amount_override * 100)
         : (int) round(((float) $order->get_total()) * 100);
+    $remaining_cents = max(0, $order_total_cents - $already_requested_cents);
+    if ($requested_cents_target <= 0) {
+        wp_send_json_error(array('message' => 'Requested amount must be greater than zero.'));
+    }
+    if ($requested_cents_target > $remaining_cents) {
+        wp_send_json_error(array('message' => 'Requested amount exceeds remaining balance of $' . number_format($remaining_cents/100, 2)));
+    }
+
+    // Optional: reuse open invoice with same remaining amount (single-invoice reuse)
+    $existing_invoice_id = (string) $order->get_meta('_eao_stripe_invoice_id', true);
+    $expected_cents = $requested_cents_target;
     if ($existing_invoice_id) {
         $inv_resp = wp_remote_get('https://api.stripe.com/v1/invoices/' . rawurlencode($existing_invoice_id), array('headers' => array('Authorization' => 'Bearer ' . $secret)));
         if (!is_wp_error($inv_resp)) {
@@ -1464,9 +1560,7 @@ function eao_stripe_send_payment_request() {
 
     // Create invoice items
     if ($mode === 'grand') {
-        $amount_cents = ($amount_override > 0.0)
-            ? (int) round($amount_override * 100)
-            : (int) round(((float) $order->get_total()) * 100);
+        $amount_cents = $requested_cents_target;
         $ii = wp_remote_post('https://api.stripe.com/v1/invoiceitems', array(
             'headers' => $headers,
             'body' => array(
@@ -1591,6 +1685,19 @@ function eao_stripe_send_payment_request() {
     $order->save();
     $order->add_order_note('Stripe payment request sent. Invoice #' . ($sent['number'] ?? $sent['id']));
 
+    // Track in multi-request ledger
+    $reqs[] = array(
+        'gateway' => 'stripe',
+        'invoice_id' => (string) $sent['id'],
+        'amount_cents' => (int) $expected_cents,
+        'currency' => strtoupper($currency),
+        'state' => 'open',
+        'auto_process_on_full' => $auto_process ? true : false,
+        'created_at' => time(),
+    );
+    eao_requests_save($order, $reqs);
+    $order->save();
+
     wp_send_json_success(array('invoice_id' => $sent['id'], 'status' => $sent['status'] ?? 'open', 'url' => ($sent['hosted_invoice_url'] ?? ''), 'sent_to' => $email));
 }
 
@@ -1620,6 +1727,10 @@ function eao_stripe_void_invoice() {
     $order->update_meta_data('_eao_stripe_invoice_status', (string) ($body['status'] ?? 'void'));
     $order->save();
     $order->add_order_note('Stripe payment request voided. Invoice #' . ($body['number'] ?? $invoice_id));
+    // Mark ledger entry as void if present
+    $reqs = eao_requests_load($order);
+    $idx = eao_requests_find_index($reqs, 'stripe', $invoice_id);
+    if ($idx >= 0) { $reqs[$idx]['state'] = 'void'; eao_requests_save($order, $reqs); $order->save(); }
     wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => ($body['status'] ?? 'void')));
 }
 
@@ -1669,20 +1780,27 @@ function eao_stripe_get_invoice_status() {
     }
     $order->save();
     if (strtolower($status) === 'paid') {
-        $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
-        $is_pending_like = in_array($current, array('pending','pending-payment'), true);
+        // Mark ledger entry as paid and maybe auto-advance
+        $reqs = eao_requests_load($order);
+        $idx = eao_requests_find_index($reqs, 'stripe', $invoice_id);
+        if ($idx >= 0) {
+            $reqs[$idx]['state'] = 'paid';
+            $reqs[$idx]['paid_at'] = time();
+            if (!empty($body['amount_paid'])) {
+                $reqs[$idx]['amount_cents'] = (int) $body['amount_paid'];
+                if (!empty($body['currency'])) { $reqs[$idx]['currency'] = strtoupper((string)$body['currency']); }
+            }
+            eao_requests_save($order, $reqs);
+        }
         $paid_cents = isset($body['amount_paid']) ? (int) $body['amount_paid'] : 0;
         $paid_text = $paid_cents ? (' ($' . number_format($paid_cents/100, 2) . ')') : '';
-        if ($is_pending_like) {
-            try { $order->update_status('processing', 'Stripe invoice paid' . $paid_text . ' (manual refresh).'); } catch (Exception $e) { /* noop */ }
-        } else {
-            $order->add_order_note('Stripe invoice paid' . $paid_text . ' (manual refresh).');
-        }
+        $order->add_order_note('Stripe invoice paid' . $paid_text . ' (manual refresh).');
         // Persist gateway identity for refunds/labels
         $order->update_meta_data('_eao_payment_gateway', ($gw === 'stripe_live') ? 'stripe_live' : 'stripe_test');
         $order->update_meta_data('_payment_method', ($gw === 'stripe_live') ? 'eao_stripe_live' : 'eao_stripe_test');
         $order->update_meta_data('_payment_method_title', 'Stripe (EAO ' . (($gw === 'stripe_live') ? 'Live' : 'Test') . ')');
         $order->save();
+        eao_requests_maybe_auto_advance_status($order);
     }
     // Persist paid amount when available
     if (!empty($body['amount_paid'])) {
@@ -1838,26 +1956,28 @@ function eao_paypal_send_payment_request() {
     $order = $order_id ? wc_get_order($order_id) : null;
     if (!$order) { wp_send_json_error(array('message' => 'Order not found')); }
 
-    // Concurrency: block if Stripe invoice exists and not void
-    $stripe_id = (string) $order->get_meta('_eao_stripe_invoice_id', true);
-    $stripe_status = strtolower((string) $order->get_meta('_eao_stripe_invoice_status', true));
-    if ($stripe_id && $stripe_status !== 'void') {
-        wp_send_json_error(array('message' => 'Another payment request exists (Stripe). Please void it first.'));
-    }
-    // Prevent duplicate active PayPal
-    $pp_existing_id = (string) $order->get_meta('_eao_paypal_invoice_id', true);
-    $pp_existing_status = strtolower((string) $order->get_meta('_eao_paypal_invoice_status', true));
-    if ($pp_existing_id && !in_array($pp_existing_status, array('void','voided','cancel','canceled','cancelled'), true)) {
-        wp_send_json_error(array('message' => 'Existing PayPal request is active. Void it first.'));
-    }
+    // Allow multiple requests: validate against remaining balance across all non-void requests
 
     $email = sanitize_email($_POST['email'] ?? '');
     if ($email === '') { $email = method_exists($order,'get_billing_email') ? (string) $order->get_billing_email() : ''; }
     $mode  = in_array(($_POST['mode'] ?? 'grand'), array('grand','itemized'), true) ? $_POST['mode'] : 'grand';
     $amount_override = isset($_POST['amount_override']) ? floatval($_POST['amount_override']) : 0.0;
+    $auto_process = !empty($_POST['auto_process']);
 
     $currency = strtoupper(method_exists($order,'get_currency') ? (string) $order->get_currency() : (get_woocommerce_currency('USD') ?: 'USD'));
     $amount_value = ($amount_override > 0.0) ? $amount_override : (float) $order->get_total();
+    // Validate requested amount against remaining balance
+    $reqs = eao_requests_load($order);
+    $order_total_cents = (int) round(((float) $order->get_total()) * 100);
+    $already_requested_cents = eao_requests_sum_requested_cents($reqs);
+    $requested_cents_target = (int) round($amount_value * 100);
+    $remaining_cents = max(0, $order_total_cents - $already_requested_cents);
+    if ($requested_cents_target <= 0) {
+        wp_send_json_error(array('message' => 'Requested amount must be greater than zero.'));
+    }
+    if ($requested_cents_target > $remaining_cents) {
+        wp_send_json_error(array('message' => 'Requested amount exceeds remaining balance of $' . number_format($remaining_cents/100, 2)));
+    }
 
     $token = eao_paypal_get_oauth_token();
     if (is_wp_error($token)) { wp_send_json_error(array('message' => 'PayPal auth failed: ' . $token->get_error_message())); }
@@ -2024,6 +2144,19 @@ function eao_paypal_send_payment_request() {
     $order->save();
     $order->add_order_note('PayPal payment request sent. Invoice ' . $inv_id);
 
+    // Track in multi-request ledger
+    $reqs[] = array(
+        'gateway' => 'paypal',
+        'invoice_id' => $inv_id,
+        'amount_cents' => $requested_cents_target,
+        'currency' => strtoupper($currency),
+        'state' => 'open',
+        'auto_process_on_full' => $auto_process ? true : false,
+        'created_at' => time(),
+    );
+    eao_requests_save($order, $reqs);
+    $order->save();
+
     wp_send_json_success(array('invoice_id' => $inv_id, 'status' => $status, 'url' => $payer_url, 'sent_to' => $email));
 }
 
@@ -2053,6 +2186,10 @@ function eao_paypal_void_invoice() {
     $order->update_meta_data('_eao_paypal_invoice_status', 'CANCELLED');
     $order->save();
     $order->add_order_note('PayPal payment request cancelled. Invoice ' . $invoice_id);
+    // Mark ledger entry as void if present
+    $reqs = eao_requests_load($order);
+    $idx = eao_requests_find_index($reqs, 'paypal', $invoice_id);
+    if ($idx >= 0) { $reqs[$idx]['state'] = 'void'; eao_requests_save($order, $reqs); $order->save(); }
     wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => 'CANCELLED'));
 }
 
@@ -2138,27 +2275,29 @@ function eao_paypal_get_invoice_status() {
     }
     $order->save();
     if (strtoupper($status) === 'PAID') {
-        $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
-        $is_pending_like = in_array($current, array('pending','pending-payment'), true);
+        // Mark ledger entry as paid and maybe auto-advance
+        $reqs = eao_requests_load($order);
+        $idx = eao_requests_find_index($reqs, 'paypal', $invoice_id);
+        if ($idx >= 0) {
+            $reqs[$idx]['state'] = 'paid';
+            $reqs[$idx]['paid_at'] = time();
+            if ($paid_cents > 0) {
+                $reqs[$idx]['amount_cents'] = (int) $paid_cents;
+                if ($currency !== '') { $reqs[$idx]['currency'] = $currency; }
+            }
+            eao_requests_save($order, $reqs);
+        }
         // Compose amount text if known
         $paid_cents_meta = (int) $order->get_meta('_eao_last_charged_amount_cents', true);
         $paid_text = $paid_cents ? ('$' . number_format($paid_cents/100, 2)) : ($paid_cents_meta ? ('$' . number_format($paid_cents_meta/100, 2)) : '');
-        $note = 'PayPal invoice paid' . ($paid_text ? ' (' . $paid_text . ')' : '') . '.';
-        if ($is_pending_like) {
-            try {
-                $order->update_status('processing', $note);
-            } catch (Exception $e) {
-                
-            }
-        } else {
-            $order->add_order_note($note);
-            
-        }
+        $note = 'PayPal invoice paid' . ($paid_text ? ' (' . $paid_text . ')' : '') . ' (manual refresh).';
+        $order->add_order_note($note);
         // Persist gateway identity for refunds/labels
         $order->update_meta_data('_eao_payment_gateway', 'paypal_invoice');
         $order->update_meta_data('_payment_method', 'eao_paypal_invoice');
         $order->update_meta_data('_payment_method_title', 'PayPal (EAO Invoice)');
         $order->save();
+        eao_requests_maybe_auto_advance_status($order);
     }
     wp_send_json_success(array('invoice_id' => $invoice_id, 'status' => $status, 'url' => (string) $order->get_meta('_eao_paypal_invoice_url', true), 'paid_cents' => $paid_cents, 'currency' => $currency));
 }
@@ -2221,9 +2360,13 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
         if ($order_id) {
             $order = wc_get_order($order_id);
             if ($order) {
-                // SAFETY: only act if this order stores the same invoice id
-                $stored = (string) $order->get_meta('_eao_stripe_invoice_id', true);
-                if ($stored !== $invoice_id) { return new WP_REST_Response(array('ok' => true, 'ignored' => 'invoice_mismatch')); }
+                // Match against our request ledger (allow multiple invoices)
+                $reqs = eao_requests_load($order);
+                $idx = eao_requests_find_index($reqs, 'stripe', $invoice_id);
+                if ($idx < 0) {
+                    // If not found, ignore silently (not an EAO-created invoice)
+                    return new WP_REST_Response(array('ok' => true, 'ignored' => 'not_tracked'), 200);
+                }
                 if ($type === 'invoice.paid') {
                     $order->update_meta_data('_eao_stripe_invoice_status', 'paid');
                     // Persist paid amount if present
@@ -2252,24 +2395,31 @@ function eao_stripe_webhook_handler( WP_REST_Request $request ) {
                             }
                         } catch (Exception $e) { /* noop */ }
                     }
+                    // Mark this request as paid in the ledger
+                    $reqs[$idx]['state'] = 'paid';
+                    $reqs[$idx]['paid_at'] = time();
+                    if (!empty($object['amount_paid'])) {
+                        $reqs[$idx]['amount_cents'] = (int) $object['amount_paid'];
+                        $reqs[$idx]['currency'] = strtoupper((string) ($object['currency'] ?? ($reqs[$idx]['currency'] ?? '')));
+                    }
+                    eao_requests_save($order, $reqs);
                     $order->save();
                     $paid_text = '';
-                    if (!empty($object['amount_paid'])) { $paid_text = ' ($' . number_format(((int)$object['amount_paid'])/100, 2) . ')'; }
-                    // Move order to Processing only from Pending
-                    $current = method_exists($order,'get_status') ? (string) $order->get_status() : '';
-                    $is_pending_like = in_array($current, array('pending','pending-payment'), true);
-                    if ($is_pending_like) {
-                        try { $order->update_status('processing', 'Stripe invoice paid' . $paid_text . '.'); } catch (Exception $e) { /* noop */ }
-                    } else {
-                        $order->add_order_note('Stripe invoice paid' . $paid_text . '.');
-                    }
+                    $amt_for_note = !empty($reqs[$idx]['amount_cents']) ? (int) $reqs[$idx]['amount_cents'] : (!empty($object['amount_paid']) ? (int) $object['amount_paid'] : 0);
+                    if ($amt_for_note > 0) { $paid_text = ' ($' . number_format($amt_for_note/100, 2) . ')'; }
+                    $order->add_order_note('Stripe invoice paid' . $paid_text . '.');
                     // Persist gateway identity for refunds/labels
                     $order->update_meta_data('_eao_payment_gateway', 'stripe_live');
                     $order->update_meta_data('_payment_method', 'eao_stripe_live');
                     $order->update_meta_data('_payment_method_title', 'Stripe (EAO Live)');
                     $order->save();
+                    // Evaluate auto-advance rule across all requests
+                    eao_requests_maybe_auto_advance_status($order);
                 } elseif ($type === 'invoice.voided') {
                     $order->update_meta_data('_eao_stripe_invoice_status', 'void');
+                    // Mark void in ledger
+                    $reqs[$idx]['state'] = 'void';
+                    eao_requests_save($order, $reqs);
                     $order->save();
                     $order->add_order_note('Stripe invoice voided via webhook.');
                 } elseif ($type === 'invoice.payment_failed') {
@@ -2348,9 +2498,10 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
     if ($order_id) {
         $order = wc_get_order($order_id);
         if ($order) {
-            // SAFETY: only act if stored invoice matches
-            $stored = (string) $order->get_meta('_eao_paypal_invoice_id', true);
-            if ($stored !== $invoice_id) { return new WP_REST_Response(array('ok' => true, 'ignored' => 'invoice_mismatch')); }
+            // Match against our request ledger (allow multiple invoices)
+            $reqs = eao_requests_load($order);
+            $idx = eao_requests_find_index($reqs, 'paypal', $invoice_id);
+            if ($idx < 0) { return new WP_REST_Response(array('ok' => true, 'ignored' => 'not_tracked')); }
                 if ($type === 'INVOICING.INVOICE.PAID') {
                 $order->update_meta_data('_eao_paypal_invoice_status', 'PAID');
                 $order->save();
@@ -2406,19 +2557,28 @@ function eao_paypal_webhook_handler( WP_REST_Request $request ) {
                     $pc = (int) $order->get_meta('_eao_last_charged_amount_cents', true);
                     if ($pc > 0) { $paid_text_note = '$' . number_format($pc/100, 2); }
                 }
-                $note_text = 'PayPal invoice paid' . ($paid_text_note ? ' (' . $paid_text_note . ')' : '') . '.';
-                if ($is_pending_like) {
-                    try { $order->update_status('processing', $note_text); } catch (Exception $e) { /* noop */ }
-                } else {
-                    $order->add_order_note($note_text);
+                // Mark ledger entry as paid
+                $reqs[$idx]['state'] = 'paid';
+                $reqs[$idx]['paid_at'] = time();
+                if ($paid_text_note !== '') {
+                    $reqs[$idx]['amount_cents'] = (int) $order->get_meta('_eao_last_charged_amount_cents', true);
+                    $reqs[$idx]['currency'] = (string) $order->get_meta('_eao_last_charged_currency', true);
                 }
+                eao_requests_save($order, $reqs);
+                $note_text = 'PayPal invoice paid' . ($paid_text_note ? ' (' . $paid_text_note . ')' : '') . '.';
+                $order->add_order_note($note_text);
                 // Persist gateway identity for refunds/labels
                 $order->update_meta_data('_eao_payment_gateway', 'paypal_invoice');
                 $order->update_meta_data('_payment_method', 'eao_paypal_invoice');
                 $order->update_meta_data('_payment_method_title', 'PayPal (EAO Invoice)');
                 $order->save();
+                // Evaluate auto-advance rule across all requests
+                eao_requests_maybe_auto_advance_status($order);
             } elseif ($type === 'INVOICING.INVOICE.CANCELLED') {
                 $order->update_meta_data('_eao_paypal_invoice_status', 'CANCELLED');
+                // Mark ledger as void
+                $reqs[$idx]['state'] = 'void';
+                eao_requests_save($order, $reqs);
                 $order->save();
                 $order->add_order_note('PayPal invoice cancelled via webhook.');
             } elseif ($type === 'INVOICING.INVOICE.REFUNDED') {
