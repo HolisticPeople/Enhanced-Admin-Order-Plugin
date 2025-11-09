@@ -10,6 +10,40 @@
     $(document).ready(function(){
         var $container = $('#eao-payment-processing-container');
         if (!$container.length) return;
+        // Helper to derive Grand Total from the live DOM (not yet saved order)
+        function deriveGrandTotalFromDom(){
+            try {
+                var s = window.currentOrderSummaryData || {};
+                var gt = (typeof s.grand_total !== 'undefined') ? parseFloat(s.grand_total) : parseFloat(s.grand_total_raw);
+                if (!isNaN(gt) && isFinite(gt) && gt >= 0) return gt;
+            } catch(_){ }
+            try {
+                var txt = $('.eao-grand-total-line .eao-summary-monetary-value, .eao-grand-total-value, #eao-grand-total-value, .grand-total, [data-field=\"grand_total\"]').first().text() || '';
+                var num = parseFloat(String(txt).replace(/[^0-9.\\-]/g,''));
+                if (!isNaN(num) && isFinite(num) && num >= 0) return num;
+            } catch(_){ }
+            return NaN;
+        }
+        // Initialize remaining balance and default amount from DOM when server provided 0/empty
+        (function bootstrapRemainingAndAmount(){
+            var rcStr = $('#eao-pp-remaining-cents').val();
+            var rc = parseInt(rcStr, 10);
+            var hasAnyRequests = $('#eao-pp-requests-tbody tr').length > 0;
+            if ((!isFinite(rc) || isNaN(rc) || rc <= 0) && !hasAnyRequests) {
+                var gt = deriveGrandTotalFromDom();
+                if (!isNaN(gt) && isFinite(gt) && gt > 0) {
+                    $('#eao-pp-remaining-cents').val(String(Math.round(gt*100)));
+                }
+            }
+            // Default the Payment Amount to grand total if it looks unset or equals 0
+            try {
+                var amt = parseFloat($('#eao-pp-amount').val()||'');
+                var gt2 = deriveGrandTotalFromDom();
+                if ((!isFinite(amt) || isNaN(amt) || Math.abs(amt) < 0.001) && !isNaN(gt2) && gt2 > 0) {
+                    $('#eao-pp-amount').val(gt2.toFixed(2));
+                }
+            } catch(_){ }
+        })();
         // Seed remaining balance and amount from the current UI grand total when server total isn't ready yet
         (function seedFromGrandTotalIfEmpty(){
             function computeGT(){
@@ -785,9 +819,16 @@
                 return NaN;
             }
             var val = getSelectedAmount();
-            // Cap the display amount strictly by remaining balance; if remaining is unknown, show typed
+            // Ensure remaining balance is known; if not, derive from DOM when there are no requests
             var rcStr = $('#eao-pp-remaining-cents').val();
             var rc = parseInt(rcStr, 10);
+            if ((isNaN(rc) || !isFinite(rc) || rc <= 0) && $('#eao-pp-requests-tbody tr').length === 0) {
+                var gtTmp = deriveGrandTotalFromDom();
+                if (!isNaN(gtTmp) && isFinite(gtTmp) && gtTmp >= 0) {
+                    rc = Math.round(gtTmp*100);
+                    $('#eao-pp-remaining-cents').val(String(rc));
+                }
+            }
             var displayCents;
             if (!isNaN(rc)) {
                 displayCents = isNaN(val) ? 0 : Math.max(0, Math.min(Math.round(val*100), rc));
