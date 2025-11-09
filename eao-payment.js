@@ -84,6 +84,40 @@
             } catch(_){ }
         })();
 
+        // Observe summary area for GT changes and re-derive remaining/amount
+        (function observeGrandTotalChanges(){
+            try {
+                var target = document.querySelector('#eao-current-order-items-summary') || document.body;
+                var mo = new MutationObserver(function(){
+                    var gt = deriveGrandTotalFromDom();
+                    if (isNaN(gt) || !isFinite(gt)) { return; }
+                    var pending = (function(){
+                        var sum = 0;
+                        try {
+                            $('#eao-pp-requests-tbody tr').each(function(){
+                                var st = $.trim($(this).find('.eao-pp-req-state').text()||'').toUpperCase();
+                                if (st === 'OPEN') {
+                                    var txt = $(this).find('td').eq(1).text()||'';
+                                    var n = parseFloat(String(txt).replace(/[^0-9.\-]/g,''));
+                                    if (!isNaN(n)) sum += Math.round(n*100);
+                                }
+                            });
+                        } catch(_){ }
+                        return sum;
+                    })();
+                    var remaining = Math.max(0, Math.round(gt*100) - pending);
+                    dbg('observer: grand=', gt, 'pending_cents=', pending, 'remaining_cents=', remaining);
+                    $('#eao-pp-remaining-cents').val(String(remaining));
+                    var $amt = $('#eao-pp-amount');
+                    if ($amt.data('auto-from-summary') !== false) {
+                        $amt.val((remaining/100).toFixed(2));
+                    }
+                    if (typeof eaoUpdateRequestButtons === 'function') { eaoUpdateRequestButtons(); }
+                });
+                mo.observe(target, { childList: true, subtree: true, characterData: true });
+            } catch(_){}
+        })();
+
         // If user edits the amount manually, stop auto-updating from summary
         $(document).on('input change', '#eao-pp-amount', function(){
             $(this).data('auto-from-summary', false);
