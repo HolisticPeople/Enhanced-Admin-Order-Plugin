@@ -1189,14 +1189,35 @@ function eao_payment_process_refund() {
                 $per_charge[$charge_for_item] += $money;
             }
             $headers = array('Authorization' => 'Bearer ' . $secret, 'Content-Type' => 'application/x-www-form-urlencoded');
+            // Determine remaining refundable per charge to avoid Stripe over-refund errors
+            $remaining_by_charge = array();
+            foreach (array_keys($per_charge) as $cid) {
+                $chk = wp_remote_get('https://api.stripe.com/v1/charges/' . rawurlencode($cid), array('headers' => array('Authorization' => 'Bearer ' . $secret), 'timeout' => 20));
+                if (!is_wp_error($chk)) {
+                    $body = json_decode(wp_remote_retrieve_body($chk), true);
+                    if (is_array($body) && isset($body['amount'])) {
+                        $amount_cents_all = (int) ($body['amount'] ?? 0);
+                        $amount_refunded_cents = (int) ($body['amount_refunded'] ?? 0);
+                        $remaining_by_charge[$cid] = max(0, $amount_cents_all - $amount_refunded_cents);
+                    }
+                }
+                if (!isset($remaining_by_charge[$cid])) {
+                    // Fallback: do not cap if we could not read charge; Stripe will cap anyway
+                    $remaining_by_charge[$cid] = PHP_INT_MAX;
+                }
+            }
+
             $refund_ids = array();
             foreach ($per_charge as $charge_id => $amt) {
                 if ($amt <= 0) { continue; }
+                $want_cents = (int) round($amt * 100);
+                $cap_cents = isset($remaining_by_charge[$charge_id]) ? min($want_cents, (int)$remaining_by_charge[$charge_id]) : $want_cents;
+                if ($cap_cents <= 0) { continue; }
                 $rf = wp_remote_post('https://api.stripe.com/v1/refunds', array(
                     'headers' => $headers,
                     'body' => array(
                         'charge' => $charge_id,
-                        'amount' => (int) round($amt * 100),
+                        'amount' => $cap_cents,
                         'reason' => 'requested_by_customer',
                         'metadata[order_id]' => $order_id
                     ),
