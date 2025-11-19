@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin version constant (v5.1.29: broaden YITH unhook across priorities; message tweak)
-define('EAO_PLUGIN_VERSION', '5.2.74');
+define('EAO_PLUGIN_VERSION', '5.2.75');
 
 /**
  * Check if we should load EAO functionality
