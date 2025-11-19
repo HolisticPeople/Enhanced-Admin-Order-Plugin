@@ -1146,60 +1146,77 @@ function eao_payment_process_refund() {
     $remote_processed = false;
 
     if ($amount_total > 0) {
-        if ($manual_stripe) {
-            $charge_id = (string) $order->get_meta('_eao_stripe_charge_id');
+    if ($manual_stripe) {
+            // MULTI-CHARGE SUPPORT: allocate requested refund amounts per Stripe charge id
             $opts = get_option('eao_stripe_settings', array());
             $secret = ($stripe_mode === 'live') ? ($opts['live_secret'] ?? '') : ($opts['test_secret'] ?? '');
-            $gateway_label = 'Stripe (EAO ' . (($stripe_mode === 'live') ? 'Live' : 'Test') . ')';
-            if (empty($charge_id)) {
-                $pi_id = (string) $order->get_meta('_eao_stripe_payment_intent_id');
-                if (!empty($secret) && !empty($pi_id)) {
-                    $headers = array('Authorization' => 'Bearer ' . $secret);
-                    $pi_resp = wp_remote_get('https://api.stripe.com/v1/payment_intents/' . rawurlencode($pi_id), array('headers' => $headers));
-                    if (!is_wp_error($pi_resp)) {
-                        $pi_body = json_decode(wp_remote_retrieve_body($pi_resp), true);
-                        if (!empty($pi_body['latest_charge'])) {
-                            $charge_id = $pi_body['latest_charge'];
-                            $order->update_meta_data('_eao_stripe_charge_id', $charge_id);
-                            $order->save();
-                        } elseif (!empty($pi_body['charges']['data'][0]['id'])) {
-                            $charge_id = $pi_body['charges']['data'][0]['id'];
-                            $order->update_meta_data('_eao_stripe_charge_id', $charge_id);
-                            $order->save();
-                        }
-                    }
-                }
-            }
-            if (empty($charge_id)) {
-                $refund->delete(true);
-                wp_send_json_error(array('message' => 'Stripe charge reference not found on this order. Payment may have been processed outside Stripe integration.'));
-            }
             if (empty($secret)) {
                 $refund->delete(true);
                 wp_send_json_error(array('message' => 'Stripe API key missing for ' . (($stripe_mode === 'live') ? 'Live' : 'Test') . ' mode.'));
             }
+            // Build per-charge allocations from requested lines using _hp_fb_charge_id; default to main order charge
+            $main_charge_id = (string) $order->get_meta('_eao_stripe_charge_id');
+            if (empty($main_charge_id)) {
+                // Try to derive charge id from PI
+                $pi_id = (string) $order->get_meta('_eao_stripe_payment_intent_id');
+                if (!empty($pi_id)) {
+                    $headers_chk = array('Authorization' => 'Bearer ' . $secret);
+                    $pi_resp = wp_remote_get('https://api.stripe.com/v1/payment_intents/' . rawurlencode($pi_id), array('headers' => $headers_chk));
+                    if (!is_wp_error($pi_resp)) {
+                        $pi_body = json_decode(wp_remote_retrieve_body($pi_resp), true);
+                        if (!empty($pi_body['latest_charge'])) { $main_charge_id = $pi_body['latest_charge']; }
+                        elseif (!empty($pi_body['charges']['data'][0]['id'])) { $main_charge_id = $pi_body['charges']['data'][0]['id']; }
+                        if (!empty($main_charge_id)) { $order->update_meta_data('_eao_stripe_charge_id', $main_charge_id); $order->save(); }
+                    }
+                }
+            }
+            if (empty($main_charge_id)) {
+                $refund->delete(true);
+                wp_send_json_error(array('message' => 'Stripe charge reference not found on this order. Payment may have been processed outside Stripe integration.'));
+            }
+            $per_charge = array(); // charge_id => amount
+            foreach ($lines as $row) {
+                $item_id = isset($row['item_id']) ? absint($row['item_id']) : 0;
+                $money = isset($row['money']) ? floatval($row['money']) : 0.0;
+                if ($item_id <= 0 || $money <= 0) { continue; }
+                $charge_for_item = $main_charge_id;
+                $it = $order->get_item($item_id);
+                if ($it && method_exists($it, 'get_meta')) {
+                    $meta_ch = (string) $it->get_meta('_hp_fb_charge_id', true);
+                    if ($meta_ch !== '') { $charge_for_item = $meta_ch; }
+                }
+                if (!isset($per_charge[$charge_for_item])) { $per_charge[$charge_for_item] = 0.0; }
+                $per_charge[$charge_for_item] += $money;
+            }
             $headers = array('Authorization' => 'Bearer ' . $secret, 'Content-Type' => 'application/x-www-form-urlencoded');
-            $rf = wp_remote_post('https://api.stripe.com/v1/refunds', array(
-                'headers' => $headers,
-                'body' => array(
-                    'charge' => $charge_id,
-                    'amount' => (int) round($amount_total * 100),
-                    'reason' => 'requested_by_customer',
-                    'metadata[order_id]' => $order_id
-                )
-            ));
-            if (is_wp_error($rf)) {
-                $refund->delete(true);
-                wp_send_json_error(array('message' => 'Stripe refund error: ' . $rf->get_error_message()));
+            $refund_ids = array();
+            foreach ($per_charge as $charge_id => $amt) {
+                if ($amt <= 0) { continue; }
+                $rf = wp_remote_post('https://api.stripe.com/v1/refunds', array(
+                    'headers' => $headers,
+                    'body' => array(
+                        'charge' => $charge_id,
+                        'amount' => (int) round($amt * 100),
+                        'reason' => 'requested_by_customer',
+                        'metadata[order_id]' => $order_id
+                    ),
+                    'timeout' => 25
+                ));
+                if (is_wp_error($rf)) {
+                    $refund->delete(true);
+                    wp_send_json_error(array('message' => 'Stripe refund error: ' . $rf->get_error_message()));
+                }
+                $rf_body = json_decode(wp_remote_retrieve_body($rf), true);
+                if (empty($rf_body['id'])) {
+                    $refund->delete(true);
+                    wp_send_json_error(array('message' => 'Stripe refund failed', 'stripe' => $rf_body));
+                }
+                $refund_ids[] = (string) $rf_body['id'];
             }
-            $rf_body = json_decode(wp_remote_retrieve_body($rf), true);
-            if (empty($rf_body['id'])) {
-                $refund->delete(true);
-                wp_send_json_error(array('message' => 'Stripe refund failed', 'stripe' => $rf_body));
-            }
-            $gateway_reference_value = (string) $rf_body['id'];
             $gateway_label = 'Stripe ' . (($stripe_mode === 'live') ? 'Live' : 'Test');
-            $gateway_reference_note = 'Stripe refund ' . $gateway_reference_value . (($stripe_mode === 'live') ? ' (Live)' : ' (Test)');
+            $gateway_reference_value = implode(',', $refund_ids);
+            $gateway_reference_note = 'Stripe refunds ' . $gateway_reference_value . (($stripe_mode === 'live') ? ' (Live)' : ' (Test)');
+            // Persist all refund ids for audit
             update_post_meta($refund->get_id(), '_eao_stripe_refund_id', $gateway_reference_value);
             update_post_meta($refund->get_id(), '_eao_refund_reference', $gateway_reference_value);
             $remote_processed = true;
