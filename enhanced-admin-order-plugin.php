@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.2.76
+ * Version: 5.2.77
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */

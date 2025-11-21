@@ -710,13 +710,19 @@ function eao_payment_get_refund_data() {
     if (!$order) { wp_send_json_error(array('message' => 'Order not found')); }
 
     $items = array();
-    // Build proportion bases per line (fallback to subtotal when total is zero)
+    // Build proportion bases per line.
+    // IMPORTANT: We base this on what was actually charged (line total + tax).
+    // Items that are completely discounted (total ~ 0) should not participate in
+    // allocation, so we do NOT fall back to subtotal/MSRP for them.
     $order_items = $order->get_items('line_item');
     $products_total = 0.0;
     $per_item_base = array();
     foreach ($order_items as $iid => $it) {
         $base = (float) $it->get_total() + (float) $it->get_total_tax();
-        if ($base <= 0.0001) { $base = (float) $it->get_subtotal() + (float) $it->get_subtotal_tax(); }
+        if ($base <= 0.0001) {
+            // Treat fully discounted items as having contributed nothing to the charge.
+            $base = 0.0;
+        }
         $per_item_base[$iid] = $base;
         $products_total += $base;
     }
