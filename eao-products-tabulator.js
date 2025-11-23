@@ -213,7 +213,17 @@
                     const discountHtml = this._renderDiscount(item);
                     const discPriceHtml = this._renderDiscPrice(item, window.globalOrderDiscountPercent);
                     const priceRaw = parseFloat(item.price_raw || 0) || 0;
-                    const unit = item.exclude_gd ? (typeof item.discounted_price_fixed==='number'? item.discounted_price_fixed : priceRaw) : (priceRaw * (1 - (window.globalOrderDiscountPercent/100)));
+                    let unit;
+                    if (item.exclude_gd) {
+                        if (typeof item.discounted_price_fixed === 'number') {
+                            unit = item.discounted_price_fixed;
+                        } else {
+                            const dp = (typeof item.discount_percent === 'number') ? item.discount_percent : (parseFloat(item.discount_percent)||0);
+                            unit = priceRaw * (1 - (dp / 100));
+                        }
+                    } else {
+                        unit = priceRaw * (1 - (window.globalOrderDiscountPercent/100));
+                    }
                     const totalHtml = `<span class="eao-line-total-display">${typeof eaoFormatPrice==='function' ? eaoFormatPrice(unit * (parseInt(item.quantity,10)||0)) : ('$'+(unit*(parseInt(item.quantity,10)||0)).toFixed(2))}</span>`;
                     if (window.eaoDebugPostSaveUntil && Date.now() < window.eaoDebugPostSaveUntil) {
                         // skip during stabilization window
@@ -1189,10 +1199,18 @@
                 const clientId = itemId || it._client_uid || (it._client_uid = ('new_' + pid + '_' + Date.now() + '_' + Math.random().toString(36).slice(2,6)));
                 const globalDisc = parseFloat(window.globalOrderDiscountPercent || 0) || 0;
                 const priceRaw = parseFloat(it.price_raw || 0) || 0;
-                // Effective unit price: if excluded, use fixed/price_raw; otherwise apply global discount
-                const effectiveUnit = (it.exclude_gd)
-                    ? (typeof it.discounted_price_fixed === 'number' ? it.discounted_price_fixed : priceRaw)
-                    : (priceRaw * (1 - (globalDisc / 100)));
+                // Effective unit price: if excluded, use fixed or percent; otherwise apply global discount
+                let effectiveUnit;
+                if (it.exclude_gd) {
+                    if (typeof it.discounted_price_fixed === 'number') {
+                        effectiveUnit = it.discounted_price_fixed;
+                    } else {
+                        const dp = (typeof it.discount_percent === 'number') ? it.discount_percent : (parseFloat(it.discount_percent)||0);
+                        effectiveUnit = priceRaw * (1 - (dp / 100));
+                    }
+                } else {
+                    effectiveUnit = priceRaw * (1 - (globalDisc / 100));
+                }
                 const row = {
                     id: String(clientId),
                     _pendingDeletion: !!it.isPendingDeletion,
@@ -1322,7 +1340,17 @@
             const name = itemId ? `item_discounted_price[${itemId}]` : `new_item_discounted_price[${pid}]`;
             const disabled = (it.exclude_gd ? '' : 'disabled="disabled"') + (it.isPendingDeletion ? ' disabled="disabled"' : '');
             const priceRaw = parseFloat(it.price_raw || 0) || 0;
-            const base = it.exclude_gd ? (parseFloat(it.discounted_price_fixed || priceRaw) || 0) : (priceRaw * (1 - ((parseFloat(globalDisc)||0)/100)));
+            let base;
+            if (it.exclude_gd) {
+                if (typeof it.discounted_price_fixed === 'number') {
+                    base = it.discounted_price_fixed;
+                } else {
+                    const dp = (typeof it.discount_percent === 'number') ? it.discount_percent : (parseFloat(it.discount_percent)||0);
+                    base = priceRaw * (1 - (dp / 100));
+                }
+            } else {
+                base = priceRaw * (1 - ((parseFloat(globalDisc)||0)/100));
+            }
             return `<div class="eao-product-editor-item eao-item-discounted-price" data-product_id="${pid}" data-item_id="${itemId}" data-base_price="${parseFloat(it.price_raw||0)}"><div class="eao-input-align-wrapper eao-input-align-wrapper-right"><input type="number" class="eao-item-discounted-price-input" name="${name}" value="${base.toFixed(parseInt(eaoEditorParams.price_decimals||2,10))}" min="0" step="0.01" data-product_id="${pid}" data-item_id="${itemId}" ${disabled}></div></div>`;
         },
 
