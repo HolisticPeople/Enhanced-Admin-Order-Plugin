@@ -2,155 +2,161 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.2.78
+ * Version: 5.2.79
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
 
 // Prevent direct access
 if (!defined('ABSPATH')) {
-    exit; 
+    exit;
 }
 
 // Plugin version constant (v5.1.29: broaden YITH unhook across priorities; message tweak)
-define('EAO_PLUGIN_VERSION', '5.2.78');
+define('EAO_PLUGIN_VERSION', '5.2.79');
 
 /**
  * Check if we should load EAO functionality
  * Only load on specific admin pages and EAO AJAX requests
  */
-function eao_should_load() {
+function eao_should_load()
+{
     global $pagenow;
-    
+
     // Never load on frontend pages
-    if ( ! is_admin() ) {
+    if (!is_admin()) {
         return false;
     }
-    
+
     // If this is AJAX, only load for EAO AJAX actions
-    if ( wp_doing_ajax() ) {
-        $action = isset( $_REQUEST['action'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['action'] ) ) : '';
+    if (wp_doing_ajax()) {
+        $action = isset($_REQUEST['action']) ? sanitize_text_field(wp_unslash($_REQUEST['action'])) : '';
         // Load for any AJAX action that starts with "eao_" (simple and maintainable!)
-        return strpos( $action, 'eao_' ) === 0;
+        return strpos($action, 'eao_') === 0;
     }
-    
+
     // For non-AJAX admin pages, only load on:
-    
+
     // 1. EAO custom order editor page
-    if ( $pagenow === 'admin.php' && isset( $_GET['page'] ) && $_GET['page'] === 'eao_custom_order_editor_page' ) {
+    if ($pagenow === 'admin.php' && isset($_GET['page']) && $_GET['page'] === 'eao_custom_order_editor_page') {
         return true;
     }
-    
+
     // 2. EAO create new order action (from dashboard or elsewhere)
-    if ( $pagenow === 'admin.php' && isset( $_GET['action'] ) && $_GET['action'] === 'eao_create_new_order' ) {
+    if ($pagenow === 'admin.php' && isset($_GET['action']) && $_GET['action'] === 'eao_create_new_order') {
         return true;
     }
-    
+
     // 3. WooCommerce orders list page (HPOS)
-    if ( $pagenow === 'admin.php' && isset( $_GET['page'] ) && $_GET['page'] === 'wc-orders' ) {
+    if ($pagenow === 'admin.php' && isset($_GET['page']) && $_GET['page'] === 'wc-orders') {
         return true;
     }
-    
+
     // 4. WooCommerce orders list page (Legacy)
-    if ( $pagenow === 'edit.php' && isset( $_GET['post_type'] ) && $_GET['post_type'] === 'shop_order' ) {
+    if ($pagenow === 'edit.php' && isset($_GET['post_type']) && $_GET['post_type'] === 'shop_order') {
         return true;
     }
-    
+
     // Don't load on any other admin pages (dashboard, posts, plugins, etc.)
     return false;
 }
 
 // Admin-only AJAX handlers - register in admin context (handlers have their own permission checks)
-if ( is_admin() ) {
+if (is_admin()) {
     // AJAX: Adjust customer points for this order by a delta (+/-)
-    add_action('wp_ajax_eao_adjust_points_for_order', function() {
-    if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_editor_nonce')) {
-        wp_send_json_error(array('message' => 'Invalid nonce'));
-        return;
-    }
-    $order_id = isset($_POST['order_id']) ? absint($_POST['order_id']) : 0;
-    $delta    = isset($_POST['points_delta']) ? intval($_POST['points_delta']) : 0;
-    if (!$order_id || 0 === $delta) {
-        wp_send_json_error(array('message' => 'Missing parameters'));
-        return;
-    }
-    $order = wc_get_order($order_id);
-    if (!$order) {
-        wp_send_json_error(array('message' => 'Order not found'));
-        return;
-    }
-    $customer_id = $order->get_customer_id();
-    if (!$customer_id) {
-        wp_send_json_error(array('message' => 'No customer on order'));
-        return;
-    }
+    add_action('wp_ajax_eao_adjust_points_for_order', function () {
+        if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_editor_nonce')) {
+            wp_send_json_error(array('message' => 'Invalid nonce'));
+            return;
+        }
+        $order_id = isset($_POST['order_id']) ? absint($_POST['order_id']) : 0;
+        $delta = isset($_POST['points_delta']) ? intval($_POST['points_delta']) : 0;
+        if (!$order_id || 0 === $delta) {
+            wp_send_json_error(array('message' => 'Missing parameters'));
+            return;
+        }
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            wp_send_json_error(array('message' => 'Order not found'));
+            return;
+        }
+        $customer_id = $order->get_customer_id();
+        if (!$customer_id) {
+            wp_send_json_error(array('message' => 'No customer on order'));
+            return;
+        }
 
-    $result = array('success' => false);
-    try {
-        if (function_exists('ywpar_get_customer')) {
-            $cust = ywpar_get_customer($customer_id);
-            if ($cust && method_exists($cust, 'update_points')) {
-                $ok = $cust->update_points($delta, 'admin_adjustment', array(
-                    'order_id' => $order_id,
-                    'description' => sprintf('Admin adjusted %d points for Order #%d', $delta, $order_id)
-                ));
-                if ($ok) {
-                    // Update our meta trail
-                    $granted_pts = intval($order->get_meta('_eao_points_granted_points', true));
-                    $revoked_pts = intval($order->get_meta('_eao_points_revoked_points', true));
-                    if ($delta > 0) {
-                        $order->update_meta_data('_eao_points_granted', 1);
-                        $order->update_meta_data('_eao_points_granted_points', $granted_pts + $delta);
-                    } else {
-                        $order->update_meta_data('_eao_points_revoked', 1);
-                        $order->update_meta_data('_eao_points_revoked_points', $revoked_pts + abs($delta));
+        $result = array('success' => false);
+        try {
+            if (function_exists('ywpar_get_customer')) {
+                $cust = ywpar_get_customer($customer_id);
+                if ($cust && method_exists($cust, 'update_points')) {
+                    $ok = $cust->update_points($delta, 'admin_adjustment', array(
+                        'order_id' => $order_id,
+                        'description' => sprintf('Admin adjusted %d points for Order #%d', $delta, $order_id)
+                    ));
+                    if ($ok) {
+                        // Update our meta trail
+                        $granted_pts = intval($order->get_meta('_eao_points_granted_points', true));
+                        $revoked_pts = intval($order->get_meta('_eao_points_revoked_points', true));
+                        if ($delta > 0) {
+                            $order->update_meta_data('_eao_points_granted', 1);
+                            $order->update_meta_data('_eao_points_granted_points', $granted_pts + $delta);
+                        } else {
+                            $order->update_meta_data('_eao_points_revoked', 1);
+                            $order->update_meta_data('_eao_points_revoked_points', $revoked_pts + abs($delta));
+                        }
+                        $order->add_order_note(sprintf(__('EAO: Admin modified points by %d for this order.', 'enhanced-admin-order'), $delta));
+                        $order->save();
+                        $result['success'] = true;
+                        $result['granted_points'] = intval($order->get_meta('_eao_points_granted_points', true));
+                        $result['revoked_points'] = intval($order->get_meta('_eao_points_revoked_points', true));
                     }
-                    $order->add_order_note(sprintf(__('EAO: Admin modified points by %d for this order.', 'enhanced-admin-order'), $delta));
-                    $order->save();
-                    $result['success'] = true;
-                    $result['granted_points'] = intval($order->get_meta('_eao_points_granted_points', true));
-                    $result['revoked_points'] = intval($order->get_meta('_eao_points_revoked_points', true));
                 }
             }
+        } catch (Exception $e) {
+            wp_send_json_error(array('message' => $e->getMessage()));
+            return;
         }
-    } catch (Exception $e) {
-        wp_send_json_error(array('message' => $e->getMessage()));
-        return;
-    }
 
-    if ($result['success']) {
-        wp_send_json_success($result);
-    } else {
-        wp_send_json_error(array('message' => 'Unable to adjust points'));
-    }
-});
+        if ($result['success']) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error(array('message' => 'Unable to adjust points'));
+        }
+    });
 
     // AST status fetch API (safe; no external calls, just WordPress AJAX endpoint)
-    add_action('wp_ajax_eao_get_shipment_statuses', function(){
-    if (!current_user_can('manage_woocommerce')) {
-        wp_send_json_error(array('message' => 'Unauthorized'), 403);
-    }
-    $order_id = isset($_POST['order_id']) ? absint($_POST['order_id']) : 0;
-    if (!$order_id) {
-        wp_send_json_error(array('message' => 'Missing order_id'), 400);
-    }
-    $statuses = array();
-    try {
-        if (function_exists('ast_pro') && is_object(ast_pro()->ast_pro_actions) && method_exists(ast_pro()->ast_pro_actions, 'get_tracking_items')) {
-            $tracking_items = ast_pro()->ast_pro_actions->get_tracking_items($order_id, true);
-            if (is_array($tracking_items)) {
-                foreach ($tracking_items as $ti) {
-                    $tn = isset($ti['tracking_number']) ? (string)$ti['tracking_number'] : '';
-                    $st = '';
-                    foreach (array('status','tracking_status','ts_status','formatted_tracking_status') as $k) {
-                        if (!$st && isset($ti[$k]) && $ti[$k] !== '') { $st = (string)$ti[$k]; }
+    add_action('wp_ajax_eao_get_shipment_statuses', function () {
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(array('message' => 'Unauthorized'), 403);
+        }
+        $order_id = isset($_POST['order_id']) ? absint($_POST['order_id']) : 0;
+        if (!$order_id) {
+            wp_send_json_error(array('message' => 'Missing order_id'), 400);
+        }
+        $statuses = array();
+        try {
+            if (function_exists('ast_pro') && is_object(ast_pro()->ast_pro_actions) && method_exists(ast_pro()->ast_pro_actions, 'get_tracking_items')) {
+                $tracking_items = ast_pro()->ast_pro_actions->get_tracking_items($order_id, true);
+                if (is_array($tracking_items)) {
+                    foreach ($tracking_items as $ti) {
+                        $tn = isset($ti['tracking_number']) ? (string) $ti['tracking_number'] : '';
+                        $st = '';
+                        foreach (array('status', 'tracking_status', 'ts_status', 'formatted_tracking_status') as $k) {
+                            if (!$st && isset($ti[$k]) && $ti[$k] !== '') {
+                                $st = (string) $ti[$k];
+                            }
+                        }
+                        if ($tn !== '') {
+                            $statuses[$tn] = $st;
+                        }
                     }
-                    if ($tn !== '') { $statuses[$tn] = $st; }
                 }
             }
+        } catch (Exception $e) {
         }
-    } catch (Exception $e) {}
-    wp_send_json_success(array('statuses' => $statuses));
+        wp_send_json_success(array('statuses' => $statuses));
     });
 } // End admin-only AJAX handlers
 
@@ -160,20 +166,20 @@ if (!defined('EAO_PAYMENT_MOCKUP_ENABLED')) {
 }
 
 // Declare HPOS compatibility
-add_action( 'before_woocommerce_init', function() {
-	if ( class_exists( \Automattic\WooCommerce\Utilities\FeaturesUtil::class ) ) {
-		\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
-	}
-} );
+add_action('before_woocommerce_init', function () {
+    if (class_exists(\Automattic\WooCommerce\Utilities\FeaturesUtil::class)) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
+    }
+});
 
 // If this file is called directly, abort.
-if ( ! defined( 'WPINC' ) ) {
+if (!defined('WPINC')) {
     die;
 }
 
 // Define plugin constants
-define( 'EAO_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-define( 'EAO_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+define('EAO_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('EAO_PLUGIN_DIR', plugin_dir_path(__FILE__));
 
 /**
  * REFACTORING STATUS - Version 1.5.6
@@ -205,7 +211,7 @@ define( 'EAO_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
  */
 
 // Admin-only module loading - prevent frontend overhead
-if ( eao_should_load() ) {
+if (eao_should_load()) {
     // Include order calculation utilities (Step 2: v1.5.2)
     require_once EAO_PLUGIN_DIR . 'eao-utility-functions.php';
 
@@ -228,57 +234,61 @@ if ( eao_should_load() ) {
     require_once EAO_PLUGIN_DIR . 'eao-shipstation-core.php';
 
     // Include Reorder utilities (v3.1.3)
-    if ( file_exists( EAO_PLUGIN_DIR . 'eao-reorder.php' ) ) {
+    if (file_exists(EAO_PLUGIN_DIR . 'eao-reorder.php')) {
         require_once EAO_PLUGIN_DIR . 'eao-reorder.php';
     }
 
     // Include YITH Points integration core (Step 9: v2.2.0)
-    if ( file_exists( EAO_PLUGIN_DIR . 'eao-yith-points-core.php' ) ) {
+    if (file_exists(EAO_PLUGIN_DIR . 'eao-yith-points-core.php')) {
         require_once EAO_PLUGIN_DIR . 'eao-yith-points-core.php';
     }
 
     // Include YITH Points save module (Step 10: v2.2.1)
-    if ( file_exists( EAO_PLUGIN_DIR . 'eao-yith-points-save.php' ) ) {
+    if (file_exists(EAO_PLUGIN_DIR . 'eao-yith-points-save.php')) {
         require_once EAO_PLUGIN_DIR . 'eao-yith-points-save.php';
     }
 
     // Include Admin Columns integration (v2.5.27)
-    if ( file_exists( EAO_PLUGIN_DIR . 'eao-admin-columns-integration.php' ) ) {
+    if (file_exists(EAO_PLUGIN_DIR . 'eao-admin-columns-integration.php')) {
         require_once EAO_PLUGIN_DIR . 'eao-admin-columns-integration.php';
     }
 
     // Include Fluent Support integration (v2.6.0)
-    if ( file_exists( EAO_PLUGIN_DIR . 'eao-fluent-support-integration.php' ) ) {
+    if (file_exists(EAO_PLUGIN_DIR . 'eao-fluent-support-integration.php')) {
         require_once EAO_PLUGIN_DIR . 'eao-fluent-support-integration.php';
     }
 
     // Include new Payment Processing (real)
-    if ( file_exists( EAO_PLUGIN_DIR . 'eao-payment.php' ) ) {
+    if (file_exists(EAO_PLUGIN_DIR . 'eao-payment.php')) {
         require_once EAO_PLUGIN_DIR . 'eao-payment.php';
         add_action('add_meta_boxes', 'eao_add_payment_processing_metabox', 40);
     }
 } // End admin-only module loading
 
 // Always expose REST webhook endpoints (load lazily to avoid frontend overhead)
-add_action('rest_api_init', function(){
+add_action('rest_api_init', function () {
     register_rest_route('eao/v1', '/stripe/webhook', array(
         'methods' => 'POST',
         'permission_callback' => '__return_true',
-        'callback' => function( $request ) {
+        'callback' => function ($request) {
             if (!function_exists('eao_stripe_webhook_handler')) {
-                if ( file_exists( EAO_PLUGIN_DIR . 'eao-payment.php' ) ) { require_once EAO_PLUGIN_DIR . 'eao-payment.php'; }
+                if (file_exists(EAO_PLUGIN_DIR . 'eao-payment.php')) {
+                    require_once EAO_PLUGIN_DIR . 'eao-payment.php';
+                }
             }
-            return function_exists('eao_stripe_webhook_handler') ? eao_stripe_webhook_handler( $request ) : new WP_REST_Response(array('ok'=>false), 500);
+            return function_exists('eao_stripe_webhook_handler') ? eao_stripe_webhook_handler($request) : new WP_REST_Response(array('ok' => false), 500);
         }
     ));
     register_rest_route('eao/v1', '/paypal/webhook', array(
         'methods' => 'POST',
         'permission_callback' => '__return_true',
-        'callback' => function( $request ) {
+        'callback' => function ($request) {
             if (!function_exists('eao_paypal_webhook_handler')) {
-                if ( file_exists( EAO_PLUGIN_DIR . 'eao-payment.php' ) ) { require_once EAO_PLUGIN_DIR . 'eao-payment.php'; }
+                if (file_exists(EAO_PLUGIN_DIR . 'eao-payment.php')) {
+                    require_once EAO_PLUGIN_DIR . 'eao-payment.php';
+                }
             }
-            return function_exists('eao_paypal_webhook_handler') ? eao_paypal_webhook_handler( $request ) : new WP_REST_Response(array('ok'=>false), 500);
+            return function_exists('eao_paypal_webhook_handler') ? eao_paypal_webhook_handler($request) : new WP_REST_Response(array('ok' => false), 500);
         }
     ));
 });
@@ -289,23 +299,24 @@ add_action('rest_api_init', function(){
  *
  * @since 1.0.0
  */
-add_action( 'admin_init', 'eao_check_order_screen_and_enhance' );
+add_action('admin_init', 'eao_check_order_screen_and_enhance');
 
-function eao_check_order_screen_and_enhance() {
+function eao_check_order_screen_and_enhance()
+{
     global $pagenow;
-    
+
     // First check if we're on admin pages that process orders
-    if ( ! is_admin() ) {
+    if (!is_admin()) {
         return;
     }
 
     // Check if we're on the target order editing page with the order_id parameter
-    if ( $pagenow === 'admin.php' && isset( $_GET['page'] ) && $_GET['page'] === 'eao_custom_order_editor_page' && isset( $_GET['order_id'] ) ) {
+    if ($pagenow === 'admin.php' && isset($_GET['page']) && $_GET['page'] === 'eao_custom_order_editor_page' && isset($_GET['order_id'])) {
         // This is our custom order editing page, enable the enhancements
-        add_action( 'admin_enqueue_scripts', 'eao_enqueue_admin_assets' );
-        
+        add_action('admin_enqueue_scripts', 'eao_enqueue_admin_assets');
+
         // Only remove specific conflicting metaboxes, not all WooCommerce functionality
-        add_action( 'add_meta_boxes', 'eao_remove_woocommerce_order_metaboxes', 35 );
+        add_action('add_meta_boxes', 'eao_remove_woocommerce_order_metaboxes', 35);
     }
 }
 
@@ -314,39 +325,40 @@ function eao_check_order_screen_and_enhance() {
  *
  * @since 1.0.0
  */
-function eao_enqueue_admin_assets($hook_suffix) {
+function eao_enqueue_admin_assets($hook_suffix)
+{
     $plugin_name = 'enhanced-admin-order';
-    
+
     // Check if asset files exist, otherwise skip versioning to prevent errors
     $css_file = EAO_PLUGIN_DIR . 'admin-styles.css';
     $js_file = EAO_PLUGIN_DIR . 'admin-script.js';
-    
+
     $style_version = file_exists($css_file) ? EAO_PLUGIN_VERSION . '-' . filemtime($css_file) : EAO_PLUGIN_VERSION;
     $script_version = file_exists($js_file) ? EAO_PLUGIN_VERSION . '-' . filemtime($js_file) : EAO_PLUGIN_VERSION;
 
     // Styles for WC orders list and our editor page
     $is_shop_order_list = ($hook_suffix === 'edit.php' && isset($_GET['post_type']) && $_GET['post_type'] === 'shop_order');
     $is_hpos_order_list = ($hook_suffix === 'woocommerce_page_wc-orders');
-    
-    $current_screen = get_current_screen();
-    $is_eao_editor_page = ( $current_screen && ($current_screen->id === 'toplevel_page_eao_custom_order_editor_page' || $current_screen->id === 'admin_page_eao_custom_order_editor_page') );
 
-    if ( $is_shop_order_list || $is_hpos_order_list || $is_eao_editor_page ) {
-         if (file_exists($css_file)) {
-         wp_enqueue_style( $plugin_name, EAO_PLUGIN_URL . 'admin-styles.css', array(), $style_version, 'all' );
-         }
+    $current_screen = get_current_screen();
+    $is_eao_editor_page = ($current_screen && ($current_screen->id === 'toplevel_page_eao_custom_order_editor_page' || $current_screen->id === 'admin_page_eao_custom_order_editor_page'));
+
+    if ($is_shop_order_list || $is_hpos_order_list || $is_eao_editor_page) {
+        if (file_exists($css_file)) {
+            wp_enqueue_style($plugin_name, EAO_PLUGIN_URL . 'admin-styles.css', array(), $style_version, 'all');
+        }
     }
 
     // Scripts only for our editor page
-    if ( $is_eao_editor_page ) {
+    if ($is_eao_editor_page) {
         // Ensure core WordPress scripts are loaded first
-        wp_enqueue_script( 'jquery' ); // Force jQuery to load first
-        wp_enqueue_script( 'wc-admin-meta-boxes' ); 
-        wp_enqueue_script( 'postbox' ); 
-        
+        wp_enqueue_script('jquery'); // Force jQuery to load first
+        wp_enqueue_script('wc-admin-meta-boxes');
+        wp_enqueue_script('postbox');
+
         // CRITICAL: Global initialization script - MUST load first to prevent undefined arrays
         wp_enqueue_script('eao-global-init', plugin_dir_url(__FILE__) . 'eao-global-init.js', array('jquery'), EAO_PLUGIN_VERSION, true);
-        
+
         // Module files (in dependency order) - all depend on jquery and global init
         wp_enqueue_script('eao-core', plugin_dir_url(__FILE__) . 'eao-core.js', array('jquery', 'eao-global-init'), EAO_PLUGIN_VERSION, true);
         wp_enqueue_script('eao-change-detection', plugin_dir_url(__FILE__) . 'eao-change-detection.js', array('jquery', 'eao-core'), EAO_PLUGIN_VERSION, true);
@@ -357,30 +369,45 @@ function eao_enqueue_admin_assets($hook_suffix) {
         wp_enqueue_script('eao-customers', plugin_dir_url(__FILE__) . 'eao-customers.js', array('jquery', 'eao-core'), EAO_PLUGIN_VERSION, true);
         wp_enqueue_script('eao-order-notes', plugin_dir_url(__FILE__) . 'eao-order-notes.js', array('jquery', 'eao-core'), EAO_PLUGIN_VERSION, true);
         wp_enqueue_script('eao-yith-points', plugin_dir_url(__FILE__) . 'eao-yith-points.js', array('jquery', 'eao-core'), EAO_PLUGIN_VERSION, true);
-        wp_enqueue_script('eao-fluent-support', plugin_dir_url(__FILE__) . 'eao-fluent-support.js', 
-            array('jquery', 'eao-core'), EAO_PLUGIN_VERSION, true);
-        wp_enqueue_script('eao-fluent-crm', plugin_dir_url(__FILE__) . 'eao-fluent-crm.js', 
-            array('jquery', 'eao-core'), EAO_PLUGIN_VERSION, true);
+        wp_enqueue_script(
+            'eao-fluent-support',
+            plugin_dir_url(__FILE__) . 'eao-fluent-support.js',
+            array('jquery', 'eao-core'),
+            EAO_PLUGIN_VERSION,
+            true
+        );
+        wp_enqueue_script(
+            'eao-fluent-crm',
+            plugin_dir_url(__FILE__) . 'eao-fluent-crm.js',
+            array('jquery', 'eao-core'),
+            EAO_PLUGIN_VERSION,
+            true
+        );
         wp_enqueue_script('eao-form-submission', plugin_dir_url(__FILE__) . 'eao-form-submission.js', array('jquery', 'eao-core', 'eao-change-detection'), EAO_PLUGIN_VERSION, true);
         // Tabulator (CDN) + wrapper for products table
         // Tabulator 6.x for latest fixes; we disabled resizing/moving in config
         wp_enqueue_style('tabulator-css', 'https://unpkg.com/tabulator-tables@6.3.0/dist/css/tabulator.min.css', array(), '6.3.0');
         wp_enqueue_script('tabulator-js', 'https://unpkg.com/tabulator-tables@6.3.0/dist/js/tabulator.min.js', array(), '6.3.0', true);
-        wp_enqueue_script('eao-products-tabulator', plugin_dir_url(__FILE__) . 'eao-products-tabulator.js', array('jquery','tabulator-js'), EAO_PLUGIN_VERSION, true);
-        
+        wp_enqueue_script('eao-products-tabulator', plugin_dir_url(__FILE__) . 'eao-products-tabulator.js', array('jquery', 'tabulator-js'), EAO_PLUGIN_VERSION, true);
+
         // Payment Processing (real) assets
-        if ( file_exists( EAO_PLUGIN_DIR . 'eao-payment.js' ) ) {
+        if (file_exists(EAO_PLUGIN_DIR . 'eao-payment.js')) {
             wp_enqueue_script('eao-payment', plugin_dir_url(__FILE__) . 'eao-payment.js', array('jquery'), EAO_PLUGIN_VERSION, true);
             wp_localize_script('eao-payment', 'eao_ajax', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
-                'nonce'    => wp_create_nonce('eao_payment_mockup')
+                'nonce' => wp_create_nonce('eao_payment_mockup')
             ));
         }
 
         // Always enqueue ShipStation metabox JavaScript (unrelated to Payment Mockup)
-        if ( file_exists( EAO_PLUGIN_DIR . 'eao-shipstation-metabox.js' ) ) {
-            wp_enqueue_script( 'eao-shipstation-metabox', plugin_dir_url( __FILE__ ) . 'eao-shipstation-metabox.js', 
-                array('jquery'), EAO_PLUGIN_VERSION, true );
+        if (file_exists(EAO_PLUGIN_DIR . 'eao-shipstation-metabox.js')) {
+            wp_enqueue_script(
+                'eao-shipstation-metabox',
+                plugin_dir_url(__FILE__) . 'eao-shipstation-metabox.js',
+                array('jquery'),
+                EAO_PLUGIN_VERSION,
+                true
+            );
             wp_localize_script('eao-shipstation-metabox', 'eaoShipStationParams', array(
                 'ajaxUrl' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('eao_shipstation_v2_nonce'),
@@ -388,16 +415,18 @@ function eao_enqueue_admin_assets($hook_suffix) {
                 'orderId' => isset($_GET['order_id']) ? absint($_GET['order_id']) : 0
             ));
         }
-        
+
         // Ensure WP editor assets are available for Fluent Support rich editor (live envs may not auto-load)
-        if ( function_exists('wp_enqueue_editor') ) { wp_enqueue_editor(); }
+        if (function_exists('wp_enqueue_editor')) {
+            wp_enqueue_editor();
+        }
 
         // Main Coordinator Module
         wp_enqueue_script('eao-main-coordinator', plugin_dir_url(__FILE__) . 'eao-main-coordinator.js', array('jquery', 'eao-core', 'eao-change-detection', 'eao-products', 'eao-addresses', 'eao-customers', 'eao-order-notes', 'eao-yith-points', 'eao-fluent-support', 'eao-fluent-crm', 'eao-form-submission'), EAO_PLUGIN_VERSION, true);
-        
+
         // Main coordinator script (loads after all modules)
         wp_enqueue_script('eao-admin-script', plugin_dir_url(__FILE__) . 'admin-script.js', array('jquery', 'eao-main-coordinator'), EAO_PLUGIN_VERSION, true);
-        
+
         // Prepare addresses for JS
         $customer_addresses = array(
             'billing' => array(),
@@ -421,16 +450,16 @@ function eao_enqueue_admin_assets($hook_suffix) {
                 if ($initial_billing_key_js === '' || $initial_billing_key_js === null) {
                     $initial_billing_key_js = get_post_meta($order_id_for_js, '_eao_billing_address_key', true);
                 }
-                if (( $initial_billing_key_js === '' || $initial_billing_key_js === null ) && isset($_GET['bill_key'])) {
-                    $initial_billing_key_js = sanitize_text_field( wp_unslash( $_GET['bill_key'] ) );
+                if (($initial_billing_key_js === '' || $initial_billing_key_js === null) && isset($_GET['bill_key'])) {
+                    $initial_billing_key_js = sanitize_text_field(wp_unslash($_GET['bill_key']));
                 }
 
                 $initial_shipping_key_js = $order_for_js->get_meta('_eao_shipping_address_key', true);
                 if ($initial_shipping_key_js === '' || $initial_shipping_key_js === null) {
                     $initial_shipping_key_js = get_post_meta($order_id_for_js, '_eao_shipping_address_key', true);
                 }
-                if (( $initial_shipping_key_js === '' || $initial_shipping_key_js === null ) && isset($_GET['ship_key'])) {
-                    $initial_shipping_key_js = sanitize_text_field( wp_unslash( $_GET['ship_key'] ) );
+                if (($initial_shipping_key_js === '' || $initial_shipping_key_js === null) && isset($_GET['ship_key'])) {
+                    $initial_shipping_key_js = sanitize_text_field(wp_unslash($_GET['ship_key']));
                 }
             }
         }
@@ -438,17 +467,17 @@ function eao_enqueue_admin_assets($hook_suffix) {
         $countries = class_exists('WC_Countries') ? WC()->countries->get_countries() : array();
 
         // Localize scripts with AJAX data - using jquery instead of eao-admin-script to ensure it loads
-        wp_localize_script( 'eao-admin-script', 'eao_ajax', array(
-            'ajax_url' => admin_url( 'admin-ajax.php' ),
+        wp_localize_script('eao-admin-script', 'eao_ajax', array(
+            'ajax_url' => admin_url('admin-ajax.php'),
             'search_products_nonce' => wp_create_nonce('eao_search_products_for_admin_order_nonce'),
             'save_order_nonce' => wp_create_nonce('eao_save_order_details'),
             'refresh_notes_nonce' => wp_create_nonce('eao_refresh_notes_nonce'),
             'mock_payment_nonce' => wp_create_nonce('eao_payment_mockup'),
             'mock_refund_nonce' => wp_create_nonce('eao_payment_mockup'),
         ));
-        
+
         // Also localize ajaxurl for backward compatibility
-        wp_localize_script( 'eao-admin-script', 'ajaxurl', admin_url( 'admin-ajax.php' ) );
+        wp_localize_script('eao-admin-script', 'ajaxurl', admin_url('admin-ajax.php'));
 
         // Localize Fluent Support data if available
         if (class_exists('EAO_Fluent_Support_Integration')) {
@@ -466,70 +495,70 @@ function eao_enqueue_admin_assets($hook_suffix) {
                         'networkError' => __('Network error. Please check your connection.', 'enhanced-admin-order')
                     )
                 ));
-                                 // error_log('[EAO DEBUG] Fluent Support localization added to main script loading');
+                // error_log('[EAO DEBUG] Fluent Support localization added to main script loading');
             }
         }
-        
+
         // Localize our script - using the main coordinator script handle
-                 // error_log('[EAO DEBUG] Localizing eaoEditorParams for script: eao-admin-script');
+        // error_log('[EAO DEBUG] Localizing eaoEditorParams for script: eao-admin-script');
         // Resolve current order context for meta prefill
         $localized_order_id = isset($_GET['order_id']) ? absint($_GET['order_id']) : 0;
-        $localized_order     = $localized_order_id ? wc_get_order($localized_order_id) : null;
-        $override_enabled    = $localized_order ? ($localized_order->get_meta('_eao_points_grant_override_enabled', true) === 'yes') : false;
-        $override_points     = $localized_order ? intval($localized_order->get_meta('_eao_points_grant_override_points', true)) : 0;
-        $order_status_text   = $localized_order ? $localized_order->get_status() : '';
+        $localized_order = $localized_order_id ? wc_get_order($localized_order_id) : null;
+        $override_enabled = $localized_order ? ($localized_order->get_meta('_eao_points_grant_override_enabled', true) === 'yes') : false;
+        $override_points = $localized_order ? intval($localized_order->get_meta('_eao_points_grant_override_points', true)) : 0;
+        $order_status_text = $localized_order ? $localized_order->get_status() : '';
 
-        wp_localize_script( 'eao-admin-script', 'eaoEditorParams', array(
-            'ajax_url' => admin_url( 'admin-ajax.php' ),
+        wp_localize_script('eao-admin-script', 'eaoEditorParams', array(
+            'ajax_url' => admin_url('admin-ajax.php'),
             'order_id' => $localized_order_id,
             // Provide real customer id so coordinator + integrations work immediately
             'order_customer_id' => $customer_id_for_addresses,
-             'nonce' => wp_create_nonce( 'eao_editor_nonce' ), // General editor nonce
-            'search_customers_nonce'    => wp_create_nonce( 'eao_search_customers_nonce' ),
-            'save_order_nonce'          => wp_create_nonce( 'eao_save_order_details' ),
-                'add_custom_note_nonce'     => wp_create_nonce( 'eao_add_custom_order_note_action' ),
-                'customer_addresses'        => $customer_addresses,
-                'initial_customer_id'       => $customer_id_for_addresses,
-                'initial_billing_address_key' => $initial_billing_key_js,
-                'initial_shipping_address_key' => $initial_shipping_key_js,
-                'get_addresses_nonce'       => wp_create_nonce('eao_get_customer_addresses_nonce'),
-                'wc_countries'              => $countries,
-                                 'eao_product_operations_nonce' => wp_create_nonce('eao_product_operations_nonce'),
-                'search_products_nonce'     => wp_create_nonce('eao_search_products_for_admin_order_nonce'),
-                'placeholder_image_url'     => wc_placeholder_img_src(),
-                'currency_symbol'           => get_woocommerce_currency_symbol(),
-                'currency_pos'              => get_option('woocommerce_currency_pos'),
-                'price_decimals'            => wc_get_price_decimals(),
-                'price_decimal_sep'         => wc_get_price_decimal_separator(),
-                'price_thousand_sep'        => wc_get_price_thousand_separator(),
-                // Base URL for shipment tracking page (frontend)
-                'tracking_base'             => home_url( '/ts-shipment-tracking/' ),
-                // Points configuration and override initial state
-                'points_dollar_rate'        => apply_filters('eao_points_dollar_rate', 10),
-                'points_grant_override_enabled' => $override_enabled ? 'yes' : 'no',
-                'points_grant_override_points'  => $override_points,
-                'order_status'                  => $order_status_text,
-                'i18n'                      => array(
-                'edit'          => esc_html__( 'Edit', 'enhanced-admin-order' ),
-                'cancel_edit'   => esc_html__( 'Cancel Edit', 'enhanced-admin-order' ),
-                'no_address_found' => esc_html__( 'No address found', 'enhanced-admin-order' ),
-                'products_header' => esc_html__( 'Products', 'enhanced-admin-order' ),
-                'price_header' => esc_html__( 'Price', 'enhanced-admin-order' ),
-                'exclude_gd_tooltip' => esc_html__( 'Exclude from Global Discount', 'enhanced-admin-order' ),
-                'exclude_gd_header' => esc_html__( 'Excl. GD', 'enhanced-admin-order' ),
-                'discount_tooltip' => esc_html__( 'Discount Percentage', 'enhanced-admin-order' ),
-                'discount_header' => esc_html__( 'Discount %', 'enhanced-admin-order' ),
-                'discounted_price_tooltip' => esc_html__( 'Discounted Price', 'enhanced-admin-order' ),
-                'discounted_price_header' => esc_html__( 'Disc. Price', 'enhanced-admin-order' ),
-                'quantity_header' => esc_html__( 'Qty', 'enhanced-admin-order' ),
-                'total_header' => esc_html__( 'Total', 'enhanced-admin-order' ),
-                'no_items_in_order' => esc_html__( 'There are no items in this order.', 'enhanced-admin-order' ),
-                'item_total_gross' => esc_html__( 'Items Total (Gross):', 'enhanced-admin-order' ),
-                'total_product_discount' => esc_html__( 'Total Product Discount:', 'enhanced-admin-order' ),
-                'products_total_net' => esc_html__( 'Products Total (Net):', 'enhanced-admin-order' ),
-                'tax' => esc_html__( 'Tax:', 'enhanced-admin-order' ),
-                'grand_total' => esc_html__( 'Grand Total:', 'enhanced-admin-order' ),
-                'was' => esc_html__( 'Was:', 'enhanced-admin-order' )
+            'nonce' => wp_create_nonce('eao_editor_nonce'), // General editor nonce
+            'search_customers_nonce' => wp_create_nonce('eao_search_customers_nonce'),
+            'save_order_nonce' => wp_create_nonce('eao_save_order_details'),
+            'add_custom_note_nonce' => wp_create_nonce('eao_add_custom_order_note_action'),
+            'customer_addresses' => $customer_addresses,
+            'initial_customer_id' => $customer_id_for_addresses,
+            'initial_billing_address_key' => $initial_billing_key_js,
+            'initial_shipping_address_key' => $initial_shipping_key_js,
+            'get_addresses_nonce' => wp_create_nonce('eao_get_customer_addresses_nonce'),
+            'wc_countries' => $countries,
+            'eao_product_operations_nonce' => wp_create_nonce('eao_product_operations_nonce'),
+            'search_products_nonce' => wp_create_nonce('eao_search_products_for_admin_order_nonce'),
+            'placeholder_image_url' => wc_placeholder_img_src(),
+            'currency_symbol' => get_woocommerce_currency_symbol(),
+            'currency_pos' => get_option('woocommerce_currency_pos'),
+            'price_decimals' => wc_get_price_decimals(),
+            'price_decimal_sep' => wc_get_price_decimal_separator(),
+            'price_thousand_sep' => wc_get_price_thousand_separator(),
+            // Base URL for shipment tracking page (frontend)
+            'tracking_base' => home_url('/ts-shipment-tracking/'),
+            // Points configuration and override initial state
+            'points_dollar_rate' => apply_filters('eao_points_dollar_rate', 10),
+            'points_grant_override_enabled' => $override_enabled ? 'yes' : 'no',
+            'points_grant_override_points' => $override_points,
+            'order_status' => $order_status_text,
+            'i18n' => array(
+                'edit' => esc_html__('Edit', 'enhanced-admin-order'),
+                'cancel_edit' => esc_html__('Cancel Edit', 'enhanced-admin-order'),
+                'no_address_found' => esc_html__('No address found', 'enhanced-admin-order'),
+                'products_header' => esc_html__('Products', 'enhanced-admin-order'),
+                'price_header' => esc_html__('Price', 'enhanced-admin-order'),
+                'exclude_gd_tooltip' => esc_html__('Exclude from Global Discount', 'enhanced-admin-order'),
+                'exclude_gd_header' => esc_html__('Excl. GD', 'enhanced-admin-order'),
+                'discount_tooltip' => esc_html__('Discount Percentage', 'enhanced-admin-order'),
+                'discount_header' => esc_html__('Discount %', 'enhanced-admin-order'),
+                'discounted_price_tooltip' => esc_html__('Discounted Price', 'enhanced-admin-order'),
+                'discounted_price_header' => esc_html__('Disc. Price', 'enhanced-admin-order'),
+                'quantity_header' => esc_html__('Qty', 'enhanced-admin-order'),
+                'total_header' => esc_html__('Total', 'enhanced-admin-order'),
+                'no_items_in_order' => esc_html__('There are no items in this order.', 'enhanced-admin-order'),
+                'item_total_gross' => esc_html__('Items Total (Gross):', 'enhanced-admin-order'),
+                'total_product_discount' => esc_html__('Total Product Discount:', 'enhanced-admin-order'),
+                'products_total_net' => esc_html__('Products Total (Net):', 'enhanced-admin-order'),
+                'tax' => esc_html__('Tax:', 'enhanced-admin-order'),
+                'grand_total' => esc_html__('Grand Total:', 'enhanced-admin-order'),
+                'was' => esc_html__('Was:', 'enhanced-admin-order')
             )
         ));
     }
@@ -542,55 +571,56 @@ function eao_enqueue_admin_assets($hook_suffix) {
  * @since 1.0.0
  * @version 2.9.31 - Restored missing save function
  */
-function eao_ajax_save_order_details() {
+function eao_ajax_save_order_details()
+{
     // Comprehensive output buffer cleanup to prevent JSON corruption
     while (ob_get_level()) {
         ob_end_clean();
     }
     ob_start();
-    
+
     // Suppress all notices, warnings and output that could corrupt JSON response
     $old_error_reporting = error_reporting(0);
     $old_display_errors = ini_get('display_errors');
     ini_set('display_errors', 0);
-    
+
     // Suppress WordPress debug output during AJAX
     add_filter('wp_debug_log_max_files', '__return_zero');
-    
+
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_ajax_save_order_details: START');
 
-    if ( ! isset( $_POST['eao_order_details_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['eao_order_details_nonce'] ) ), 'eao_save_order_details' ) ) {
+    if (!isset($_POST['eao_order_details_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['eao_order_details_nonce'])), 'eao_save_order_details')) {
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_ajax_save_order_details: Nonce check FAILED');
-        
+
         // Clean any captured output before sending error
         if (ob_get_length()) {
             ob_end_clean();
         }
-        wp_send_json_error( array( 'message' => __( 'Nonce verification failed.', 'enhanced-admin-order' ) ) );
+        wp_send_json_error(array('message' => __('Nonce verification failed.', 'enhanced-admin-order')));
         return;
     }
 
-    $order_id = isset( $_POST['eao_order_id'] ) ? absint( $_POST['eao_order_id'] ) : 0;
+    $order_id = isset($_POST['eao_order_id']) ? absint($_POST['eao_order_id']) : 0;
 
-    if ( ! $order_id ) {
+    if (!$order_id) {
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_ajax_save_order_details: Error - No Order ID provided');
-        
+
         if (ob_get_length()) {
             ob_end_clean();
         }
-        wp_send_json_error( array( 'message' => __( 'Error: No Order ID provided.', 'enhanced-admin-order' ) ) );
+        wp_send_json_error(array('message' => __('Error: No Order ID provided.', 'enhanced-admin-order')));
         return;
     }
 
-    $order = wc_get_order( $order_id );
+    $order = wc_get_order($order_id);
 
-    if ( ! $order ) {
+    if (!$order) {
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_ajax_save_order_details: Error - Could not load order with ID: ' . $order_id);
-        
+
         if (ob_get_length()) {
             ob_end_clean();
         }
-        wp_send_json_error( array( 'message' => sprintf( __( 'Error: Could not load order with ID %d.', 'enhanced-admin-order' ), $order_id ) ) );
+        wp_send_json_error(array('message' => sprintf(__('Error: Could not load order with ID %d.', 'enhanced-admin-order'), $order_id)));
         return;
     }
 
@@ -631,26 +661,26 @@ function eao_ajax_save_order_details() {
         }
 
         // --- Process YITH Points Redemption ---
-        $points_result = array( 'success' => true, 'messages' => array(), 'errors' => array() );
-        if ( function_exists( 'eao_process_yith_points_redemption' ) ) {
+        $points_result = array('success' => true, 'messages' => array(), 'errors' => array());
+        if (function_exists('eao_process_yith_points_redemption')) {
             $status_now = method_exists($order, 'get_status') ? $order->get_status() : '';
             $posted_points = isset($_POST['eao_points_to_redeem']) ? absint($_POST['eao_points_to_redeem']) : null;
-            if ( in_array( $status_now, array('processing','completed','shipped'), true ) ) {
+            if (in_array($status_now, array('processing', 'completed', 'shipped'), true)) {
                 error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] SAVE PIPELINE: points redemption (status=processing/completed/shipped)');
-                $points_result = eao_process_yith_points_redemption( $order_id, $_POST );
-                if ( ! $points_result['success'] ) {
-                    error_log( '[EAO YITH] Points processing failed: ' . implode( ', ', $points_result['errors'] ) );
-                } else if ( ! empty( $points_result['messages'] ) ) {
-                    error_log( '[EAO YITH] Points processing success: ' . implode( ', ', $points_result['messages'] ) );
+                $points_result = eao_process_yith_points_redemption($order_id, $_POST);
+                if (!$points_result['success']) {
+                    error_log('[EAO YITH] Points processing failed: ' . implode(', ', $points_result['errors']));
+                } else if (!empty($points_result['messages'])) {
+                    error_log('[EAO YITH] Points processing success: ' . implode(', ', $points_result['messages']));
                 }
                 // Persist a snapshot of current discount for UI rehydrate
-                if ( $posted_points !== null ) {
-                    $order->update_meta_data( '_eao_current_points_discount', array(
-                        'points' => absint( $posted_points ),
-                        'amount' => wc_format_decimal( ( $posted_points * 0.10 ), 2 ),
-                    ) );
+                if ($posted_points !== null) {
+                    $order->update_meta_data('_eao_current_points_discount', array(
+                        'points' => absint($posted_points),
+                        'amount' => wc_format_decimal(($posted_points * 0.10), 2),
+                    ));
                 }
-            } else if ( $posted_points !== null ) {
+            } else if ($posted_points !== null) {
                 // Pending payment: store intent only and remove any applied YITH coupon
                 $order->update_meta_data('_eao_pending_points_to_redeem', $posted_points);
                 $existing_codes = $order->get_coupon_codes();
@@ -660,19 +690,23 @@ function eao_ajax_save_order_details() {
                     }
                 }
                 error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . "] SAVE PIPELINE: stored pending points (no balance change), points=" . $posted_points);
-                try { $order->calculate_totals(false); } catch (Throwable $t) { $order->calculate_totals(); }
+                try {
+                    $order->calculate_totals(false);
+                } catch (Throwable $t) {
+                    $order->calculate_totals();
+                }
                 // Persist snapshot so the UI remembers selection across refresh
-                $order->update_meta_data( '_eao_current_points_discount', array(
-                    'points' => absint( $posted_points ),
-                    'amount' => wc_format_decimal( ( $posted_points * 0.10 ), 2 ),
-                ) );
+                $order->update_meta_data('_eao_current_points_discount', array(
+                    'points' => absint($posted_points),
+                    'amount' => wc_format_decimal(($posted_points * 0.10), 2),
+                ));
             }
         }
 
         // --- Persist Points Grant Override Meta (NEW) ---
         try {
             $override_enabled = isset($_POST['eao_points_grant_override_enabled']) && ('yes' === sanitize_text_field(wp_unslash($_POST['eao_points_grant_override_enabled'])));
-            $override_points  = isset($_POST['eao_points_grant_override_points']) ? intval($_POST['eao_points_grant_override_points']) : 0;
+            $override_points = isset($_POST['eao_points_grant_override_points']) ? intval($_POST['eao_points_grant_override_points']) : 0;
             if ($override_enabled) {
                 $order->update_meta_data('_eao_points_grant_override_enabled', 'yes');
                 $order->update_meta_data('_eao_points_grant_override_points', max(0, $override_points));
@@ -680,7 +714,8 @@ function eao_ajax_save_order_details() {
                 $order->update_meta_data('_eao_points_grant_override_enabled', 'no');
                 $order->delete_meta_data('_eao_points_grant_override_points');
             }
-        } catch ( Exception $e ) {}
+        } catch (Exception $e) {
+        }
 
         // --- Process Staged Notes (EXTRACTED TO MODULE) ---
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] SAVE PIPELINE: before notes');
@@ -700,29 +735,30 @@ function eao_ajax_save_order_details() {
         }
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] SAVE PIPELINE: before order->save');
         $order_save_result = $order->save();
-        error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] SAVE PIPELINE: after order->save (took ' . round((microtime(true)-$save_start)*1000) . ' ms)');
-        
+        error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] SAVE PIPELINE: after order->save (took ' . round((microtime(true) - $save_start) * 1000) . ' ms)');
+
         // Derive YITH points redemption coupon amounts for accurate post-save display
         $existing_points_redeemed = 0;
         $existing_discount_amount = 0.0;
         try {
-            $coupon_points_meta  = $order->get_meta( '_ywpar_coupon_points', true );
-            $coupon_amount_meta  = $order->get_meta( '_ywpar_coupon_amount', true );
-            if ( ! empty( $coupon_points_meta ) && is_numeric( $coupon_points_meta ) ) {
-                $existing_points_redeemed = intval( $coupon_points_meta );
-                $existing_discount_amount = ! empty( $coupon_amount_meta ) ? floatval( $coupon_amount_meta ) : ( $existing_points_redeemed * 0.10 );
+            $coupon_points_meta = $order->get_meta('_ywpar_coupon_points', true);
+            $coupon_amount_meta = $order->get_meta('_ywpar_coupon_amount', true);
+            if (!empty($coupon_points_meta) && is_numeric($coupon_points_meta)) {
+                $existing_points_redeemed = intval($coupon_points_meta);
+                $existing_discount_amount = !empty($coupon_amount_meta) ? floatval($coupon_amount_meta) : ($existing_points_redeemed * 0.10);
             }
-            if ( $existing_points_redeemed === 0 ) {
-                foreach ( $order->get_items( 'coupon' ) as $coupon_item ) {
-                    $code = method_exists( $coupon_item, 'get_code' ) ? $coupon_item->get_code() : '';
-                    if ( $code && strpos( $code, 'ywpar_discount_' ) === 0 ) {
-                        $existing_discount_amount = abs( (float) $coupon_item->get_discount() );
-                        $existing_points_redeemed = intval( round( $existing_discount_amount * 10 ) );
+            if ($existing_points_redeemed === 0) {
+                foreach ($order->get_items('coupon') as $coupon_item) {
+                    $code = method_exists($coupon_item, 'get_code') ? $coupon_item->get_code() : '';
+                    if ($code && strpos($code, 'ywpar_discount_') === 0) {
+                        $existing_discount_amount = abs((float) $coupon_item->get_discount());
+                        $existing_points_redeemed = intval(round($existing_discount_amount * 10));
                         break;
                     }
                 }
             }
-        } catch ( Exception $e ) { /* no-op */ }
+        } catch (Exception $e) { /* no-op */
+        }
 
         // Basic response data
         $updated_order_data = array(
@@ -736,7 +772,7 @@ function eao_ajax_save_order_details() {
             'items_processed' => $items_processed_flag,
             'address_updated' => $address_updated,
             'global_discount_percent' => $global_order_discount_percent,
-            'shipstation_rate_processed' => isset( $_POST['eao_pending_shipstation_rate'] ) && ! empty( $_POST['eao_pending_shipstation_rate'] ),
+            'shipstation_rate_processed' => isset($_POST['eao_pending_shipstation_rate']) && !empty($_POST['eao_pending_shipstation_rate']),
             'notes_processed' => $notes_result['notes_processed'],
             'notes_success' => $notes_result['success'],
             'points_processed' => !empty($points_result['messages']),
@@ -747,46 +783,46 @@ function eao_ajax_save_order_details() {
             'items_deleted_count' => $items_result['items_deleted_count'],
             'items_updated_count' => $items_result['items_updated_count'],
             'items_success' => $items_result['success'],
-            'debug_staged_notes_received' => isset( $_POST['eao_staged_notes'] ) ? 'YES' : 'NO',
-            'debug_staged_notes_content' => isset( $_POST['eao_staged_notes'] ) ? $_POST['eao_staged_notes'] : 'NOT_FOUND',
+            'debug_staged_notes_received' => isset($_POST['eao_staged_notes']) ? 'YES' : 'NO',
+            'debug_staged_notes_content' => isset($_POST['eao_staged_notes']) ? $_POST['eao_staged_notes'] : 'NOT_FOUND',
             'basics_updated' => $basics_result['basics_updated'],
             'customer_updated' => $basics_result['customer_updated']
         );
 
         // Check for any critical errors that should prevent save completion
         $critical_errors = array();
-        
-        if ( ! $points_result['success'] && ! empty( $points_result['errors'] ) ) {
-            $critical_errors = array_merge( $critical_errors, $points_result['errors'] );
+
+        if (!$points_result['success'] && !empty($points_result['errors'])) {
+            $critical_errors = array_merge($critical_errors, $points_result['errors']);
         }
-        
-        if ( ! $items_result['success'] && ! empty( $items_result['items_errors'] ) ) {
-            $critical_errors = array_merge( $critical_errors, $items_result['items_errors'] );
+
+        if (!$items_result['success'] && !empty($items_result['items_errors'])) {
+            $critical_errors = array_merge($critical_errors, $items_result['items_errors']);
         }
-        
-        if ( ! $notes_result['success'] && ! empty( $notes_result['notes_errors'] ) ) {
-            $critical_errors = array_merge( $critical_errors, $notes_result['notes_errors'] );
+
+        if (!$notes_result['success'] && !empty($notes_result['notes_errors'])) {
+            $critical_errors = array_merge($critical_errors, $notes_result['notes_errors']);
         }
-        
+
         // If there are critical errors, return them
-        if ( ! empty( $critical_errors ) ) {
-            error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Critical errors during save: ' . implode( ', ', $critical_errors ));
-            
+        if (!empty($critical_errors)) {
+            error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Critical errors during save: ' . implode(', ', $critical_errors));
+
             // Clean any captured output before sending error response
             if (ob_get_length()) {
                 ob_end_clean();
             }
-            
+
             // Restore error reporting
             error_reporting($old_error_reporting);
             ini_set('display_errors', $old_display_errors);
             remove_filter('wp_debug_log_max_files', '__return_zero');
-            
-            wp_send_json_error( array( 
-                'message' => 'Order save completed with errors: ' . implode( ', ', $critical_errors ),
+
+            wp_send_json_error(array(
+                'message' => 'Order save completed with errors: ' . implode(', ', $critical_errors),
                 'errors' => $critical_errors,
                 'data' => $updated_order_data
-            ) );
+            ));
             return;
         }
 
@@ -794,93 +830,106 @@ function eao_ajax_save_order_details() {
         if (ob_get_length()) {
             ob_end_clean();
         }
-        
+
         // Restore error reporting
         error_reporting($old_error_reporting);
         ini_set('display_errors', $old_display_errors);
         remove_filter('wp_debug_log_max_files', '__return_zero');
 
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_ajax_save_order_details: SUCCESS');
-        wp_send_json_success( $updated_order_data );
+        wp_send_json_success($updated_order_data);
 
-    } catch ( Exception $e ) {
+    } catch (Exception $e) {
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_ajax_save_order_details: Exception: ' . $e->getMessage());
-        
+
         // Clean any captured output before sending error response
         if (ob_get_length()) {
             ob_end_clean();
         }
-        
+
         // Restore error reporting
         error_reporting($old_error_reporting);
         ini_set('display_errors', $old_display_errors);
         remove_filter('wp_debug_log_max_files', '__return_zero');
-        
-        wp_send_json_error( array( 'message' => __( 'Error: ' . $e->getMessage(), 'enhanced-admin-order' ) ) );
+
+        wp_send_json_error(array('message' => __('Error: ' . $e->getMessage(), 'enhanced-admin-order')));
     }
 }
 
 /**
  * Grant points once order becomes paid (processing/completed)
  */
-function eao_points_handle_status_change( $order_id, $from_status, $to_status, $order ) {
-    if (!function_exists('eao_yith_is_available') || !eao_yith_is_available()) { return; }
+function eao_points_handle_status_change($order_id, $from_status, $to_status, $order)
+{
+    if (!function_exists('eao_yith_is_available') || !eao_yith_is_available()) {
+        return;
+    }
     $to_status = strtolower($to_status);
-    if (in_array($to_status, array('completed','shipped','delivered'), true)) {
+    if (in_array($to_status, array('completed', 'shipped', 'delivered'), true)) {
         eao_points_grant_if_needed($order_id);
     }
 }
 // Admin-only: Only process order status changes from admin area (not frontend AJAX)
-if ( eao_should_load() ) {
+if (eao_should_load()) {
     add_action('woocommerce_order_status_changed', 'eao_points_handle_status_change', 10, 4);
     // Also hook the concrete status events to ensure we always run in admin
-    add_action('woocommerce_order_status_shipped', function($order_id){
+    add_action('woocommerce_order_status_shipped', function ($order_id) {
         eao_points_grant_if_needed($order_id);
     }, 10, 1);
-    add_action('woocommerce_order_status_completed', function($order_id){
+    add_action('woocommerce_order_status_completed', function ($order_id) {
         eao_points_grant_if_needed($order_id);
     }, 10, 1);
-    add_action('woocommerce_order_status_delivered', function($order_id){
+    add_action('woocommerce_order_status_delivered', function ($order_id) {
         eao_points_grant_if_needed($order_id);
     }, 10, 1);
 }
 
 // Prevent YITH admin auto-award while EAO editor is active (skip add_order_points via filter)
-if ( eao_should_load() ) {
-    add_filter('ywpar_add_order_points', function($skip, $order_id){
+if (eao_should_load()) {
+    add_filter('ywpar_add_order_points', function ($skip, $order_id) {
         // When editing in admin (EAO loaded), always skip YITH earning for this order
-        if ( is_admin() ) { return true; }
+        if (is_admin()) {
+            return true;
+        }
         return $skip;
     }, 999, 2);
 
     // Also prevent the alternate Orders manager path from assigning earned points in admin
-    add_filter('ywpar_order_status_to_assign_earned_points', function($status){
-        if ( is_admin() ) { return array(); }
+    add_filter('ywpar_order_status_to_assign_earned_points', function ($status) {
+        if (is_admin()) {
+            return array();
+        }
         return $status;
     }, 999);
 }
 
 // Lightweight debug helper for points operations
 if (!function_exists('eao_points_debug_log')) {
-    function eao_points_debug_log($message, $order_id = 0) {
+    function eao_points_debug_log($message, $order_id = 0)
+    {
         error_log('[EAO Points] ' . ($order_id ? ('#' . $order_id . ' ') : '') . $message);
     }
 }
 
-function eao_points_grant_if_needed( $order_id ) {
+function eao_points_grant_if_needed($order_id)
+{
     $order = wc_get_order($order_id);
-    if (!$order) { return; }
+    if (!$order) {
+        return;
+    }
     // If already granted, allow a "top-up" when expected award increased (e.g., status moved to shipped)
-    $already_granted = (bool)$order->get_meta('_eao_points_granted', true);
-    $was_revoked     = (bool)$order->get_meta('_eao_points_revoked', true);
-    $already_pts     = intval($order->get_meta('_eao_points_granted_points', true));
+    $already_granted = (bool) $order->get_meta('_eao_points_granted', true);
+    $was_revoked = (bool) $order->get_meta('_eao_points_revoked', true);
+    $already_pts = intval($order->get_meta('_eao_points_granted_points', true));
     $customer_id = $order->get_customer_id();
-    if (!$customer_id) { return; }
+    if (!$customer_id) {
+        return;
+    }
 
     // Decide points strictly from UI inputs/meta (single source of truth)
     $override_enabled = ('yes' === $order->get_meta('_eao_points_grant_override_enabled', true));
-    $override_points  = intval($order->get_meta('_eao_points_grant_override_points', true));
-    $points_to_grant  = 0;
+    $override_points = intval($order->get_meta('_eao_points_grant_override_points', true));
+    $points_to_grant = 0;
     if ($override_enabled && $override_points > 0) {
         $points_to_grant = $override_points;
     } else {
@@ -892,11 +941,15 @@ function eao_points_grant_if_needed( $order_id ) {
     // If points were already granted and not revoked, only top up the delta when higher expected points are needed
     if ($already_granted && !$was_revoked) {
         $delta = max(0, intval($points_to_grant) - max(0, $already_pts));
-        if ($delta <= 0) { return; }
+        if ($delta <= 0) {
+            return;
+        }
         $points_to_grant = $delta;
     }
 
-    if ($points_to_grant <= 0) { return; }
+    if ($points_to_grant <= 0) {
+        return;
+    }
 
     // Prefer exact-point APIs to avoid YITH recalculating a different amount
     // Single awarding path: direct YITH increase by exact amount. If unavailable, log and stop.
@@ -908,12 +961,14 @@ function eao_points_grant_if_needed( $order_id ) {
         try {
             $cust = ywpar_get_customer($customer_id);
             if ($cust && method_exists($cust, 'update_points')) {
-                $granted_ok = (bool)$cust->update_points($points_to_grant, 'order_completed', array('order_id' => $order_id, 'description' => sprintf('Points earned from Order #%d (EAO)', $order_id)));
+                $granted_ok = (bool) $cust->update_points($points_to_grant, 'order_completed', array('order_id' => $order_id, 'description' => sprintf('Points earned from Order #%d (EAO)', $order_id)));
             }
         } catch (Exception $e) {
-            
+
         }
-        if (!$granted_ok) { return; }
+        if (!$granted_ok) {
+            return;
+        }
     } else {
         return;
     }
@@ -943,21 +998,28 @@ function eao_points_grant_if_needed( $order_id ) {
 /**
  * Revoke granted points on refund (simple proportional strategy)
  */
-function eao_points_handle_refund( $order_id, $refund_id ) {
-    if (!function_exists('eao_yith_is_available') || !eao_yith_is_available()) { return; }
+function eao_points_handle_refund($order_id, $refund_id)
+{
+    if (!function_exists('eao_yith_is_available') || !eao_yith_is_available()) {
+        return;
+    }
     $order = wc_get_order($order_id);
-    if (!$order) return;
-    $granted = (bool)$order->get_meta('_eao_points_granted', true);
-    $revoked = (bool)$order->get_meta('_eao_points_revoked', true);
+    if (!$order)
+        return;
+    $granted = (bool) $order->get_meta('_eao_points_granted', true);
+    $revoked = (bool) $order->get_meta('_eao_points_revoked', true);
     $granted_pts = intval($order->get_meta('_eao_points_granted_points', true));
-    if (!$granted || $revoked || $granted_pts <= 0) { return; }
+    if (!$granted || $revoked || $granted_pts <= 0) {
+        return;
+    }
 
     $refund = wc_get_order($refund_id);
-    if (!$refund) return;
+    if (!$refund)
+        return;
     $refund_amount = abs($refund->get_total());
-    $order_total   = max(0.01, $order->get_total());
-    $proportion    = min(1.0, $refund_amount / $order_total);
-    $revoke_pts    = max(1, intval(round($granted_pts * $proportion)));
+    $order_total = max(0.01, $order->get_total());
+    $proportion = min(1.0, $refund_amount / $order_total);
+    $revoke_pts = max(1, intval(round($granted_pts * $proportion)));
 
     if (function_exists('ywpar_decrease_points')) {
         ywpar_decrease_points($order->get_customer_id(), $revoke_pts, sprintf(__('Refund revoke for Order #%d', 'enhanced-admin-order'), $order_id), $order_id);
@@ -971,7 +1033,7 @@ function eao_points_handle_refund( $order_id, $refund_id ) {
     $order->save();
 }
 // Admin-only: Only process refunds from admin area (not frontend AJAX)
-if ( eao_should_load() ) {
+if (eao_should_load()) {
     add_action('woocommerce_order_refunded', 'eao_points_handle_refund', 10, 2);
 }
 
@@ -984,11 +1046,12 @@ if ( eao_should_load() ) {
  * @modified 1.1.0 - Changed menu slug for uniqueness.
  * @modified 1.1.1 - Changed capability to 'manage_options' for debugging.
  */
-add_action( 'admin_menu', 'eao_add_admin_page' );
-function eao_add_admin_page() {
+add_action('admin_menu', 'eao_add_admin_page');
+function eao_add_admin_page()
+{
     add_menu_page(
-        __( 'Enhanced Order Editor', 'enhanced-admin-order' ),
-        __( 'Enhanced Order Editor', 'enhanced-admin-order' ),
+        __('Enhanced Order Editor', 'enhanced-admin-order'),
+        __('Enhanced Order Editor', 'enhanced-admin-order'),
         'manage_options',
         'eao_custom_order_editor_page',
         'eao_display_admin_page',
@@ -1007,15 +1070,16 @@ function eao_add_admin_page() {
  * @modified 1.1.2 - Removed die() and reinstated capability check with 'manage_options'.
  * @modified 1.1.3 - Load order editor template.
  */
-function eao_display_admin_page() {
+function eao_display_admin_page()
+{
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_display_admin_page called. Current user ID: ' . get_current_user_id());
-    
-    if ( ! current_user_can( 'manage_options' ) ) {
-        wp_die( __( 'You do not have sufficient permissions to access this page.', 'enhanced-admin-order' ) );
+
+    if (!current_user_can('manage_options')) {
+        wp_die(__('You do not have sufficient permissions to access this page.', 'enhanced-admin-order'));
     }
 
-    $order_id = isset( $_GET['order_id'] ) ? absint( $_GET['order_id'] ) : 0;
-    if ( ! $order_id ) {
+    $order_id = isset($_GET['order_id']) ? absint($_GET['order_id']) : 0;
+    if (!$order_id) {
         // If no order is specified, redirect to WooCommerce Orders list
         $target = admin_url('admin.php?page=wc-orders');
         if (!headers_sent()) {
@@ -1026,24 +1090,24 @@ function eao_display_admin_page() {
         return;
     }
 
-    $order = wc_get_order( $order_id );
-    if ( ! $order ) {
-        wp_die( sprintf( __( 'Error: Could not load order with ID %d.', 'enhanced-admin-order' ), $order_id ) );
+    $order = wc_get_order($order_id);
+    if (!$order) {
+        wp_die(sprintf(__('Error: Could not load order with ID %d.', 'enhanced-admin-order'), $order_id));
         return;
     }
 
     // Set up the screen for meta boxes with WooCommerce-compatible screen context
     $screen = get_current_screen();
-    if ( ! $screen ) {
+    if (!$screen) {
         global $hook_suffix;
         if ($hook_suffix) {
             set_current_screen($hook_suffix);
-            $screen = get_current_screen(); 
+            $screen = get_current_screen();
         }
     }
 
     if (!$screen) {
-        wp_die( __( 'Error: Could not get current screen object after attempting to set it.', 'enhanced-admin-order' ) );
+        wp_die(__('Error: Could not get current screen object after attempting to set it.', 'enhanced-admin-order'));
         return;
     }
 
@@ -1052,23 +1116,23 @@ function eao_display_admin_page() {
     $original_post = $post;
     $original_pagenow = $pagenow;
     $original_typenow = $typenow;
-    
+
     // Set up environment to mimic WooCommerce order edit screen
     $pagenow = 'post.php';
     $typenow = 'shop_order';
-    
+
     // HPOS compatibility: Get post object if available, otherwise create mock post object
     $hpos_active = false;
-    if ( class_exists('Automattic\WooCommerce\Utilities\OrderUtil') && method_exists('Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled') ) {
+    if (class_exists('Automattic\WooCommerce\Utilities\OrderUtil') && method_exists('Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled')) {
         $hpos_active = Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
     }
-    
-    if ( ! $hpos_active ) {
+
+    if (!$hpos_active) {
         // Traditional posts table - use the actual post
-        $order_post = get_post( $order->get_id() );
-        if ( $order_post ) {
+        $order_post = get_post($order->get_id());
+        if ($order_post) {
             $post = $order_post;
-            setup_postdata( $post );
+            setup_postdata($post);
         }
     } else {
         // HPOS active - create a mock post object for compatibility
@@ -1076,7 +1140,7 @@ function eao_display_admin_page() {
             'ID' => $order->get_id(),
             'post_type' => 'shop_order',
             'post_status' => $order->get_status(),
-            'post_title' => sprintf( __( 'Order #%s', 'enhanced-admin-order' ), $order->get_order_number() ),
+            'post_title' => sprintf(__('Order #%s', 'enhanced-admin-order'), $order->get_order_number()),
             'post_date' => $order->get_date_created()->date('Y-m-d H:i:s'),
         );
     }
@@ -1119,25 +1183,25 @@ function eao_display_admin_page() {
 
     // Add AST/TrackShip Shipment Tracking meta box into the EAO sidebar (right pane)
     try {
-        if ( function_exists('ast_pro') && is_object( ast_pro()->ast_pro_actions ) && method_exists( ast_pro()->ast_pro_actions, 'meta_box' ) ) {
+        if (function_exists('ast_pro') && is_object(ast_pro()->ast_pro_actions) && method_exists(ast_pro()->ast_pro_actions, 'meta_box')) {
             add_meta_box(
                 'woocommerce-advanced-shipment-tracking',
-                __('Shipment Tracking','enhanced-admin-order'),
-                function() use ($order) {
+                __('Shipment Tracking', 'enhanced-admin-order'),
+                function () use ($order) {
                     // Reuse AST Pro renderer for consistency
-                    ast_pro()->ast_pro_actions->meta_box( $order );
+                    ast_pro()->ast_pro_actions->meta_box($order);
                 },
                 $screen_id,
                 'side',
                 'low'
             );
             error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] AST Pro meta box added to EAO sidebar.');
-        } elseif ( function_exists('trackship_for_woocommerce') && is_object( trackship_for_woocommerce()->admin ) && method_exists( trackship_for_woocommerce()->admin, 'trackship_metabox_cb' ) ) {
+        } elseif (function_exists('trackship_for_woocommerce') && is_object(trackship_for_woocommerce()->admin) && method_exists(trackship_for_woocommerce()->admin, 'trackship_metabox_cb')) {
             add_meta_box(
                 'trackship',
                 'TrackShip',
-                function() use ($order) {
-                    trackship_for_woocommerce()->admin->trackship_metabox_cb( $order );
+                function () use ($order) {
+                    trackship_for_woocommerce()->admin->trackship_metabox_cb($order);
                 },
                 $screen_id,
                 'side',
@@ -1147,25 +1211,25 @@ function eao_display_admin_page() {
         } else {
             error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Neither AST Pro nor TrackShip meta box callback available.');
         }
-    } catch ( \Throwable $e ) {
+    } catch (\Throwable $e) {
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Error adding AST/TrackShip meta box: ' . $e->getMessage());
     }
 
     // Add PDF (Invoices/Packing Slips) meta box above Order Notes if plugin is active
-    if ( class_exists('WPO\\IPS\\Admin') && function_exists('wcpdf_get_document') ) {
+    if (class_exists('WPO\\IPS\\Admin') && function_exists('wcpdf_get_document')) {
         add_meta_box(
             'eao_wcpdf_actions',
-            __('Create PDF','woocommerce-pdf-invoices-packing-slips'),
-            function() use ($order) {
+            __('Create PDF', 'woocommerce-pdf-invoices-packing-slips'),
+            function () use ($order) {
                 // Reuse the plugin's renderer for consistency
                 try {
                     $admin = \WPO\IPS\Admin::instance();
-                    if ( $admin && method_exists($admin,'pdf_actions_meta_box') ) {
+                    if ($admin && method_exists($admin, 'pdf_actions_meta_box')) {
                         $admin->pdf_actions_meta_box($order);
                     } else {
                         echo '<p>' . esc_html__('PDF plugin not fully available.', 'enhanced-admin-order') . '</p>';
                     }
-                } catch ( \Throwable $e ) {
+                } catch (\Throwable $e) {
                     echo '<p>' . esc_html__('PDF actions unavailable.', 'enhanced-admin-order') . '</p>';
                 }
             },
@@ -1204,14 +1268,14 @@ function eao_display_admin_page() {
 
     // Fire the generic 'add_meta_boxes' hook for other plugins
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] BEFORE do_action for generic add_meta_boxes.');
-    do_action( 'add_meta_boxes', $screen_id, $order );
+    do_action('add_meta_boxes', $screen_id, $order);
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] AFTER do_action for generic add_meta_boxes.');
 
     // Load the template which will call do_meta_boxes()
     $template_path = EAO_PLUGIN_DIR . 'eao-order-editor-page-template.php'; // Fixed PHP compatibility issues
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Template path: ' . $template_path . ', exists: ' . (file_exists($template_path) ? 'yes' : 'no'));
-    
-    if ( file_exists( $template_path ) ) {
+
+    if (file_exists($template_path)) {
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Loading template file...');
         ob_start();
         include $template_path;
@@ -1230,17 +1294,17 @@ function eao_display_admin_page() {
         // Create a basic fallback template inline (non-sortable to match baseline)
         ?>
         <div class="wrap">
-            <h1><?php echo esc_html__( 'Enhanced Order Editor', 'enhanced-admin-order' ); ?></h1>
+            <h1><?php echo esc_html__('Enhanced Order Editor', 'enhanced-admin-order'); ?></h1>
             <div id="poststuff">
                 <div id="post-body" class="metabox-holder columns-2">
                     <div id="post-body-content">
                         <div class="meta-box-container">
-                            <?php do_meta_boxes( $screen_id, 'normal', $order ); ?>
+                            <?php do_meta_boxes($screen_id, 'normal', $order); ?>
                         </div>
                     </div>
                     <div id="postbox-container-1" class="postbox-container">
                         <div class="meta-box-container">
-                            <?php do_meta_boxes( $screen_id, 'side', $order ); ?>
+                            <?php do_meta_boxes($screen_id, 'side', $order); ?>
                         </div>
                     </div>
                 </div>
@@ -1248,18 +1312,18 @@ function eao_display_admin_page() {
         </div>
         <?php
     }
-    
+
     // Restore original environment
     $post = $original_post;
-    $pagenow = $original_pagenow;  
+    $pagenow = $original_pagenow;
     $typenow = $original_typenow;
-    
-    if ( $original_post ) {
-        setup_postdata( $original_post );
+
+    if ($original_post) {
+        setup_postdata($original_post);
     } else {
         wp_reset_postdata();
     }
-    
+
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Environment restored after template load.');
 }
 
@@ -1298,7 +1362,7 @@ function eao_display_admin_page() {
                 <input type="number" id="eao_custom_shipping_rate_amount" name="eao_custom_shipping_rate_amount" 
                        value="0.00" 
                        step="0.1" class="short wc_input_price" style="width:100px;" placeholder="0.00" />
-                
+
                 <button type="button" class="button eao-apply-custom-shipping-rate">
                     <?php esc_html_e( 'Apply Custom Rate', 'enhanced-admin-order' ); ?>
                 </button>
@@ -1308,13 +1372,13 @@ function eao_display_admin_page() {
         <!-- Section 2: Get Live ShipStation Rates -->
         <div class="eao-shipstation-live-rates-section" style="margin-top: 20px;">
             <h4><?php esc_html_e( 'Get Live ShipStation Rates', 'enhanced-admin-order' ); ?></h4>
-            
+
             <?php if ( !$api_key_present || !$api_secret_present ) : ?>
                 <div style="margin-bottom: 10px; color: #d63638;">
                     <p><strong><?php esc_html_e( 'API credentials missing!', 'enhanced-admin-order' ); ?></strong></p>
                     <p><?php esc_html_e( 'Please add ShipStation API credentials to proceed.', 'enhanced-admin-order' ); ?></p>
                 </div>
-                
+
                 <div style="margin-bottom: 10px;">
                     <label for="eao_shipstation_api_key" style="display:block; margin-bottom: 5px;"><?php esc_html_e( 'API Key:', 'enhanced-admin-order' ); ?></label>
             <input type="text" id="eao_shipstation_api_key" style="width: 100%; margin-bottom: 5px;">
@@ -1333,22 +1397,22 @@ function eao_display_admin_page() {
                          <button type="button" class="button eao-shipstation-test-connection" style="margin-left: 10px;"><?php esc_html_e( 'Test Connection', 'enhanced-admin-order' ); ?></button>
                     </p>
             </div>
-                
+
                 <div id="eao-shipstation-connection-debug" style="display:none; margin-bottom:10px; font-size:12px; background:#f8f8f8; border:1px solid #eee; padding:8px; border-radius:4px; color:#333;"></div>
-                
+
                 <div>
                      <button type="button" class="button button-primary eao-shipstation-get-rates-action" data-order-id="<?php echo esc_attr( $order_id ); ?>" data-nonce="<?php echo esc_attr( $nonce ); ?>">
                         <?php esc_html_e( 'Get Shipping Rates from ShipStation', 'enhanced-admin-order' ); ?>
                     </button>
                     </div>
-        
+
                 <div class="eao-shipstation-rates-container" style="display: none; margin-top: 15px; border: 1px solid #ddd; border-radius: 4px;">
                     <div class="eao-shipstation-rates-loading" style="text-align: center; display: none; padding: 15px;">
                         <p><em><?php esc_html_e( 'Loading rates...', 'enhanced-admin-order' ); ?></em></p>
                 </div>
 
             <div class="eao-shipstation-rates-list" style="max-height: 250px; overflow-y: auto;"></div>
-            
+
                     <div class="eao-shipstation-rates-error" style="color: red; display: none; padding: 15px;"></div>
             </div>
 
@@ -1360,7 +1424,7 @@ function eao_display_admin_page() {
                         <label style="margin-left: 10px;"><input type="radio" name="eao_adjustment_type" value="percentage_discount"> <?php esc_html_e( 'Percent', 'enhanced-admin-order' ); ?></label>
                         <label style="margin-left: 10px;"><input type="radio" name="eao_adjustment_type" value="fixed_discount"> <?php esc_html_e( 'Fixed', 'enhanced-admin-order' ); ?></label>
         </div>
-        
+
                     <div id="eao-adjustment-input-percentage" style="display: none; margin-top: 10px;">
                         <input type="number" id="eao-adjustment-percentage-value" min="0" max="100" step="0.1" style="width: 60px;"> %
             </div>
@@ -1386,10 +1450,10 @@ function eao_display_admin_page() {
     </div>
     <script type="text/javascript">
         jQuery(document).ready(function($){
-            
+
 
             window.eaoPendingShipstationRate = null;
-            
+
             function escapeAttribute(str) {
                 if (typeof str !== 'string') return '';
                 return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/&/g, '&amp;');
@@ -1402,15 +1466,15 @@ function eao_display_admin_page() {
                 echo json_encode($method_title); 
             ?>;
 
-            
-            
+
+
             window.eaoOriginalShippingRateBeforeSessionApply = {
                 amountRaw: initialShippingTotal || 0,
                 serviceName: initialShippingMethod,
                 method_title: initialShippingMethod,
             };
 
-            
+
 
             var selectedRateRawAmountEAO = 0;
             var currencySymbolJS = '<?php echo $currency_symbol; ?>';
@@ -1454,7 +1518,7 @@ function eao_display_admin_page() {
                     value: adjustmentValue
                 };
             }
-            
+
             $('input[name="eao_adjustment_type"]').on('change', function() {
                 var type = $(this).val();
                 if (type === 'percentage_discount') {
@@ -1545,7 +1609,7 @@ function eao_display_admin_page() {
 
             $('.eao-apply-custom-shipping-rate').on('click', function(){
                 var customAmountRaw = parseFloat($('#eao_custom_shipping_rate_amount').val());
-                
+
                 if (isNaN(customAmountRaw) || customAmountRaw < 0) {
                     alert('<?php echo esc_js(__( 'Please enter a valid, non-negative custom rate amount.', 'enhanced-admin-order' )); ?>');
                     return;
@@ -1569,9 +1633,9 @@ function eao_display_admin_page() {
                     service_code: 'custom',
                     method_title: '<?php echo esc_js(__("Custom Rate", "enhanced-admin-order")); ?>'
                 };
-                
-                
-                
+
+
+
                 $(document).trigger('eaoShippingRateApplied'); 
             });
 
@@ -1592,7 +1656,7 @@ function eao_display_admin_page() {
                 var $ratesList = $('.eao-shipstation-rates-list');
                 var $ratesLoading = $('.eao-shipstation-rates-loading');
                 var $ratesError = $('.eao-shipstation-rates-error');
-                
+
                 $ratesList.empty();
                 $ratesError.hide().empty();
                 $ratesContainer.show();
@@ -1600,7 +1664,7 @@ function eao_display_admin_page() {
                 $('.eao-shipstation-rate-adjustment-section, .eao-shipstation-rates-apply').hide();
 
                 $button.prop('disabled', true).text('<?php echo esc_js(__( 'Loading...', 'enhanced-admin-order' )); ?>');
-                
+
                 $.ajax({
                     url: ajaxurl,
                     type: 'POST',
@@ -1615,7 +1679,7 @@ function eao_display_admin_page() {
                                 var carrierStyle = '';
                                 if (rate.carrier_code && (rate.carrier_code.includes('ups'))) carrierStyle = 'border-left: 3px solid #7b5e2e;';
                                 else if (rate.carrier_code && rate.carrier_code.includes('stamps_com')) carrierStyle = 'border-left: 3px solid #004b87;';
-                                
+
                                 var displayServiceName = eaoFormatRateForDisplay(rate.service_name);
 
                                 ratesHtml += `<div class="eao-shipstation-rate" style="padding: 8px; margin-bottom: 5px; ${carrierStyle}">
@@ -1680,8 +1744,8 @@ function eao_display_admin_page() {
                     service_code: serviceCode
                 };
 
-                
-                
+
+
                 $(document).trigger('eaoShippingRateApplied');
             });
 
@@ -1728,32 +1792,33 @@ function eao_display_admin_page() {
  * @since 1.7.8
  * @return void
  */
-function run_enhanced_admin_order_plugin() {
+function run_enhanced_admin_order_plugin()
+{
     // Check if WooCommerce is active
-    if ( ! class_exists( 'WooCommerce' ) ) {
-        add_action( 'admin_notices', 'eao_woocommerce_required_notice' );
+    if (!class_exists('WooCommerce')) {
+        add_action('admin_notices', 'eao_woocommerce_required_notice');
         return;
     }
 
     // Initialize the plugin
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Starting Enhanced Admin Order Plugin initialization');
-    
+
     // Register main AJAX handlers
     add_action('wp_ajax_eao_refresh_order_notes', 'eao_ajax_refresh_order_notes');
-    
+
     // Explicitly call AJAX registration function to ensure all handlers are registered
     eao_register_ajax_handlers();
 
     // Register AC hooks if Admin Columns is active
-    if ( class_exists( 'AC\ListScreen' ) ) {
+    if (class_exists('AC\ListScreen')) {
         // Admin Columns is active, integration will be handled by dedicated file
     }
-    
+
     // Initialize Payment Mockup system AJAX handlers (Phase 0: v2.7.8)
-    if ( function_exists( 'eao_initialize_mockup_payments' ) ) {
+    if (function_exists('eao_initialize_mockup_payments')) {
         eao_initialize_mockup_payments();
     }
-    
+
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Enhanced Admin Order Plugin initialized successfully');
 }
 
@@ -1762,15 +1827,16 @@ function run_enhanced_admin_order_plugin() {
  * 
  * @since 1.8.6
  */
-function eao_remove_woocommerce_order_metaboxes() {
+function eao_remove_woocommerce_order_metaboxes()
+{
     $screen = get_current_screen();
-    if ( ! $screen || $screen->id !== 'shop_order' ) {
+    if (!$screen || $screen->id !== 'shop_order') {
         return;
     }
-    
+
     // Only remove the order items metabox that conflicts with our custom interface
     // Leave all other WooCommerce functionality intact
-    remove_meta_box( 'woocommerce-order-items', 'shop_order', 'normal' );
+    remove_meta_box('woocommerce-order-items', 'shop_order', 'normal');
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Removed only woocommerce-order-items metabox to prevent conflict');
 }
 
@@ -1781,11 +1847,12 @@ function eao_remove_woocommerce_order_metaboxes() {
  * 
  * @since 1.7.8
  */
-function eao_add_order_meta_boxes() {
-    $screen = wc_get_container()->get( Automattic\WooCommerce\Internal\DataStores\Orders\CustomOrdersTableController::class )->custom_orders_table_usage_is_enabled()
-        ? wc_get_page_screen_id( 'shop-order' )
+function eao_add_order_meta_boxes()
+{
+    $screen = wc_get_container()->get(Automattic\WooCommerce\Internal\DataStores\Orders\CustomOrdersTableController::class)->custom_orders_table_usage_is_enabled()
+        ? wc_get_page_screen_id('shop-order')
         : 'shop_order';
-        
+
     add_meta_box(
         'eao-shipstation-rates',
         __('ShipStation Rates', 'enhanced-admin-order'),
@@ -1794,7 +1861,7 @@ function eao_add_order_meta_boxes() {
         'side',
         'default'
     );
-    
+
     add_meta_box(
         'eao-custom-notes',
         __('Custom Order Notes', 'enhanced-admin-order'),
@@ -1811,17 +1878,18 @@ function eao_add_order_meta_boxes() {
  * @since 1.7.8
  * @version 2.4.192 - Added explicit ShipStation and other AJAX handler registration
  */
-function eao_register_ajax_handlers() {
+function eao_register_ajax_handlers()
+{
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Registering AJAX handlers...');
-    
+
     // Register core save order details handler
     add_action('wp_ajax_eao_save_order_details', 'eao_ajax_save_order_details');
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Registered eao_save_order_details handler');
-    
+
     // Register order note handler (RESTORED from v2.7.0)
     add_action('wp_ajax_eao_add_order_note', 'eao_ajax_add_custom_note_handler');
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Registered eao_add_order_note handler');
-    
+
     // Register refresh order notes handler  
     add_action('wp_ajax_eao_refresh_order_notes', 'eao_ajax_refresh_order_notes');
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Registered eao_refresh_order_notes handler');
@@ -1839,11 +1907,11 @@ function eao_register_ajax_handlers() {
 
     // Register roles fetch for dynamic customer roles line
     add_action('wp_ajax_eao_get_customer_roles', 'eao_ajax_get_customer_roles');
-    
+
     // Register FluentCRM profile refresh handler (for real-time updates)
     add_action('wp_ajax_eao_get_fluentcrm_profile', 'eao_ajax_get_fluentcrm_profile');
     // error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Registered eao_get_fluentcrm_profile handler');
-    
+
     // Note: ShipStation AJAX handlers are registered inline in eao-shipstation-core.php
     // Checking availability for debugging purposes
     if (function_exists('eao_ajax_shipstation_v2_save_credentials_handler')) {
@@ -1861,7 +1929,7 @@ function eao_register_ajax_handlers() {
     } else {
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] WARNING: ShipStation get rates handler not found');
     }
-    
+
     // Check other AJAX handlers availability (these are registered inline in their respective files)
     if (function_exists('eao_ajax_search_products_for_admin_order')) {
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Product search handler available');
@@ -1878,26 +1946,36 @@ function eao_register_ajax_handlers() {
     } else {
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] WARNING: Custom order note handler not found');
     }
-    
+
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] AJAX handlers registration completed');
 }
 
 // AJAX: return display names of roles for a given customer id
-function eao_ajax_get_customer_roles() {
+function eao_ajax_get_customer_roles()
+{
     if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_save_order_details')) {
         wp_send_json_error(array('message' => 'Invalid nonce'));
         return;
     }
     $customer_id = isset($_POST['customer_id']) ? absint($_POST['customer_id']) : 0;
-    if (!$customer_id) { wp_send_json_error(array('message' => 'Invalid customer ID')); return; }
+    if (!$customer_id) {
+        wp_send_json_error(array('message' => 'Invalid customer ID'));
+        return;
+    }
     $user = get_user_by('id', $customer_id);
-    if (!$user) { wp_send_json_error(array('message' => 'User not found')); return; }
+    if (!$user) {
+        wp_send_json_error(array('message' => 'User not found'));
+        return;
+    }
     $role_names_map = function_exists('wp_roles') ? wp_roles()->get_names() : array();
     $role_display_names = array();
     if (is_array($user->roles)) {
         foreach ($user->roles as $role_slug) {
-            if (isset($role_names_map[$role_slug])) { $role_display_names[] = translate_user_role($role_names_map[$role_slug]); }
-            else { $role_display_names[] = $role_slug; }
+            if (isset($role_names_map[$role_slug])) {
+                $role_display_names[] = translate_user_role($role_names_map[$role_slug]);
+            } else {
+                $role_display_names[] = $role_slug;
+            }
         }
     }
     wp_send_json_success(array('roles' => $role_display_names));
@@ -1908,16 +1986,18 @@ function eao_ajax_get_customer_roles() {
  * 
  * @since 1.7.8
  */
-function eao_woocommerce_required_notice() {
+function eao_woocommerce_required_notice()
+{
     ?>
     <div class="error">
-        <p><?php esc_html_e('Enhanced Admin Order Plugin requires WooCommerce to be installed and active.', 'enhanced-admin-order'); ?></p>
+        <p><?php esc_html_e('Enhanced Admin Order Plugin requires WooCommerce to be installed and active.', 'enhanced-admin-order'); ?>
+        </p>
     </div>
     <?php
 }
 
 // Admin-only: Initialize the plugin only in admin context (not frontend AJAX)
-if ( eao_should_load() ) {
+if (eao_should_load()) {
     add_action('init', 'run_enhanced_admin_order_plugin');
 }
 
@@ -1927,20 +2007,21 @@ if ( eao_should_load() ) {
  * @since 1.8.0
  * @param WC_Order $order The order object.
  */
-function eao_add_fluentcrm_profile_meta_box_direct( $order ) {
+function eao_add_fluentcrm_profile_meta_box_direct($order)
+{
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] TOP OF eao_add_fluentcrm_profile_meta_box_direct REACHED.');
 
-    if ( ! is_a( $order, 'WC_Order' ) ) {
+    if (!is_a($order, 'WC_Order')) {
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_add_fluentcrm_profile_meta_box_direct: Received invalid or no WC_Order object. Object type: ' . (is_object($order) ? get_class($order) : gettype($order)));
         // Let's try to get the order_id from GET params if $order is not valid, as a fallback.
-        $order_id_from_get = isset( $_GET['order_id'] ) ? absint( $_GET['order_id'] ) : 0;
+        $order_id_from_get = isset($_GET['order_id']) ? absint($_GET['order_id']) : 0;
         if ($order_id_from_get) {
             $order_check = wc_get_order($order_id_from_get);
             if (is_a($order_check, 'WC_Order')) {
                 $order = $order_check;
                 error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_add_fluentcrm_profile_meta_box_direct: Fallback to fetching order via GET param. Order ID: ' . $order->get_id());
-                } else {
-                 error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_add_fluentcrm_profile_meta_box_direct: Fallback failed. Could not get valid order.');
+            } else {
+                error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_add_fluentcrm_profile_meta_box_direct: Fallback failed. Could not get valid order.');
                 return;
             }
         } else {
@@ -1952,12 +2033,12 @@ function eao_add_fluentcrm_profile_meta_box_direct( $order ) {
 
     add_meta_box(
         'fluentcrm_woo_order_widget_eao', // Use a slightly different ID for our instance to avoid conflicts if FluentCRM did somehow add its own.
-        __( 'FluentCRM Profile', 'enhanced-admin-order' ), 
+        __('FluentCRM Profile', 'enhanced-admin-order'),
         'eao_render_fluentcrm_actual_profile_html', // Our new direct rendering function
-        get_current_screen()->id,                    
-        'side',                                      
+        get_current_screen()->id,
+        'side',
         'high', // Use 'high' priority to position it first and make it less movable
-        array( 'order' => $order ) // Pass the order object to our callback
+        array('order' => $order) // Pass the order object to our callback
     );
 }
 
@@ -1968,12 +2049,13 @@ function eao_add_fluentcrm_profile_meta_box_direct( $order ) {
  * @param mixed $post_or_order Usually WP_Post, but we'll get $order from $meta_box_args.
  * @param array $meta_box_args Arguments passed to the meta box, including our custom 'order' arg.
  */
-function eao_render_fluentcrm_actual_profile_html( $post_or_order, $meta_box_args ) {
-    $order = isset($meta_box_args['args']['order']) && is_a($meta_box_args['args']['order'], 'WC_Order') 
-             ? $meta_box_args['args']['order'] 
-             : null;
+function eao_render_fluentcrm_actual_profile_html($post_or_order, $meta_box_args)
+{
+    $order = isset($meta_box_args['args']['order']) && is_a($meta_box_args['args']['order'], 'WC_Order')
+        ? $meta_box_args['args']['order']
+        : null;
 
-    if ( ! $order ) {
+    if (!$order) {
         // Fallback if $order wasn't in args, try $post_or_order if it's an order
         if (is_a($post_or_order, 'WC_Order')) {
             $order = $post_or_order;
@@ -1981,75 +2063,75 @@ function eao_render_fluentcrm_actual_profile_html( $post_or_order, $meta_box_arg
             // If it's a WP_Post object for a shop_order
             $order = wc_get_order($post_or_order->ID);
         } else {
-             // Final fallback: try to get order_id from URL if not available otherwise
-            $order_id_from_get = isset( $_GET['order_id'] ) ? absint( $_GET['order_id'] ) : 0;
+            // Final fallback: try to get order_id from URL if not available otherwise
+            $order_id_from_get = isset($_GET['order_id']) ? absint($_GET['order_id']) : 0;
             if ($order_id_from_get) {
                 $order = wc_get_order($order_id_from_get);
             }
         }
     }
-    
-    if ( ! $order ) {
-        echo '<p>' . __( 'Error: Order context not available for FluentCRM Profile.', 'enhanced-admin-order' ) . '</p>';
+
+    if (!$order) {
+        echo '<p>' . __('Error: Order context not available for FluentCRM Profile.', 'enhanced-admin-order') . '</p>';
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_render_fluentcrm_actual_profile_html: Order object not available or invalid.');
         return;
     }
 
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_render_fluentcrm_actual_profile_html called for order ID: ' . $order->get_id());
 
-    if ( ! function_exists( 'fluentcrm_get_crm_profile_html' ) ) {
-        echo '<p>' . __( 'Error: FluentCRM function <code>fluentcrm_get_crm_profile_html</code> not found. Is FluentCRM active?', 'enhanced-admin-order' ) . '</p>';
+    if (!function_exists('fluentcrm_get_crm_profile_html')) {
+        echo '<p>' . __('Error: FluentCRM function <code>fluentcrm_get_crm_profile_html</code> not found. Is FluentCRM active?', 'enhanced-admin-order') . '</p>';
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_render_fluentcrm_actual_profile_html: fluentcrm_get_crm_profile_html() function does not exist.');
         return;
     }
 
     $user_id_or_email = $order->get_user_id();
-    if ( ! $user_id_or_email ) {
+    if (!$user_id_or_email) {
         $user_id_or_email = $order->get_billing_email();
     }
 
-    if ( ! $user_id_or_email ) {
-        echo '<p>' . __( 'No customer ID or email associated with this order to display FluentCRM profile.', 'enhanced-admin-order' ) . '</p>';
+    if (!$user_id_or_email) {
+        echo '<p>' . __('No customer ID or email associated with this order to display FluentCRM profile.', 'enhanced-admin-order') . '</p>';
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_render_fluentcrm_actual_profile_html: No user ID or email for order ID: ' . $order->get_id());
         return;
     }
-    
+
     error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_render_fluentcrm_actual_profile_html: Fetching profile for user/email: ' . $user_id_or_email);
-    
+
     global $post;
-    $original_post = $post; 
+    $original_post = $post;
     $order_post_object = null;
     $hpos_active = false;
 
     // More robust HPOS check
-    if ( class_exists('Automattic\WooCommerce\Utilities\OrderUtil') && method_exists('Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled') ) {
+    if (class_exists('Automattic\WooCommerce\Utilities\OrderUtil') && method_exists('Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled')) {
         // WooCommerce 6.0+ way to check HPOS
         $hpos_active = Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] HPOS check via OrderUtil: ' . ($hpos_active ? 'Active' : 'Inactive'));
-    } else if (function_exists('wc_get_container') && wc_get_container()->get_definition( 'Automattic\WooCommerce\Internal\Features\FeaturesController' )->feature_is_enabled('custom_order_tables')) {
+    } else if (function_exists('wc_get_container') && wc_get_container()->get_definition('Automattic\WooCommerce\Internal\Features\FeaturesController')->feature_is_enabled('custom_order_tables')) {
         // Alternative for some WC versions to check if COT feature is enabled
         $hpos_active = true;
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] HPOS check via FeaturesController: Active');
-        } else {
+    } else {
         // Fallback to option based check (less direct, but good as a last resort)
-        $hpos_option = get_option( 'woocommerce_custom_orders_table_enabled' );
-        $hpos_active = ( $hpos_option === 'yes' );
+        $hpos_option = get_option('woocommerce_custom_orders_table_enabled');
+        $hpos_active = ($hpos_option === 'yes');
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] HPOS check via option: ' . ($hpos_active ? 'Active' : 'Inactive') . ' (Option value: ' . $hpos_option . ')');
     }
 
-    if ( ! $hpos_active ) {
+    if (!$hpos_active) {
         // Traditional post store for orders, or HPOS check failed/indeterminate so assume traditional for safety.
-        $order_post_object = get_post( $order->get_id() );
+        $order_post_object = get_post($order->get_id());
         if ($order_post_object) {
             $post = $order_post_object;
-            setup_postdata( $post ); 
+            setup_postdata($post);
             error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Set global $post for traditional order ID: ' . $order->get_id());
         }
     } else {
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] HPOS is active, not setting global $post from order ID.');
     }
 
-    $profile_html = fluentcrm_get_crm_profile_html( $user_id_or_email, false );
+    $profile_html = fluentcrm_get_crm_profile_html($user_id_or_email, false);
 
     if ($profile_html) {
         // Ensure CRM links open in a new tab and do not navigate away from order editor
@@ -2062,17 +2144,17 @@ function eao_render_fluentcrm_actual_profile_html( $post_or_order, $meta_box_arg
         // Extra safety: delegate click handling to always open in new tab
         echo '<script type="text/javascript">jQuery(function($){var $box=$("#fluentcrm_woo_order_widget_eao");$box.on("click","a",function(e){var href=$(this).attr("href");if(href){e.preventDefault();window.open(href,"_blank");}});});</script>';
     } else {
-        echo '<p>' . __( 'No FluentCRM profile found for this customer, or profile is empty.', 'enhanced-admin-order' ) . '</p>';
+        echo '<p>' . __('No FluentCRM profile found for this customer, or profile is empty.', 'enhanced-admin-order') . '</p>';
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] eao_render_fluentcrm_actual_profile_html: fluentcrm_get_crm_profile_html() returned empty for: ' . $user_id_or_email . ' on order ID: ' . $order->get_id());
     }
 
-    if ( $post === $order_post_object && $original_post !== $order_post_object ) { // Restore only if we changed it and original was different
-       $post = $original_post;
+    if ($post === $order_post_object && $original_post !== $order_post_object) { // Restore only if we changed it and original was different
+        $post = $original_post;
         if ($post) {
-            setup_postdata($post); 
-    } else {
-            wp_reset_postdata(); 
-    }
+            setup_postdata($post);
+        } else {
+            wp_reset_postdata();
+        }
         error_log('[EAO Plugin v' . EAO_PLUGIN_VERSION . '] Restored global $post.');
     }
 }
@@ -2083,16 +2165,25 @@ function eao_render_fluentcrm_actual_profile_html( $post_or_order, $meta_box_arg
  * 
  * @since 2.4.1
  */
-function eao_ajax_refresh_order_notes() {
+function eao_ajax_refresh_order_notes()
+{
     try {
         // Verify nonce (accept multiple for backward compatibility)
         $nonce = isset($_POST['nonce']) ? sanitize_text_field(wp_unslash($_POST['nonce'])) : '';
         $nonce_ok = false;
         if ($nonce) {
-            if (wp_verify_nonce($nonce, 'eao_save_order_details')) { $nonce_ok = true; }
-            if (!$nonce_ok && wp_verify_nonce($nonce, 'eao_editor_nonce')) { $nonce_ok = true; }
-            if (!$nonce_ok && wp_verify_nonce($nonce, 'eao_refresh_notes_nonce')) { $nonce_ok = true; }
-            if (!$nonce_ok && wp_verify_nonce($nonce, 'eao_refresh_notes')) { $nonce_ok = true; }
+            if (wp_verify_nonce($nonce, 'eao_save_order_details')) {
+                $nonce_ok = true;
+            }
+            if (!$nonce_ok && wp_verify_nonce($nonce, 'eao_editor_nonce')) {
+                $nonce_ok = true;
+            }
+            if (!$nonce_ok && wp_verify_nonce($nonce, 'eao_refresh_notes_nonce')) {
+                $nonce_ok = true;
+            }
+            if (!$nonce_ok && wp_verify_nonce($nonce, 'eao_refresh_notes')) {
+                $nonce_ok = true;
+            }
         }
         if (!$nonce_ok) {
             wp_send_json_error(array('message' => 'Invalid nonce.'));
@@ -2121,7 +2212,9 @@ function eao_ajax_refresh_order_notes() {
             'notes_count' => $count
         ));
     } catch (Throwable $t) {
-        if (function_exists('error_log')) { error_log('[EAO Notes] AJAX refresh error: ' . $t->getMessage()); }
+        if (function_exists('error_log')) {
+            error_log('[EAO Notes] AJAX refresh error: ' . $t->getMessage());
+        }
         wp_send_json_error(array('message' => 'Refresh failed: ' . $t->getMessage()));
     }
 }
@@ -2129,17 +2222,24 @@ function eao_ajax_refresh_order_notes() {
 /**
  * AJAX: Return YITH points globals for the given order/customer so the inline slider can render.
  */
-function eao_ajax_get_yith_points_globals() {
+function eao_ajax_get_yith_points_globals()
+{
     if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_editor_nonce')) {
         wp_send_json_error(array('message' => 'Invalid nonce'));
         return;
     }
     $order_id = isset($_POST['order_id']) ? absint($_POST['order_id']) : 0;
     $order = $order_id ? wc_get_order($order_id) : null;
-    if (!$order) { wp_send_json_error(array('message' => 'Order not found')); return; }
+    if (!$order) {
+        wp_send_json_error(array('message' => 'Order not found'));
+        return;
+    }
     $customer_id_override = isset($_POST['customer_id']) ? absint($_POST['customer_id']) : 0;
     $customer_id = $customer_id_override > 0 ? $customer_id_override : (int) $order->get_customer_id();
-    if ($customer_id <= 0) { wp_send_json_error(array('message' => 'Guest order')); return; }
+    if ($customer_id <= 0) {
+        wp_send_json_error(array('message' => 'Guest order'));
+        return;
+    }
 
     if (!function_exists('eao_yith_is_available') || !eao_yith_is_available()) {
         wp_send_json_error(array('message' => 'YITH not available'));
@@ -2194,10 +2294,13 @@ function eao_ajax_get_yith_points_globals() {
 /**
  * AJAX handler for getting FluentCRM profile HTML (for real-time updates)
  */
-function eao_ajax_get_fluentcrm_profile() {
+function eao_ajax_get_fluentcrm_profile()
+{
     // Clean output buffer
-    if (ob_get_level()) { ob_clean(); }
-    
+    if (ob_get_level()) {
+        ob_clean();
+    }
+
     // Verify nonce  
     if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_editor_nonce')) {
         wp_send_json_error(array('message' => 'Nonce verification failed.'));
@@ -2208,33 +2311,33 @@ function eao_ajax_get_fluentcrm_profile() {
         $customer_id = isset($_POST['customer_id']) ? absint($_POST['customer_id']) : 0;
         if (!$customer_id) {
             wp_send_json_error(array('message' => 'Invalid customer ID.'));
-        return;
-    }
+            return;
+        }
 
         // Check if FluentCRM is available
         if (!function_exists('fluentcrm_get_crm_profile_html')) {
             wp_send_json_error(array('message' => 'FluentCRM not available.'));
-        return;
-    }
+            return;
+        }
 
         // Get customer user object
         $user = get_user_by('ID', $customer_id);
         if (!$user) {
             wp_send_json_error(array('message' => 'Customer not found.'));
-        return;
-    }
+            return;
+        }
 
         error_log('[EAO FluentCRM AJAX] Getting profile for customer ID: ' . $customer_id . ', email: ' . $user->user_email);
-        
+
         // Get profile HTML using FluentCRM function (use customer_id directly, then fallback to email)
         $profile_html = fluentcrm_get_crm_profile_html($customer_id, false);
-        
+
         // If ID didn't work, try with email
         if (!$profile_html) {
             error_log('[EAO FluentCRM AJAX] Trying with email instead of ID');
             $profile_html = fluentcrm_get_crm_profile_html($user->user_email, false);
         }
-        
+
         if ($profile_html && trim($profile_html) !== '') {
             error_log('[EAO FluentCRM AJAX] Profile HTML found, length: ' . strlen($profile_html));
             wp_send_json_success(array('profile_html' => $profile_html));
@@ -2242,7 +2345,7 @@ function eao_ajax_get_fluentcrm_profile() {
             error_log('[EAO FluentCRM AJAX] No profile HTML returned');
             wp_send_json_success(array('profile_html' => '<p>No FluentCRM profile found for this customer, or profile is empty.</p>'));
         }
-        
+
     } catch (Exception $e) {
         error_log('[EAO FluentCRM AJAX] Exception: ' . $e->getMessage());
         wp_send_json_error(array('message' => 'An error occurred while fetching FluentCRM profile.'));
@@ -2252,7 +2355,8 @@ function eao_ajax_get_fluentcrm_profile() {
 /**
  * AJAX: Refresh YITH Points Earning summary HTML for inline panel
  */
-function eao_ajax_refresh_points_earning() {
+function eao_ajax_refresh_points_earning()
+{
     if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_editor_nonce')) {
         wp_send_json_error(array('message' => 'Invalid nonce.'));
         return;
@@ -2282,7 +2386,9 @@ function eao_ajax_refresh_points_earning() {
     $staged_amount = isset($_POST['staged_points_amount']) ? floatval($_POST['staged_points_amount']) : 0;
     if ($staged_amount > 0 && isset($calc['total_points'])) {
         $ppd = isset($calc['points_per_dollar']) ? floatval($calc['points_per_dollar']) : 0;
-        if ($ppd <= 0) { $ppd = 1.0; }
+        if ($ppd <= 0) {
+            $ppd = 1.0;
+        }
         $deduct_points = $ppd * $staged_amount;
         $calc['total_points'] = max(0, intval($calc['total_points']) - intval($deduct_points));
         $calc['messages'][] = sprintf('Reduced %s points due to staged points/coupon discount', number_format($deduct_points));
@@ -2330,16 +2436,23 @@ function eao_ajax_refresh_points_earning() {
 
     $payload = array('html' => $html);
     if (isset($calc) && is_array($calc)) {
-        if (isset($calc['breakdown'])) { $payload['breakdown'] = $calc['breakdown']; }
-        if (isset($calc['points_per_dollar'])) { $payload['points_per_dollar'] = $calc['points_per_dollar']; }
-        if (isset($calc['total_points'])) { $payload['total_points'] = $calc['total_points']; }
+        if (isset($calc['breakdown'])) {
+            $payload['breakdown'] = $calc['breakdown'];
+        }
+        if (isset($calc['points_per_dollar'])) {
+            $payload['points_per_dollar'] = $calc['points_per_dollar'];
+        }
+        if (isset($calc['total_points'])) {
+            $payload['total_points'] = $calc['total_points'];
+        }
     }
 
     wp_send_json_success($payload);
 }
 
 // Points earning details endpoint
-function eao_ajax_get_points_details_for_item() {
+function eao_ajax_get_points_details_for_item()
+{
     if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_editor_nonce')) {
         wp_send_json_error(array('message' => 'Invalid nonce'));
         return;
@@ -2365,7 +2478,7 @@ function eao_ajax_get_points_details_for_item() {
         return;
     }
     foreach ($calc['breakdown'] as $bd) {
-        if ((int)$bd['order_item_id'] === (int)$order_item_id) {
+        if ((int) $bd['order_item_id'] === (int) $order_item_id) {
             wp_send_json_success($bd);
             return;
         }
@@ -2376,7 +2489,8 @@ function eao_ajax_get_points_details_for_item() {
 /**
  * AJAX: Revoke points for an order (admin action)
  */
-function eao_ajax_revoke_points_for_order() {
+function eao_ajax_revoke_points_for_order()
+{
     if (!isset($_POST['nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'])), 'eao_editor_nonce')) {
         wp_send_json_error(array('message' => 'Invalid nonce'));
         return;
@@ -2394,8 +2508,8 @@ function eao_ajax_revoke_points_for_order() {
 
     if (!function_exists('eao_yith_is_available') || !eao_yith_is_available()) {
         wp_send_json_error(array('message' => 'YITH Points not available'));
-            return;
-        }
+        return;
+    }
 
     // Only revoke if we previously granted and not already revoked
     $granted = (bool) $order->get_meta('_eao_points_granted', true);
@@ -2446,10 +2560,14 @@ function eao_ajax_revoke_points_for_order() {
         try {
             $meta_items = $order->get_meta_data();
             foreach ($meta_items as $meta_item) {
-                if (!is_object($meta_item)) { continue; }
+                if (!is_object($meta_item)) {
+                    continue;
+                }
                 $data = method_exists($meta_item, 'get_data') ? $meta_item->get_data() : null;
-                if (!is_array($data) || empty($data['key'])) { continue; }
-                $key = (string)$data['key'];
+                if (!is_array($data) || empty($data['key'])) {
+                    continue;
+                }
+                $key = (string) $data['key'];
                 if (strpos($key, '_ywpar_') === 0) {
                     $order->delete_meta_data($key);
                     eao_points_debug_log('Removed YITH meta on revoke: ' . $key, $order_id);
