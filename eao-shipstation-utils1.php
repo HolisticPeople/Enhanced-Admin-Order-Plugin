@@ -363,6 +363,13 @@ function eao_format_shipstation_rates_response($all_api_rates) {
         if (is_array($rate) && 
             isset($rate['carrierCode'], $rate['serviceCode'], $rate['serviceName'], $rate['shipmentCost'])) {
             
+            // ShipStation returns the base postage in shipmentCost and any surcharges
+            // (fuel, remote area, additional handling, etc.) in otherCost.
+            // To mirror what ShipStation will actually bill, we need to add both.
+            $base_cost  = floatval($rate['shipmentCost']);
+            $other_cost = isset($rate['otherCost']) ? floatval($rate['otherCost']) : 0.0;
+            $total_cost = $base_cost + $other_cost;
+
             $delivery_days_text = __('N/A', 'enhanced-admin-order');
             if (!empty($rate['deliveryDays']) && is_numeric($rate['deliveryDays'])){
                 $delivery_days_text = sprintf(_n('%d day', '%d days', intval($rate['deliveryDays']), 'enhanced-admin-order'), intval($rate['deliveryDays']));
@@ -373,9 +380,14 @@ function eao_format_shipstation_rates_response($all_api_rates) {
                 'carrier_code'        => (string)$rate['carrierCode'],
                 'service_code'        => (string)$rate['serviceCode'],
                 'service_name'        => (string)$rate['serviceName'],
-                'shipping_amount'     => wc_price(floatval($rate['shipmentCost'])), // Ensure floatval
-                'shipping_amount_raw' => floatval($rate['shipmentCost']),
-                'other_cost'          => wc_price(isset($rate['otherCost']) ? floatval($rate['otherCost']) : 0), // Ensure floatval
+                // Use total cost (base + surcharges) for the quoted amount.
+                'shipping_amount'     => wc_price($total_cost),
+                'shipping_amount_raw' => $total_cost,
+                // Expose breakdown for UI/debugging if needed.
+                'base_amount'         => wc_price($base_cost),
+                'base_amount_raw'     => $base_cost,
+                'other_cost'          => wc_price($other_cost),
+                'other_cost_raw'      => $other_cost,
                 'estimated_delivery'  => $delivery_days_text,
             );
         } else {

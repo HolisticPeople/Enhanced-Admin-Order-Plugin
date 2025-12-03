@@ -193,22 +193,33 @@
                          eaoShipStationParams.ajaxUrl : 
                          (typeof ajaxurl !== 'undefined' ? ajaxurl : '/wp-admin/admin-ajax.php');
             
-            // Collect current shipping address (prefer module state, fallback to hidden inputs)
+            // Collect current shipping address.
+            // IMPORTANT: The single source of truth is the current form/DOM values.
+            // We then fall back to pending or canonical address-book entries only if DOM is empty.
             var pendingShip = (typeof window.pendingShippingAddress !== 'undefined' && window.pendingShippingAddress) ? window.pendingShippingAddress : null;
             var initialShip = (window.EAO && window.EAO.ChangeDetection && window.EAO.ChangeDetection.initialOrderData) ? (window.EAO.ChangeDetection.initialOrderData.shipping_address_fields || null) : null;
 
-            // Prefer the canonical source: the selected entry from EAO.Addresses.customerAddresses
+            // Canonical source: the selected entry from EAO.Addresses.customerAddresses (for multi-address support)
             var selectedShipKey = jQuery('#eao_shipping_address_key').val() || (window.eaoEditorParams && window.eaoEditorParams.initial_shipping_address_key) || 'default';
             var ca = (window.EAO && window.EAO.Addresses) ? (window.EAO.Addresses.customerAddresses || {}) : {};
             var shipObj = (ca.shipping && ca.shipping[selectedShipKey]) ? ca.shipping[selectedShipKey] : (ca.shipping && ca.shipping.default ? ca.shipping.default : null);
             var canonical = shipObj ? (shipObj.normalized_fields || shipObj) : null;
 
-            var shipCountry = (canonical && canonical.country) || (pendingShip && pendingShip.country) || (initialShip && initialShip.country) || jQuery('#shipping_country').val() || jQuery('#eao_shipping_country').val() || '';
-            var shipPostcode = (canonical && canonical.postcode) || (pendingShip && pendingShip.postcode) || (initialShip && initialShip.postcode) || jQuery('#eao_shipping_postcode').val() || '';
-            var shipCity = (canonical && canonical.city) || (pendingShip && pendingShip.city) || (initialShip && initialShip.city) || jQuery('#eao_shipping_city').val() || '';
-            var shipState = (canonical && canonical.state) || (pendingShip && pendingShip.state) || (initialShip && initialShip.state) || jQuery('#shipping_state').val() || jQuery('#eao_shipping_state').val() || '';
-            var shipAddr1 = (canonical && canonical.address_1) || (pendingShip && pendingShip.address_1) || (initialShip && initialShip.address_1) || jQuery('#eao_shipping_address_1').val() || '';
-            var shipAddr2 = (canonical && canonical.address_2) || (pendingShip && pendingShip.address_2) || (initialShip && initialShip.address_2) || jQuery('#eao_shipping_address_2').val() || '';
+            // Read from DOM first (reflects the latest saved/edited order address),
+            // then fall back to pending/canonical/initial data.
+            var domCountry  = jQuery('#shipping_country').val() || jQuery('#eao_shipping_country').val() || '';
+            var domPostcode = jQuery('#eao_shipping_postcode').val() || jQuery('#shipping_postcode').val() || '';
+            var domCity     = jQuery('#eao_shipping_city').val() || '';
+            var domState    = jQuery('#shipping_state').val() || jQuery('#eao_shipping_state').val() || '';
+            var domAddr1    = jQuery('#eao_shipping_address_1').val() || '';
+            var domAddr2    = jQuery('#eao_shipping_address_2').val() || '';
+
+            var shipCountry  = domCountry  || (pendingShip && pendingShip.country)  || (canonical && canonical.country)  || (initialShip && initialShip.country)  || '';
+            var shipPostcode = domPostcode || (pendingShip && pendingShip.postcode) || (canonical && canonical.postcode) || (initialShip && initialShip.postcode) || '';
+            var shipCity     = domCity     || (pendingShip && pendingShip.city)     || (canonical && canonical.city)     || (initialShip && initialShip.city)     || '';
+            var shipState    = domState    || (pendingShip && pendingShip.state)    || (canonical && canonical.state)    || (initialShip && initialShip.state)    || '';
+            var shipAddr1    = domAddr1    || (pendingShip && pendingShip.address_1)|| (canonical && canonical.address_1)|| (initialShip && initialShip.address_1)|| '';
+            var shipAddr2    = domAddr2    || (pendingShip && pendingShip.address_2)|| (canonical && canonical.address_2)|| (initialShip && initialShip.address_2)|| '';
 
             // Debug removed for production
 
