@@ -571,7 +571,36 @@ function eao_ajax_shipstation_v2_get_rates_handler() {
         }
         
         $formatted_rates_result = eao_format_shipstation_rates_response($all_rates);
-        
+
+        // Optional allow-list: respect enabled services from HP ShipStation Rates plugin (if present).
+        $rates_for_response = isset($formatted_rates_result['rates']) && is_array($formatted_rates_result['rates'])
+            ? $formatted_rates_result['rates']
+            : array();
+        $allowed_service_codes = function_exists('eao_get_hp_ss_allowed_service_codes')
+            ? eao_get_hp_ss_allowed_service_codes()
+            : array();
+        if (!empty($allowed_service_codes)) {
+            $rates_for_response = array_values(array_filter($rates_for_response, function($r) use ($allowed_service_codes) {
+                if (!is_array($r)) {
+                    return false;
+                }
+                $code = '';
+                if (isset($r['service_code'])) {
+                    $code = (string) $r['service_code'];
+                } elseif (isset($r['serviceCode'])) {
+                    $code = (string) $r['serviceCode'];
+                } elseif (isset($r['code'])) {
+                    $code = (string) $r['code'];
+                }
+                $code = strtolower(trim($code));
+                // If we can't determine a code, keep the rate (fail-open).
+                if ($code === '') {
+                    return true;
+                }
+                return in_array($code, $allowed_service_codes, true);
+            }));
+        }
+
         $partial_success_message = '';
         if (!empty($carrier_errors)) { 
             $failed_carriers_messages = array();
@@ -593,7 +622,7 @@ function eao_ajax_shipstation_v2_get_rates_handler() {
         }
         
         wp_send_json_success(array(
-            'rates' => isset($formatted_rates_result['rates']) ? $formatted_rates_result['rates'] : array(),
+            'rates' => $rates_for_response,
             'partial_error' => $partial_success_message 
         ));
 
@@ -604,4 +633,35 @@ function eao_ajax_shipstation_v2_get_rates_handler() {
             'debug_message' => 'Error: ' . $e->getMessage() // Send a generic message to user, but log details
         ), 500);
     }
-} 
+}  
+
+/**
+ * Return the ShipStation service codes enabled in the HP ShipStation Rates plugin, if available.
+ * Single source of truth via hp_ss_get_enabled_service_codes(); returns lowercase codes.
+ *
+ * @return array<string>
+ */
+if (!function_exists('eao_get_hp_ss_allowed_service_codes')) {
+    function eao_get_hp_ss_allowed_service_codes(): array {
+        if (function_exists('hp_ss_get_enabled_service_codes')) {
+            try {
+                $list = hp_ss_get_enabled_service_codes();
+                if (is_array($list) && !empty($list)) {
+                    $normalized = array();
+                    foreach ($list as $code) {
+                        $code = strtolower(trim((string) $code));
+                        if ($code !== '') {
+                            $normalized[] = $code;
+                        }
+                    }
+                    if (!empty($normalized)) {
+                        return array_values(array_unique($normalized));
+                    }
+                }
+            } catch (Throwable $e) {
+                // Fail open if anything goes wrong; do not block rates.
+            }
+        }
+        return array();
+    }
+}
