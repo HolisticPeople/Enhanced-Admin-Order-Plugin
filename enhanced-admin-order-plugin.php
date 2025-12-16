@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Enhanced Admin Order
  * Description: Enhanced functionality for WooCommerce admin order editing
- * Version: 5.2.85
+ * Version: 5.2.86
  * Author: Amnon Manneberg
  * Text Domain: enhanced-admin-order
  */
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin version constant (v5.1.29: broaden YITH unhook across priorities; message tweak)
-define('EAO_PLUGIN_VERSION', '5.2.85');
+define('EAO_PLUGIN_VERSION', '5.2.86');
 
 /**
  * Check if we should load EAO functionality
@@ -44,6 +44,11 @@ function eao_should_load()
 
     // 2. EAO create new order action (from dashboard or elsewhere)
     if ($pagenow === 'admin.php' && isset($_GET['action']) && $_GET['action'] === 'eao_create_new_order') {
+        return true;
+    }
+
+    // 3. EAO reorder action (clone order from existing)
+    if ($pagenow === 'admin.php' && isset($_GET['action']) && $_GET['action'] === 'eao_reorder') {
         return true;
     }
 
