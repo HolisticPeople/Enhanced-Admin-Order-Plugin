@@ -1,0 +1,21 @@
+---
+alwaysApply: true
+---
+## Plugin Versioning
+
+When delivering a set of changes for testing by the user:
+
+1. **Increment the plugin version** in BOTH locations:
+   - Plugin header comment: `* Version: x.y.z`
+   - Version constant: `define('EAO_PLUGIN_VERSION', 'x.y.z');`
+
+2. **Version must be visible** on:
+   - WordPress Plugins list page
+   - Plugin settings page (if applicable)
+
+3. **Version format:** Use semantic versioning (MAJOR.MINOR.PATCH)
+   - PATCH: Bug fixes, minor changes
+   - MINOR: New features, backward compatible
+   - MAJOR: Breaking changes
+
+4. **Commit message** should include the new version: `v{version}: description`
