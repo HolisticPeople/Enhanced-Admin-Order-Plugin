@@ -17,7 +17,7 @@ if ( ! defined( 'WPINC' ) ) {
 
 /**
  * Extend user search to include first_name, last_name, billing_first_name, and billing_last_name meta fields.
- * This filter modifies the SQL query to search in user meta.
+ * This filter modifies the SQL query to search in user meta using a JOIN approach.
  * 
  * @since 5.2.87
  * @param WP_User_Query $user_query The WP_User_Query instance.
@@ -36,23 +36,38 @@ function eao_extend_user_search_to_meta($user_query) {
         return;
     }
     
-    // Build meta search conditions for first_name, last_name, billing_first_name, billing_last_name
+    // Add LEFT JOIN to usermeta for name fields
+    $user_query->query_from .= " LEFT JOIN {$wpdb->usermeta} um_fname ON {$wpdb->users}.ID = um_fname.user_id AND um_fname.meta_key = 'first_name'";
+    $user_query->query_from .= " LEFT JOIN {$wpdb->usermeta} um_lname ON {$wpdb->users}.ID = um_lname.user_id AND um_lname.meta_key = 'last_name'";
+    $user_query->query_from .= " LEFT JOIN {$wpdb->usermeta} um_bfname ON {$wpdb->users}.ID = um_bfname.user_id AND um_bfname.meta_key = 'billing_first_name'";
+    $user_query->query_from .= " LEFT JOIN {$wpdb->usermeta} um_blname ON {$wpdb->users}.ID = um_blname.user_id AND um_blname.meta_key = 'billing_last_name'";
+    
+    // Build search condition for meta fields
     $meta_search = $wpdb->prepare(
-        "OR EXISTS (
-            SELECT 1 FROM {$wpdb->usermeta} um 
-            WHERE um.user_id = {$wpdb->users}.ID 
-            AND um.meta_key IN ('first_name', 'last_name', 'billing_first_name', 'billing_last_name')
-            AND um.meta_value LIKE %s
-        )",
+        " OR um_fname.meta_value LIKE %s OR um_lname.meta_value LIKE %s OR um_bfname.meta_value LIKE %s OR um_blname.meta_value LIKE %s",
+        '%' . $wpdb->esc_like($search_term) . '%',
+        '%' . $wpdb->esc_like($search_term) . '%',
+        '%' . $wpdb->esc_like($search_term) . '%',
         '%' . $wpdb->esc_like($search_term) . '%'
     );
     
-    // Add the meta search to the WHERE clause
+    // Add the meta search to WHERE clause - look for the closing ) of the search conditions
+    // The search conditions are wrapped in parentheses after "WHERE 1=1 AND"
     $user_query->query_where = str_replace(
-        'WHERE 1=1 AND (',
-        'WHERE 1=1 AND (' . $meta_search . ' ',
+        ') AND',
+        $meta_search . ') AND',
         $user_query->query_where
     );
+    
+    // If no " AND" found (search is last condition), append before the final )
+    if (strpos($user_query->query_where, $meta_search) === false) {
+        // Match the closing ) that's before ORDER BY or end of WHERE clause
+        $user_query->query_where = preg_replace(
+            '/(\))(\s*)$/',
+            $meta_search . '$1$2',
+            $user_query->query_where
+        );
+    }
 }
 
 /**
