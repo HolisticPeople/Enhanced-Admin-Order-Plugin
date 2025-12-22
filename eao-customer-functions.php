@@ -16,6 +16,46 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 /**
+ * Extend user search to include first_name, last_name, billing_first_name, and billing_last_name meta fields.
+ * This filter modifies the SQL query to search in user meta.
+ * 
+ * @since 5.2.87
+ * @param WP_User_Query $user_query The WP_User_Query instance.
+ */
+function eao_extend_user_search_to_meta($user_query) {
+    global $wpdb;
+    
+    // Only modify if this is a search query
+    if (empty($user_query->query_vars['search'])) {
+        return;
+    }
+    
+    $search_term = trim($user_query->query_vars['search'], '*');
+    
+    if (empty($search_term)) {
+        return;
+    }
+    
+    // Build meta search conditions for first_name, last_name, billing_first_name, billing_last_name
+    $meta_search = $wpdb->prepare(
+        "OR EXISTS (
+            SELECT 1 FROM {$wpdb->usermeta} um 
+            WHERE um.user_id = {$wpdb->users}.ID 
+            AND um.meta_key IN ('first_name', 'last_name', 'billing_first_name', 'billing_last_name')
+            AND um.meta_value LIKE %s
+        )",
+        '%' . $wpdb->esc_like($search_term) . '%'
+    );
+    
+    // Add the meta search to the WHERE clause
+    $user_query->query_where = str_replace(
+        'WHERE 1=1 AND (',
+        'WHERE 1=1 AND (' . $meta_search . ' ',
+        $user_query->query_where
+    );
+}
+
+/**
  * AJAX handler for customer search.
  * @since 1.1.4
  */
@@ -38,6 +78,10 @@ function eao_ajax_search_customers() {
     }
 
     $users_found = array();
+    
+    // Add filter to extend search to first_name, last_name, billing_first_name, and billing_last_name meta fields
+    add_filter('pre_user_query', 'eao_extend_user_search_to_meta');
+    
     $user_query_args = array(
         'search'         => '*'. esc_attr($search_term) .'*',
         'search_columns' => array(
@@ -56,6 +100,9 @@ function eao_ajax_search_customers() {
     );
 
     $user_query = new WP_User_Query($user_query_args);
+    
+    // Remove filter after query
+    remove_filter('pre_user_query', 'eao_extend_user_search_to_meta');
 
     if (!empty($user_query->get_results())) {
         foreach ($user_query->get_results() as $user) {
