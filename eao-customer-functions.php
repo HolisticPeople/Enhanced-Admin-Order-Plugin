@@ -16,62 +16,9 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 /**
- * Extend user search to include first_name, last_name, billing_first_name, and billing_last_name meta fields.
- * This filter modifies the SQL query to search in user meta using a JOIN approach.
- * 
- * @since 5.2.87
- * @param WP_User_Query $user_query The WP_User_Query instance.
- */
-function eao_extend_user_search_to_meta($user_query) {
-    global $wpdb;
-    
-    // Only modify if this is a search query
-    if (empty($user_query->query_vars['search'])) {
-        return;
-    }
-    
-    $search_term = trim($user_query->query_vars['search'], '*');
-    
-    if (empty($search_term)) {
-        return;
-    }
-    
-    // Add LEFT JOIN to usermeta for name fields
-    $user_query->query_from .= " LEFT JOIN {$wpdb->usermeta} um_fname ON {$wpdb->users}.ID = um_fname.user_id AND um_fname.meta_key = 'first_name'";
-    $user_query->query_from .= " LEFT JOIN {$wpdb->usermeta} um_lname ON {$wpdb->users}.ID = um_lname.user_id AND um_lname.meta_key = 'last_name'";
-    $user_query->query_from .= " LEFT JOIN {$wpdb->usermeta} um_bfname ON {$wpdb->users}.ID = um_bfname.user_id AND um_bfname.meta_key = 'billing_first_name'";
-    $user_query->query_from .= " LEFT JOIN {$wpdb->usermeta} um_blname ON {$wpdb->users}.ID = um_blname.user_id AND um_blname.meta_key = 'billing_last_name'";
-    
-    // Build search condition for meta fields
-    $meta_search = $wpdb->prepare(
-        " OR um_fname.meta_value LIKE %s OR um_lname.meta_value LIKE %s OR um_bfname.meta_value LIKE %s OR um_blname.meta_value LIKE %s",
-        '%' . $wpdb->esc_like($search_term) . '%',
-        '%' . $wpdb->esc_like($search_term) . '%',
-        '%' . $wpdb->esc_like($search_term) . '%',
-        '%' . $wpdb->esc_like($search_term) . '%'
-    );
-    
-    // Add the meta search to WHERE clause - look for the closing ) of the search conditions
-    // The search conditions are wrapped in parentheses after "WHERE 1=1 AND"
-    $user_query->query_where = str_replace(
-        ') AND',
-        $meta_search . ') AND',
-        $user_query->query_where
-    );
-    
-    // If no " AND" found (search is last condition), append before the final )
-    if (strpos($user_query->query_where, $meta_search) === false) {
-        // Match the closing ) that's before ORDER BY or end of WHERE clause
-        $user_query->query_where = preg_replace(
-            '/(\))(\s*)$/',
-            $meta_search . '$1$2',
-            $user_query->query_where
-        );
-    }
-}
-
-/**
  * AJAX handler for customer search.
+ * Uses a hybrid approach: standard WP_User_Query + direct meta table search for name fields.
+ * 
  * @since 1.1.4
  */
 add_action('wp_ajax_eao_search_customers', 'eao_ajax_search_customers'); // Restoring action
@@ -93,10 +40,9 @@ function eao_ajax_search_customers() {
     }
 
     $users_found = array();
+    $found_user_ids = array();
     
-    // Add filter to extend search to first_name, last_name, billing_first_name, and billing_last_name meta fields
-    add_filter('pre_user_query', 'eao_extend_user_search_to_meta');
-    
+    // First, do standard WP_User_Query search
     $user_query_args = array(
         'search'         => '*'. esc_attr($search_term) .'*',
         'search_columns' => array(
@@ -107,20 +53,53 @@ function eao_ajax_search_customers() {
             'display_name'
         ),
         'fields'        => array('ID', 'display_name', 'user_email', 'user_login'),
-        'orderby' => 'display_name',
-        'order' => 'ASC',
-        'number' => 20, // Limit results
-        // Consider adding role__in if you only want to search for 'customer' roles or similar
-        // 'role__in'    => array('customer') 
+        'number' => 20,
     );
 
     $user_query = new WP_User_Query($user_query_args);
     
-    // Remove filter after query
-    remove_filter('pre_user_query', 'eao_extend_user_search_to_meta');
-
+    // Collect user IDs from standard search
     if (!empty($user_query->get_results())) {
         foreach ($user_query->get_results() as $user) {
+            $found_user_ids[$user->ID] = $user;
+        }
+    }
+    
+    // Additionally, search in meta fields (first_name, last_name, billing_first_name, billing_last_name)
+    global $wpdb;
+    $meta_search_sql = $wpdb->prepare(
+        "SELECT DISTINCT user_id FROM {$wpdb->usermeta} 
+        WHERE meta_key IN ('first_name', 'last_name', 'billing_first_name', 'billing_last_name')
+        AND meta_value LIKE %s
+        LIMIT 20",
+        '%' . $wpdb->esc_like($search_term) . '%'
+    );
+    
+    $meta_user_ids = $wpdb->get_col($meta_search_sql);
+    
+    // Get user objects for meta search results that aren't already found
+    if (!empty($meta_user_ids)) {
+        $new_user_ids = array_diff($meta_user_ids, array_keys($found_user_ids));
+        if (!empty($new_user_ids)) {
+            $meta_users_query = new WP_User_Query(array(
+                'include' => $new_user_ids,
+                'fields' => array('ID', 'display_name', 'user_email', 'user_login'),
+                'number' => 20,
+            ));
+            
+            if (!empty($meta_users_query->get_results())) {
+                foreach ($meta_users_query->get_results() as $user) {
+                    $found_user_ids[$user->ID] = $user;
+                }
+            }
+        }
+    }
+    
+    // Now process all found users
+    $all_users = array_values($found_user_ids);
+
+    if (!empty($all_users)) {
+        foreach ($all_users as $user) {
             $first_name = sanitize_text_field((string) get_user_meta($user->ID, 'first_name', true));
             $last_name  = sanitize_text_field((string) get_user_meta($user->ID, 'last_name', true));
 
