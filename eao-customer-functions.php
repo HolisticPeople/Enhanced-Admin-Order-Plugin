@@ -41,62 +41,101 @@ function eao_ajax_search_customers() {
 
     $users_found = array();
     $found_user_ids = array();
+    $user_scores = array(); // Track how many times each user was found
     
-    // First, do standard WP_User_Query search
-    $user_query_args = array(
-        'search'         => '*'. esc_attr($search_term) .'*',
-        'search_columns' => array(
-            'ID',
-            'user_login',
-            'user_nicename',
-            'user_email',
-            'display_name'
-        ),
-        'fields'        => array('ID', 'display_name', 'user_email', 'user_login'),
-        'number' => 20,
-    );
-
-    $user_query = new WP_User_Query($user_query_args);
+    global $wpdb;
     
-    // Collect user IDs from standard search
-    if (!empty($user_query->get_results())) {
-        foreach ($user_query->get_results() as $user) {
-            $found_user_ids[$user->ID] = $user;
+    // Split search term into individual words for multi-word searches
+    $search_words = preg_split('/\s+/', trim($search_term));
+    $search_terms = array($search_term); // Always search full phrase first
+    
+    // If multi-word search, also search each word individually
+    if (count($search_words) > 1) {
+        foreach ($search_words as $word) {
+            if (!empty($word)) {
+                $search_terms[] = $word;
+            }
         }
     }
     
-    // Additionally, search in meta fields (first_name, last_name, billing_first_name, billing_last_name)
-    global $wpdb;
-    $meta_search_sql = $wpdb->prepare(
-        "SELECT DISTINCT user_id FROM {$wpdb->usermeta} 
-        WHERE meta_key IN ('first_name', 'last_name', 'billing_first_name', 'billing_last_name')
-        AND meta_value LIKE %s
-        LIMIT 20",
-        '%' . $wpdb->esc_like($search_term) . '%'
-    );
-    
-    $meta_user_ids = $wpdb->get_col($meta_search_sql);
-    
-    // Get user objects for meta search results that aren't already found
-    if (!empty($meta_user_ids)) {
-        $new_user_ids = array_diff($meta_user_ids, array_keys($found_user_ids));
-        if (!empty($new_user_ids)) {
-            $meta_users_query = new WP_User_Query(array(
-                'include' => $new_user_ids,
-                'fields' => array('ID', 'display_name', 'user_email', 'user_login'),
-                'number' => 20,
-            ));
-            
-            if (!empty($meta_users_query->get_results())) {
-                foreach ($meta_users_query->get_results() as $user) {
+    // Search for each term (full phrase + individual words)
+    foreach ($search_terms as $term) {
+        // Standard WP_User_Query search (user_login, user_email, display_name, etc.)
+        $user_query_args = array(
+            'search'         => '*'. esc_attr($term) .'*',
+            'search_columns' => array(
+                'ID',
+                'user_login',
+                'user_nicename',
+                'user_email',
+                'display_name'
+            ),
+            'fields'        => array('ID', 'display_name', 'user_email', 'user_login'),
+            'number' => 50, // Increased to capture more potential matches
+        );
+
+        $user_query = new WP_User_Query($user_query_args);
+        
+        // Collect user IDs and increment score
+        if (!empty($user_query->get_results())) {
+            foreach ($user_query->get_results() as $user) {
+                if (!isset($found_user_ids[$user->ID])) {
                     $found_user_ids[$user->ID] = $user;
+                    $user_scores[$user->ID] = 0;
+                }
+                $user_scores[$user->ID]++;
+            }
+        }
+        
+        // Search in meta fields (first_name, last_name, billing_first_name, billing_last_name)
+        $meta_search_sql = $wpdb->prepare(
+            "SELECT DISTINCT user_id FROM {$wpdb->usermeta} 
+            WHERE meta_key IN ('first_name', 'last_name', 'billing_first_name', 'billing_last_name')
+            AND meta_value LIKE %s",
+            '%' . $wpdb->esc_like($term) . '%'
+        );
+        
+        $meta_user_ids = $wpdb->get_col($meta_search_sql);
+        
+        // Get user objects for meta search results and increment scores
+        if (!empty($meta_user_ids)) {
+            $new_user_ids = array_diff($meta_user_ids, array_keys($found_user_ids));
+            if (!empty($new_user_ids)) {
+                $meta_users_query = new WP_User_Query(array(
+                    'include' => $new_user_ids,
+                    'fields' => array('ID', 'display_name', 'user_email', 'user_login'),
+                ));
+                
+                if (!empty($meta_users_query->get_results())) {
+                    foreach ($meta_users_query->get_results() as $user) {
+                        if (!isset($found_user_ids[$user->ID])) {
+                            $found_user_ids[$user->ID] = $user;
+                            $user_scores[$user->ID] = 0;
+                        }
+                    }
+                }
+            }
+            
+            // Increment scores for all meta matches
+            foreach ($meta_user_ids as $uid) {
+                if (isset($found_user_ids[$uid])) {
+                    $user_scores[$uid]++;
                 }
             }
         }
     }
     
-    // Now process all found users
-    $all_users = array_values($found_user_ids);
+    // Sort users by score (highest first)
+    arsort($user_scores);
+    
+    // Limit to top 20 results
+    $top_user_ids = array_slice(array_keys($user_scores), 0, 20, true);
+    
+    // Get sorted user objects
+    $all_users = array();
+    foreach ($top_user_ids as $uid) {
+        $all_users[] = $found_user_ids[$uid];
+    }
 
     if (!empty($all_users)) {
         foreach ($all_users as $user) {
